@@ -55,15 +55,13 @@ Defined in [src/eco_mcp_app/server.py](../src/eco_mcp_app/server.py). All accept
 
 ## Bundled data assets
 
-- **data/ecoregions.json** (~7KB) - WWF ecoregion defs.
-- **data/ecopedia.json** (~4.8MB) - Eco item descriptions.
-- **data/species_profiles.json** (~15MB) - Cached species profiles.
+- **data/ecoregions.json** (~7KB) - WWF ecoregion defs. The former ecopedia/species blobs were dropped during consolidation - lookups go live.
 
 ## Source modules
 
-- **server.py** - Core MCP server, tool/resource handlers, TMP markup parsing, error rendering. ~2200 lines.
+- **server.py** - Core MCP server, tool/resource handlers, TMP markup parsing, error rendering. ~2400 lines.
 - **http_app.py** - Starlette ASGI + NormalizeMcpPath middleware.
-- **crafting.py** / **map.py** / **ecoregion.py** / **species.py** / **fair_price.py** / **wikidata.py** / **telemetry.py** / **livereload.py** / **_preload.py**.
+- **crafting.py** / **map.py** / **ecoregion.py** / **species.py** / **fair_price.py** / **wikidata.py** / **telemetry.py** / **livereload.py**.
 
 ## Deployment
 

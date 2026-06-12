@@ -13,7 +13,7 @@ The Eco application monorepo: one fused Python service (MCP server + jobs tracke
 - `src/eco_replay/` - FastAPI browser for the replay mod's SQLite event log. Local-only, not in the fused image's routes yet.
 - `frontend/` - Vite + React + TypeScript SPA, served at `/` by the fused service when its build (`frontend/dist`) exists. Built in the Dockerfile's node stage; local dev via `ward exec frontend-dev` against `ward exec http`.
 - `mods/jobs/`, `mods/replay/`, `mods/telemetry/` - C# Eco server plugins. jobs and replay share DTO contracts with their Python consumers, so they live here, not in eco-mods.
-- `data/ecoregions.json` - the only committed data file. Dropped species/ecopedia caches fall back to live fetches (`_preload.py` degrades gracefully).
+- `data/ecoregions.json` - the only committed data file. Species/ecopedia lookups go straight to live Wikidata/iNaturalist/Wikipedia fetches.
 - `tests/mcp/`, `tests/jobs/` - per-component pytest suites under one `tests/` root.
 - `investigation/` - preserved post-mortem from eco-mcp-app. Read before questioning weird-looking decisions.
 - `Dockerfile` - the single fused image, entrypoint `eco_mcp_app.http_app:app` on port 4000.
