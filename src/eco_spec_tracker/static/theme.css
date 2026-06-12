@@ -112,26 +112,6 @@ body {
   border-color: var(--leaf-dim);
 }
 
-/* --- Embedded eco-mcp server card ---------------------------------------- */
-
-/* Host frame for the card rendered by eco_mcp_app. Its stylesheet is
-   injected scoped under .eco-mcp-card (see eco_spec_tracker/main.py), so
-   the page-level backdrop its standalone /preview page gets from html/body
-   is recreated here: the card keeps its own bark-and-moss look, framed as
-   an artifact inside this page. Colors come from eco.css's palette. */
-.eco-mcp-card {
-  border-radius: 16px;
-  border: 1px solid var(--card-border);
-  overflow: hidden;
-  padding: 0 28px 28px;
-  color: #f4ecd8;
-  background:
-    radial-gradient(ellipse at top, rgba(244, 192, 78, 0.08) 0%, transparent 55%),
-    linear-gradient(180deg, #1f2e1a 0%, #2a1f16 100%);
-  font-size: 14px;
-  line-height: 1.45;
-}
-
 /* --- Content ------------------------------------------------------------ */
 
 .content {

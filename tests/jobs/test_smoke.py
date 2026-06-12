@@ -76,26 +76,6 @@ def test_partials_profession_detail_unknown(client: TestClient) -> None:
     assert r.status_code == 404
 
 
-def test_partials_eco_card_renders(client: TestClient) -> None:
-    # The card fetches upstream Eco info; mock it so the test is hermetic.
-    # eco-mcp-app reaches out to eco.coilysiren.me:3001 by default.
-    with respx.mock(assert_all_called=False) as mock:
-        mock.get(host="eco.coilysiren.me").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "Description": "Test Server",
-                    "OnlinePlayers": 1,
-                    "TotalPlayers": 2,
-                    "DaysRunning": 1,
-                    "DaysUntilMeteor": 30,
-                },
-            )
-        )
-        r = client.get("/partials/eco-card")
-    assert r.status_code == 200
-
-
 UPSTREAM_FIXTURE = [
     {
         "player": "alice",

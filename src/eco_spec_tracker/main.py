@@ -1,22 +1,19 @@
 """FastAPI app for the jobs tracker (formerly eco-jobs-tracker).
 
-Serves a Jinja2 + HTMX UI plus a JSON API. Currently backed by mock data;
-will eventually call the Eco mod's `/api/v1/skills` endpoint.
+Serves a Jinja2 + HTMX UI plus a JSON API, backed by the Eco mod's
+`/api/v1/skills` endpoint (`UPSTREAM_URL`) with a mock-data fallback.
 
 Runs mounted at `/jobs` inside eco_mcp_app's ASGI app (http_app.py) — the
 fused eco-app service. Templates prefix every absolute URL with
 `request.scope.root_path` so they work under the mount. The app remains a
 valid standalone ASGI target for local dev (`uvicorn eco_spec_tracker.main:app`).
 
-The top of every HTML page embeds the live Eco server status card from
-`eco_mcp_app` (sibling package in this repo). The card and its CSS are
-imported directly — we ride the same rendering path so visuals stay in
-lockstep with whatever eco_mcp_app ships.
+General server stats live on the SPA landing page at `/`; this page is
+jobs-only and shares its visual language via static/theme.css.
 """
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -25,7 +22,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.responses import Response
 
-from eco_mcp_app import render_status_html, status_css
 from eco_mcp_app.telemetry import init_sentry
 from eco_spec_tracker import mock_data, upstream
 from eco_spec_tracker.livereload import DEBUG, LIVERELOAD_SCRIPT
@@ -42,15 +38,6 @@ FRAME_ANCESTORS_CSP = "frame-ancestors 'self' https://www.coilysiren.me https://
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-# eco-mcp-app's CSS spliced into our base template via a Jinja global.
-# Read once at module import; the bytes are tiny. eco.css is written for the
-# standalone /preview page - it styles :root, html, and body directly, which
-# repaints this whole page if injected as-is. Wrap it in native CSS nesting
-# under the card host so it can't escape: `:root` variables move onto the
-# host element (`&`), and the html/body rules become inert descendant
-# selectors. The host's own frame (bark backdrop, text color) lives in
-# static/theme.css.
-TEMPLATES.env.globals["eco_mcp_css"] = ".eco-mcp-card{" + status_css().replace(":root", "&") + "}"
 TEMPLATES.env.globals["livereload_script"] = LIVERELOAD_SCRIPT if DEBUG else ""
 TEMPLATES.env.globals["using_mock_data"] = upstream.UPSTREAM_URL is None
 
@@ -74,24 +61,9 @@ def healthz() -> JSONResponse:
     return JSONResponse({"ok": True})
 
 
-# eco-mcp-app's card.html bakes in a "try other servers" pill strip and a
-# credits line. Strip both: pills belong in its /preview, credits duplicate ours.
-_TRY_OTHERS_RE = re.compile(r'<div class="try-others">.*?</div>\s*</div>', flags=re.DOTALL)
-_CREDITS_LINE_RE = re.compile(r'<div class="credits-line">.*?</div>', flags=re.DOTALL)
-
-
-@app.get("/partials/eco-card", response_class=HTMLResponse)
-async def partial_eco_card() -> HTMLResponse:
-    """Live Eco server status card, rendered by eco-mcp-app."""
-    html = await render_status_html()
-    html = _TRY_OTHERS_RE.sub("", html)
-    html = _CREDITS_LINE_RE.sub("", html)
-    return HTMLResponse(html)
-
-
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
-    """Homepage: live eco card + all three content sections stacked."""
+    """Homepage: all three content sections stacked."""
     rows = await upstream.fetch_rows()
     return TEMPLATES.TemplateResponse(
         request,

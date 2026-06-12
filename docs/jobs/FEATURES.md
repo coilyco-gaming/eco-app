@@ -9,9 +9,8 @@ Two processes: a C# Eco mod exposing a read-only HTTP endpoint of every player's
 ## Web dashboard (FastAPI)
 
 - **Live HTML dashboard, mounted at `/jobs` of the fused service** - Stacked Professions, Specialties, Players sections. Hand-rolled `static/theme.css` shares the forest-glass visual language with the SPA landing page (tokens mirrored from `frontend/src/index.css`), htmx vendored into `static/` - no CDNs, no build step.
-- **Drill-down pages** - `/professions`, `/specialties`, `/players` each render one section without the eco-card header.
-- **Embedded live server-status card** - Homepage embeds the card from `eco_mcp_app` (same repo since the consolidation), in lockstep with the MCP widget.
-- **HTMX partials** - `/partials/eco-card` and `/partials/profession/{name}` serve fragments for in-page expansion.
+- **Drill-down pages** - `/professions`, `/specialties`, `/players` each render one section.
+- **HTMX partials** - `/partials/profession/{name}` serves fragments for in-page expansion. The embedded server-status card was dropped when the site went flat - general server stats live on the SPA pages, not here.
 - **JSON API mirror** - `/api/v1/professions`, `/api/v1/players`, `/api/v1/specialties` return same data, machine-readable.
 - **Iframe embedding** - CSP `frame-ancestors` allows `coilysiren.me` to embed (eco-modding page on personal site).
 - **Healthcheck** - `/healthz` returns `{"ok": true}` for k8s probes.
@@ -47,7 +46,7 @@ Two processes: a C# Eco mod exposing a read-only HTTP endpoint of every player's
 - **`make build-mod`** - Production mod DLL.
 - **`make build-docker` / `deploy`** - Container build/push + k3s rollout.
 - **Pre-commit** - ruff + mypy on Python, `dotnet format` on C#.
-- **Smoke suite** - `tests/test_smoke.py`: every page, every JSON, eco-card partial (respx-stubbed `/info`), parser fixture.
+- **Smoke suite** - `tests/test_smoke.py`: every page, every JSON, parser fixture.
 
 ## Naming-debt note
 

@@ -6,7 +6,6 @@
   <title>{% block title %}Jobs tracker - eco-app{% endblock %}</title>
   <link rel="icon" type="image/x-icon" href="{{ request.scope.root_path }}/static/favicon.ico">
   <link rel="stylesheet" href="{{ request.scope.root_path }}/static/theme.css">
-  <style>{{ eco_mcp_css | safe }}</style>
   {# htmx vendored into static/ (v2.0.3, MIT) - no CDN, no SRI surface. #}
   <script src="{{ request.scope.root_path }}/static/htmx.min.js"></script>
 </head>
