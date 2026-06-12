@@ -55,10 +55,13 @@ frontend-lint: ## ESLint over frontend/src.
 
 http: ## Run the fused server (MCP + /jobs) with autoreload, eco target auto-resolved. Args - http_port=<int>.
 	@BASE=$$(scripts/resolve-eco-target.sh) && \
+	KEY="$${UPSTREAM_API_KEY:-$$(coily ops aws ssm get-parameter --name /eco-mcp-app/api-admin-token --with-decryption --query Parameter.Value --output text 2>/dev/null || true)}" && \
 	DEBUG=1 \
 	ECO_INFO_URL="$${ECO_INFO_URL:-$$BASE/info}" \
 	ECO_ADMIN_BASE_URL="$${ECO_ADMIN_BASE_URL:-$$BASE}" \
 	ECO_MAP_BASE_URL="$${ECO_MAP_BASE_URL:-$$BASE}" \
+	UPSTREAM_URL="$${UPSTREAM_URL:-$$BASE/api/v1/skills}" \
+	UPSTREAM_API_KEY="$$KEY" \
 	uv run uvicorn eco_mcp_app.http_app:app --reload --reload-dir src --host 0.0.0.0 --port $(or $(http_port),$(port))
 
 harness: ## Serve static/harness.html, the local Claude-Desktop-mimicking iframe host. Args - harness_port=<int>.

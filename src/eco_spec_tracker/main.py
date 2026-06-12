@@ -43,8 +43,14 @@ BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 # eco-mcp-app's CSS spliced into our base template via a Jinja global.
-# Read once at module import; the bytes are tiny.
-TEMPLATES.env.globals["eco_mcp_css"] = status_css()
+# Read once at module import; the bytes are tiny. eco.css is written for the
+# standalone /preview page - it styles :root, html, and body directly, which
+# repaints this whole page if injected as-is. Wrap it in native CSS nesting
+# under the card host so it can't escape: `:root` variables move onto the
+# host element (`&`), and the html/body rules become inert descendant
+# selectors. The host's own frame (bark backdrop, text color) lives in
+# static/theme.css.
+TEMPLATES.env.globals["eco_mcp_css"] = ".eco-mcp-card{" + status_css().replace(":root", "&") + "}"
 TEMPLATES.env.globals["livereload_script"] = LIVERELOAD_SCRIPT if DEBUG else ""
 TEMPLATES.env.globals["using_mock_data"] = upstream.UPSTREAM_URL is None
 
