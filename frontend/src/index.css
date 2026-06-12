@@ -28,9 +28,20 @@ body,
 }
 
 body {
-  background: radial-gradient(1200px 800px at 20% 10%, var(--bg-glow) 0%, var(--bg-mid) 45%, var(--bg-deep) 100%);
+  background: var(--bg-deep);
   color: var(--ink);
   font-family: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+/* The forest glow is viewport-anchored (a fixed pseudo-element), not painted
+   on the body: body-painted gradients scale with content height, so short
+   pages (/) and long ones (/jobs) ended up with visibly different backdrops. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(1200px 800px at 20% 10%, var(--bg-glow) 0%, var(--bg-mid) 45%, var(--bg-deep) 100%);
 }
 
 .page {

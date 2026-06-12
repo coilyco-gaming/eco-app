@@ -38,7 +38,6 @@ describe("Home", () => {
 
     expect(screen.getByTestId("dir-server")).toHaveAttribute("href", "/server")
     expect(screen.getByTestId("dir-jobs")).toHaveAttribute("href", "/jobs")
-    expect(screen.getByTestId("dir-preview")).toHaveAttribute("href", "/preview")
 
     await waitFor(() => {
       expect(screen.getByTestId("server-badges")).toHaveTextContent("3d to meteor")
@@ -58,7 +57,7 @@ describe("Home", () => {
     await waitFor(() => {
       expect(screen.getByTestId("dir-jobs")).toBeInTheDocument()
     })
-    expect(screen.getByTestId("dir-preview")).toBeInTheDocument()
+    expect(screen.getByTestId("dir-server")).toBeInTheDocument()
     expect(screen.queryByTestId("server-badges")).not.toBeInTheDocument()
   })
 })

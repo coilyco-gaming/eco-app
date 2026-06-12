@@ -48,11 +48,6 @@ export default function Home() {
           )}
         </Link>
 
-        <a className="dir-card" href="/preview" data-testid="dir-preview">
-          <h3>Server card</h3>
-          <p>The embeddable live status card, exactly as MCP hosts render it.</p>
-        </a>
-
         <div className="dir-card dir-card-static">
           <h3>Community</h3>
           <p>

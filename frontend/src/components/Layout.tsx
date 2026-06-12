@@ -21,7 +21,6 @@ export default function Layout({ children, fetchedAtISO }: LayoutProps) {
           <Link to="/">Home</Link>
           <Link to="/server">Server</Link>
           <Link to="/jobs">Jobs</Link>
-          <a href="/preview">Server card</a>
         </nav>
       </header>
 
