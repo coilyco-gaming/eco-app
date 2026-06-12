@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { formatCount, formatFetchedAt, meteorProgressPercent, stripEcoMarkup } from "./format"
+import {
+  formatCount,
+  formatFetchedAt,
+  meteorProgressPercent,
+  safeHttpUrl,
+  stripEcoMarkup,
+} from "./format"
 
 describe("stripEcoMarkup", () => {
   it("strips Unity color tags", () => {
@@ -35,6 +41,20 @@ describe("formatFetchedAt", () => {
 
   it("returns empty string for garbage", () => {
     expect(formatFetchedAt("not-a-date")).toBe("")
+  })
+})
+
+describe("safeHttpUrl", () => {
+  it("passes real web URLs through", () => {
+    expect(safeHttpUrl("https://discord.gg/example")).toBe("https://discord.gg/example")
+  })
+
+  it("rejects hostile or malformed schemes", () => {
+    expect(safeHttpUrl("javascript:alert(1)")).toBeUndefined()
+    expect(safeHttpUrl("data:text/html,hi")).toBeUndefined()
+    expect(safeHttpUrl("not a url")).toBeUndefined()
+    expect(safeHttpUrl(null)).toBeUndefined()
+    expect(safeHttpUrl("")).toBeUndefined()
   })
 })
 

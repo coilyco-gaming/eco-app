@@ -1,4 +1,5 @@
 import { useEcoStatus } from "../hooks/useEcoStatus"
+import { safeHttpUrl } from "../lib/format"
 import Hero from "../components/Hero"
 import MeteorBanner from "../components/MeteorBanner"
 import StatGrid from "../components/StatGrid"
@@ -8,6 +9,7 @@ const STEAM_URL = "https://store.steampowered.com/app/382310/Eco/"
 
 export default function Landing() {
   const { status, error, loading } = useEcoStatus()
+  const discordUrl = safeHttpUrl(status?.server.discord)
 
   return (
     <div className="page">
@@ -16,7 +18,7 @@ export default function Landing() {
         <nav className="topnav" aria-label="primary">
           <a href="/jobs/">Jobs tracker</a>
           <a href="/preview">Server card</a>
-          {status?.server.discord && <a href={status.server.discord}>Discord</a>}
+          {discordUrl && <a href={discordUrl}>Discord</a>}
           <a href={STEAM_URL}>Steam</a>
         </nav>
       </header>
@@ -38,8 +40,8 @@ export default function Landing() {
         )}
 
         <section className="cta-row">
-          {status?.server.discord && (
-            <a className="button button-primary" href={status.server.discord}>
+          {discordUrl && (
+            <a className="button button-primary" href={discordUrl}>
               Join the Discord
             </a>
           )}

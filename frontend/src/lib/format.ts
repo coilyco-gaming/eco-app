@@ -22,6 +22,20 @@ export function formatFetchedAt(iso: string): string {
   return `${hh}:${mm} UTC`
 }
 
+// The discord link arrives from the game server's /info payload, i.e. from
+// outside this codebase. Only let real web URLs through to href.
+export function safeHttpUrl(url: string | null | undefined): string | undefined {
+  if (!url) return undefined
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === "https:" || parsed.protocol === "http:"
+      ? parsed.toString()
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
 // Cycle progress toward the meteor, as a 0-100 integer. The payload gives
 // days elapsed and days remaining, so the total is their sum.
 export function meteorProgressPercent(daysRunning: number, daysUntilMeteor: number): number {
