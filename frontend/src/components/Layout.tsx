@@ -20,7 +20,7 @@ export default function Layout({ children, fetchedAtISO }: LayoutProps) {
         <nav className="topnav" aria-label="primary">
           <Link to="/">Home</Link>
           <Link to="/server">Server</Link>
-          <a href="/jobs/">Jobs</a>
+          <Link to="/jobs">Jobs</Link>
           <a href="/preview">Server card</a>
         </nav>
       </header>

@@ -91,7 +91,8 @@ def test_info(client: TestClient) -> None:
     body = r.json()
     assert body["service"] == "eco-app"
     assert body["mcp"] == "/mcp/"
-    assert body["jobs"] == "/jobs/"
+    assert body["jobs"] == "/jobs"
+    assert body["jobsApi"] == "/jobs/api/v1"
     assert body["preview"] == "/preview"
     assert body["previewJson"] == "/preview.json"
     # Every tool advertised has a .json sibling at the same path.
@@ -99,10 +100,10 @@ def test_info(client: TestClient) -> None:
 
 
 def test_jobs_mount(client: TestClient) -> None:
-    """The jobs tracker (eco_spec_tracker) serves through the /jobs mount."""
-    r = client.get("/jobs/healthz")
+    """The jobs JSON API (eco_spec_tracker) serves through the /jobs/api mount."""
+    r = client.get("/jobs/api/v1/meta")
     assert r.status_code == 200
-    assert r.json() == {"ok": True}
+    assert r.json() == {"mockData": True}
 
 
 @respx.mock

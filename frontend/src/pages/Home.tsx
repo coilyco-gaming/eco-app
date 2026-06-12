@@ -38,7 +38,7 @@ export default function Home() {
           )}
         </Link>
 
-        <a className="dir-card" href="/jobs/" data-testid="dir-jobs">
+        <Link className="dir-card" to="/jobs" data-testid="dir-jobs">
           <h3>Jobs</h3>
           <p>Who can make what — professions, specialties, and every player's skills.</p>
           {status && (
@@ -46,7 +46,7 @@ export default function Home() {
               <span className="mini-pill">{formatCount(status.players.total)} settlers</span>
             </p>
           )}
-        </a>
+        </Link>
 
         <a className="dir-card" href="/preview" data-testid="dir-preview">
           <h3>Server card</h3>

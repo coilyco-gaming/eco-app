@@ -51,6 +51,26 @@ def test_traversal_outside_dist_gets_the_shell() -> None:
     assert "spa-shell" in r.text
 
 
+@pytest.mark.usefixtures("dist")
+def test_jobs_page_is_spa_and_api_keeps_public_paths() -> None:
+    client = TestClient(create_app())
+    r = client.get("/jobs")
+    assert "spa-shell" in r.text
+    r = client.get("/jobs/api/v1/professions")
+    assert r.status_code == 200
+    assert isinstance(r.json(), list)
+    r = client.get("/jobs/api/v1/meta")
+    assert r.json() == {"mockData": True}
+
+
+@pytest.mark.usefixtures("dist")
+def test_frame_ancestors_csp_is_site_wide() -> None:
+    client = TestClient(create_app())
+    for path in ("/jobs", "/healthz"):
+        r = client.get(path)
+        assert "frame-ancestors" in r.headers.get("content-security-policy", "")
+
+
 def test_no_build_falls_back_to_preview_redirect(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

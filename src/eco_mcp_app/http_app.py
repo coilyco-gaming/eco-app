@@ -28,6 +28,7 @@ import httpx
 import mcp.types as mt
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from starlette.applications import Starlette
+from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
 from starlette.responses import (
     FileResponse,
@@ -55,7 +56,35 @@ from .server import (
 from .telemetry import init_sentry
 
 if TYPE_CHECKING:
-    from starlette.types import ASGIApp, Receive, Scope, Send
+    from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+
+class FrameAncestorsCSP:
+    """ASGI middleware — allow coilysiren.me to iframe-embed this site.
+
+    Lived on the jobs tracker app when /jobs was its own Jinja surface (the
+    eco-modding page on the personal site embeds it); now that every page is
+    the SPA, the header applies site-wide. Keep X-Frame-Options unset
+    everywhere (app + ingress).
+    """
+
+    CSP = "frame-ancestors 'self' https://www.coilysiren.me https://coilysiren.me"
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_csp(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                headers["Content-Security-Policy"] = self.CSP
+            await send(message)
+
+        await self.app(scope, receive, send_with_csp)
 
 
 class NormalizeMcpPath:
@@ -165,7 +194,8 @@ def create_app() -> Starlette:
             {
                 "service": "eco-app",
                 "mcp": "/mcp/",
-                "jobs": "/jobs/",
+                "jobs": "/jobs",
+                "jobsApi": "/jobs/api/v1",
                 "health": "/healthz",
                 "preview": "/preview",
                 "previewJson": "/preview.json",
@@ -318,11 +348,11 @@ def create_app() -> Starlette:
     async def handle_mcp(scope: Scope, receive: Receive, send: Send) -> None:
         await session_manager.handle_request(scope, receive, send)
 
-    # The jobs tracker (eco_spec_tracker) is a self-contained FastAPI app
-    # mounted under /jobs — the fused eco-app service ships both surfaces in
-    # one process. The mount sets root_path, which the jobs templates use to
-    # prefix their absolute URLs. Imported here (not module top) so the
-    # mount only exists on the ASGI path, keeping stdio startup lean.
+    # The jobs JSON API (eco_spec_tracker) is a self-contained FastAPI app
+    # mounted under /jobs/api, keeping the public /jobs/api/v1/* paths from
+    # the era when it also served the jobs HTML. The /jobs page itself is an
+    # SPA route, served by the catch-all below. Imported here (not module
+    # top) so the mount only exists on the ASGI path, keeping stdio lean.
     from eco_spec_tracker.main import app as jobs_app
 
     routes: list[BaseRoute] = [
@@ -335,7 +365,7 @@ def create_app() -> Starlette:
         Route("/preview-map.json", preview_map_json, methods=["GET"]),
         Route("/preview/{tool}", preview_tool, methods=["GET"]),
         Mount("/mcp", app=handle_mcp),
-        Mount("/jobs", app=jobs_app),
+        Mount("/jobs/api", app=jobs_app),
     ]
     if (frontend_dist / "assets").is_dir():
         routes.append(Mount("/assets", app=StaticFiles(directory=frontend_dist / "assets")))
@@ -344,6 +374,7 @@ def create_app() -> Starlette:
     routes.append(Route("/{path:path}", spa_fallback, methods=["GET"]))
     inner = Starlette(lifespan=lifespan, routes=routes)
     inner.add_middleware(NormalizeMcpPath)
+    inner.add_middleware(FrameAncestorsCSP)
     return inner
 
 

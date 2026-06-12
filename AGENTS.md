@@ -9,7 +9,7 @@ The Eco application monorepo: one fused Python service (MCP server + jobs tracke
 ## Project shape
 
 - `src/eco_mcp_app/` - the core service. `server.py` is the transport-agnostic MCP server, `__main__.py` the stdio entry for Claude Desktop, `http_app.py` the Starlette ASGI app.
-- `src/eco_spec_tracker/` - jobs tracker FastAPI app, mounted at `/jobs`. Templates prefix absolute URLs with `request.scope.root_path` so they work under the mount.
+- `src/eco_spec_tracker/` - jobs JSON API (FastAPI), mounted at `/jobs/api`. The jobs UI is the SPA's `/jobs` route.
 - `src/eco_replay/` - FastAPI browser for the replay mod's SQLite event log. Local-only, not in the fused image's routes yet.
 - `frontend/` - Vite + React + TypeScript SPA, served at `/` by the fused service when its build (`frontend/dist`) exists. Built in the Dockerfile's node stage; local dev via `ward exec frontend-dev` against `ward exec http`.
 - `mods/jobs/`, `mods/replay/`, `mods/telemetry/` - C# Eco server plugins. jobs and replay share DTO contracts with their Python consumers, so they live here, not in eco-mods.

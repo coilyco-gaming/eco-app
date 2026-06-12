@@ -325,6 +325,180 @@ a.dir-card:hover {
   color: var(--ink-soft);
 }
 
+/* --- Jobs page ---------------------------------------------------------- */
+
+.mock-banner {
+  padding: 0.7rem 1.25rem;
+  border-radius: 12px;
+  text-align: center;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--meteor);
+  background: rgba(63, 41, 13, 0.75);
+  border: 1px solid rgba(240, 179, 92, 0.35);
+}
+
+.mock-banner code {
+  padding: 0.1rem 0.35rem;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 0.8rem;
+}
+
+.intro {
+  max-width: 70ch;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+.intro p {
+  margin: 0;
+}
+
+.section-title {
+  margin: 0 0 1rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  padding: 1.1rem 1.3rem;
+  border-radius: 14px;
+  border: 1px solid var(--card-border);
+  background: var(--card);
+  backdrop-filter: blur(6px);
+}
+
+.card.dim {
+  opacity: 0.55;
+}
+
+.card-tight {
+  padding: 0;
+  overflow: hidden;
+}
+
+.card-title {
+  margin: 0 0 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.count {
+  font-variant-numeric: tabular-nums;
+  color: var(--leaf);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.kicker {
+  margin: 0 0 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-faint);
+}
+
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rows li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+  font-size: 0.85rem;
+  border-bottom: 1px dotted var(--card-border);
+}
+
+.rows li:last-child {
+  border-bottom: 0;
+}
+
+.rows li.faded {
+  opacity: 0.55;
+}
+
+.rows .lvl {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+}
+
+.empty-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+}
+
+.prof-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 1rem 1.3rem;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.prof-btn:hover {
+  background: var(--leaf-wash);
+}
+
+.detail {
+  padding: 0 1.3rem 0.9rem;
+  border-top: 1px solid var(--card-border);
+}
+
+.pill {
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.pill-active {
+  background: var(--leaf-wash);
+  border: 1px solid var(--leaf-dim);
+  color: var(--leaf);
+}
+
+.pill-inactive {
+  background: rgba(63, 41, 13, 0.55);
+  border: 1px solid rgba(240, 179, 92, 0.35);
+  color: var(--meteor);
+}
+
 /* --- CTAs & footer ---------------------------------------------------- */
 
 .cta-row {

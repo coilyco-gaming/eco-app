@@ -1,8 +1,9 @@
-"""End-to-end smoke tests.
+"""End-to-end smoke tests for the jobs JSON API.
 
-Every page and every JSON endpoint under the mock-data path. Also covers the
-upstream path with respx stubbing the mod's `/api/v1/skills` response, so we
-catch breakage in the row-shaping layer before it reaches a browser.
+Every endpoint under the mock-data path, plus the upstream path with respx
+stubbing the mod's `/api/v1/skills` response, so we catch breakage in the
+row-shaping layer before it reaches the SPA's /jobs page. The fused-app
+mount (public /jobs/api/v1/* paths) is covered in tests/mcp.
 """
 
 from __future__ import annotations
@@ -21,21 +22,13 @@ def client() -> TestClient:
     return TestClient(app)
 
 
-def test_healthz(client: TestClient) -> None:
-    r = client.get("/healthz")
+def test_meta_reports_mock_data(client: TestClient) -> None:
+    r = client.get("/v1/meta")
     assert r.status_code == 200
-    assert r.json() == {"ok": True}
+    assert r.json() == {"mockData": True}
 
 
-@pytest.mark.parametrize("path", ["/", "/professions", "/specialties", "/players"])
-def test_pages_render(client: TestClient, path: str) -> None:
-    r = client.get(path)
-    assert r.status_code == 200
-    assert "text/html" in r.headers["content-type"]
-    assert "Jobs tracker" in r.text
-
-
-@pytest.mark.parametrize("path", ["/api/v1/professions", "/api/v1/players", "/api/v1/specialties"])
+@pytest.mark.parametrize("path", ["/v1/professions", "/v1/players", "/v1/specialties"])
 def test_api_endpoints_return_list(client: TestClient, path: str) -> None:
     r = client.get(path)
     assert r.status_code == 200
@@ -45,13 +38,13 @@ def test_api_endpoints_return_list(client: TestClient, path: str) -> None:
 
 
 def test_api_professions_shape(client: TestClient) -> None:
-    r = client.get("/api/v1/professions")
+    r = client.get("/v1/professions")
     row = r.json()[0]
     assert {"profession", "active", "total", "players"} <= row.keys()
 
 
 def test_api_players_shape(client: TestClient) -> None:
-    r = client.get("/api/v1/players")
+    r = client.get("/v1/players")
     row = r.json()[0]
     assert {"name", "active", "specialties"} <= row.keys()
     if row["specialties"]:
@@ -59,21 +52,9 @@ def test_api_players_shape(client: TestClient) -> None:
 
 
 def test_api_specialties_shape(client: TestClient) -> None:
-    r = client.get("/api/v1/specialties")
+    r = client.get("/v1/specialties")
     row = r.json()[0]
     assert {"specialty", "profession", "active", "total", "holders"} <= row.keys()
-
-
-def test_partials_profession_detail_known(client: TestClient) -> None:
-    r = client.get("/partials/profession/Carpentry")
-    assert r.status_code == 200
-    # Mock data has coilysiren + ekans learning a Carpentry specialty.
-    assert "coilysiren" in r.text
-
-
-def test_partials_profession_detail_unknown(client: TestClient) -> None:
-    r = client.get("/partials/profession/Nonsense")
-    assert r.status_code == 404
 
 
 UPSTREAM_FIXTURE = [

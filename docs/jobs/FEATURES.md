@@ -4,19 +4,15 @@ Headline-feature inventory for `eco-jobs-tracker`. "What does this repo do," not
 
 ## Shape
 
-Two processes: a C# Eco mod exposing a read-only HTTP endpoint of every player's learned specialties, and a FastAPI dashboard rendering a "who can make what" board.
+Three pieces: a C# Eco mod exposing a read-only HTTP endpoint of every player's learned specialties, a FastAPI JSON API doing the row-shaping, and the SPA's `/jobs` page rendering the "who can make what" board. The Jinja2 + HTMX dashboard this package used to serve was retired when the site went fully SPA.
 
-## Web dashboard (FastAPI)
+## JSON API (FastAPI)
 
-- **Live HTML dashboard, mounted at `/jobs` of the fused service** - Stacked Professions, Specialties, Players sections. Hand-rolled `static/theme.css` shares the forest-glass visual language with the SPA landing page (tokens mirrored from `frontend/src/index.css`), htmx vendored into `static/` - no CDNs, no build step.
-- **Drill-down pages** - `/professions`, `/specialties`, `/players` each render one section.
-- **HTMX partials** - `/partials/profession/{name}` serves fragments for in-page expansion. The embedded server-status card was dropped when the site went flat - general server stats live on the SPA pages, not here.
-- **JSON API mirror** - `/api/v1/professions`, `/api/v1/players`, `/api/v1/specialties` return same data, machine-readable.
-- **Iframe embedding** - CSP `frame-ancestors` allows `coilysiren.me` to embed (eco-modding page on personal site).
-- **Healthcheck** - `/healthz` returns `{"ok": true}` for k8s probes.
-- **Mock-data fallback** - `UPSTREAM_URL` unset = canned data from `mock_data.py`, flagged via `using_mock_data` template global.
+- **Mounted at `/jobs/api` of the fused service** - public paths `/jobs/api/v1/professions`, `/v1/players`, `/v1/specialties` (unchanged from the Jinja era), plus `/v1/meta` reporting the mock-data flag the SPA's banner reads.
+- **Browser UI** - the SPA route `/jobs` (`frontend/src/pages/Jobs.tsx`): stacked Professions (client-side expanders), Specialties, Players sections, all from this API. Old drill-down URLs (`/jobs/professions` etc.) land on the same page via the SPA catch-all.
+- **Iframe embedding** - CSP `frame-ancestors` allows `coilysiren.me` to embed; the header now ships site-wide from `eco_mcp_app.http_app` (`FrameAncestorsCSP`).
+- **Mock-data fallback** - `UPSTREAM_URL` unset = canned data from `mock_data.py`, flagged via `/v1/meta`.
 - **Upstream mod fetch** - `UPSTREAM_URL` set = `upstream.py` calls `/api/v1/skills` with `UPSTREAM_API_KEY` as `X-API-Key`, 5s timeout, no fallback on a dead endpoint.
-- **Dev-only livereload** - `DEBUG`-gated `/ws/livereload` WebSocket + injected script. CSS swaps without full reload. Zero prod cost.
 - **Sentry telemetry** - `SENTRY_DSN`-gated init. No-op when unset.
 
 ## C# Eco mod (`EcoJobsTracker.dll`)

@@ -37,7 +37,7 @@ describe("Home", () => {
     renderHome()
 
     expect(screen.getByTestId("dir-server")).toHaveAttribute("href", "/server")
-    expect(screen.getByTestId("dir-jobs")).toHaveAttribute("href", "/jobs/")
+    expect(screen.getByTestId("dir-jobs")).toHaveAttribute("href", "/jobs")
     expect(screen.getByTestId("dir-preview")).toHaveAttribute("href", "/preview")
 
     await waitFor(() => {
