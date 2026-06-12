@@ -8,23 +8,23 @@ The Eco application monorepo: one fused Python service (MCP server + jobs tracke
 
 ## Project shape
 
-- `src/eco_mcp_app/` - the core service. `server.py` is the transport-agnostic MCP server, `__main__.py` the stdio entry for Claude Desktop, `http_app.py` the Starlette ASGI app (routes `/`, `/info`, `/healthz`, `/preview*`, `/mcp/`, and the `/jobs` mount).
-- `src/eco_spec_tracker/` - jobs tracker FastAPI app, mounted at `/jobs`. Templates prefix absolute URLs with `request.scope.root_path` so they work under the mount. Still a valid standalone ASGI target.
+- `src/eco_mcp_app/` - the core service. `server.py` is the transport-agnostic MCP server, `__main__.py` the stdio entry for Claude Desktop, `http_app.py` the Starlette ASGI app.
+- `src/eco_spec_tracker/` - jobs tracker FastAPI app, mounted at `/jobs`. Templates prefix absolute URLs with `request.scope.root_path` so they work under the mount.
 - `src/eco_replay/` - FastAPI browser for the replay mod's SQLite event log. Local-only, not in the fused image's routes yet.
 - `frontend/` - Vite + React + TypeScript SPA, served at `/` by the fused service when its build (`frontend/dist`) exists. Built in the Dockerfile's node stage; local dev via `ward exec frontend-dev` against `ward exec http`.
 - `mods/jobs/`, `mods/replay/`, `mods/telemetry/` - C# Eco server plugins. jobs and replay share DTO contracts with their Python consumers, so they live here, not in eco-mods.
-- `data/ecoregions.json` - the only committed data file. The former 20M species/ecopedia caches were dropped; those lookups fall back to live fetches (`_preload.py` degrades gracefully).
+- `data/ecoregions.json` - the only committed data file. Dropped species/ecopedia caches fall back to live fetches (`_preload.py` degrades gracefully).
 - `tests/mcp/`, `tests/jobs/` - per-component pytest suites under one `tests/` root.
 - `investigation/` - preserved post-mortem from eco-mcp-app. Read before questioning weird-looking decisions.
 - `Dockerfile` - the single fused image, entrypoint `eco_mcp_app.http_app:app` on port 4000.
 
 ## Repo boundaries
 
-This repo is the application layer (`infra -> eco-app -> deploy`). It carries no substrate concerns, and its deploy surface (k8s manifests, rollout) lives in `coilyco-bridge/deploy/services/eco-app`, never here. Gameplay mods belong in `coilyco-gaming/eco-mods`. The four source repos stay in place until cycle-end deprovision (coilysiren/inbox#100).
+This repo is the application layer (`infra -> eco-app -> deploy`). Its deploy surface (k8s manifests, rollout) lives in `coilyco-bridge/deploy/services/eco-app`, never here. Gameplay mods belong in `coilyco-gaming/eco-mods`. The four source repos stay in place until cycle-end deprovision (coilysiren/inbox#100).
 
 ## Commands
 
-Route every dev command through the ward gate as `ward exec <verb>`. The canonical allowlist is [`.ward/ward.yaml`](.ward/ward.yaml). `ward lint` ties each verb to a Makefile target and its `## desc` comment.
+Route every dev command through the ward gate as `ward exec <verb>`. The canonical allowlist is [`.ward/ward.yaml`](.ward/ward.yaml). `ward lint` ties each verb to its Makefile target and `## desc` comment.
 
 ## Validation
 
@@ -41,7 +41,7 @@ Keep every artifact public-safe. Opaque ids, tokens, and sensitive hosts go in A
 
 - `coilyco-bridge/deploy` - owns this service's manifests and rollout. A change to ports, env vars, or secrets here needs a matching change there.
 - `coilyco-gaming/eco-mods` - gameplay mods and their Unity assets.
-- Catalog metadata lives in the `catalog:` block of `.ward/ward.yaml`. Update [docs/FEATURES.md](docs/FEATURES.md) whenever a feature is added, removed, or reshaped.
+- Catalog metadata lives in the `catalog:` block of `.ward/ward.yaml`. Update [docs/FEATURES.md](docs/FEATURES.md) whenever a feature is added or reshaped.
 
 ## Release
 
