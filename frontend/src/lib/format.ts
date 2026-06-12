@@ -22,6 +22,18 @@ export function formatFetchedAt(iso: string): string {
   return `${hh}:${mm} UTC`
 }
 
+// "BunWulfRawMeatItem" -> "Bun Wulf Raw Meat", "OakSpecies" -> "Oak".
+// Mirrors prettify_eco_name in eco_mcp_app/crafting.py.
+export function prettifyEcoName(raw: string): string {
+  let base = raw
+  for (const suffix of ["Item", "Species"]) {
+    if (base.endsWith(suffix) && base.length > suffix.length) {
+      base = base.slice(0, -suffix.length)
+    }
+  }
+  return base.replace(/(?<!^)(?=[A-Z])/g, " ").trim() || raw
+}
+
 // The discord link arrives from the game server's /info payload, i.e. from
 // outside this codebase. Only let real web URLs through to href.
 export function safeHttpUrl(url: string | null | undefined): string | undefined {

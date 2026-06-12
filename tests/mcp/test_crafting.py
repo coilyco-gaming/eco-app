@@ -25,6 +25,7 @@ import respx
 
 from eco_mcp_app import crafting as crafting_mod
 from eco_mcp_app.crafting import (
+    CITIZEN_ATTRIBUTION_WARNING,
     CraftingAtlas,
     aggregate_rows,
     atlas_template_context,
@@ -108,12 +109,31 @@ def test_aggregate_rows_folds_craft_csv() -> None:
     by_station = dict(atlas.by_station)
     assert by_station["CampfireItem"] == 2
     assert by_station["WorkbenchItem"] == 2
-    by_citizen = dict(atlas.by_citizen)
-    assert by_citizen["129580"] == pytest.approx(197.0)
+    # Citizen attribution is disabled (numeric ids / shifted rows, eco-app#5):
+    # always empty, with a payload warning instead.
+    assert atlas.by_citizen == []
+    assert CITIZEN_ATTRIBUTION_WARNING in atlas.warnings
     # Flow edges exist for CampfireItem→CharredMushroomsItem etc.
     flow_keys = {(s, t) for s, t, _ in atlas.flows}
     assert ("CampfireItem", "CharredMushroomsItem") in flow_keys
     assert ("WorkbenchItem", "AdobeItem") in flow_keys
+
+
+def test_aggregate_rows_drops_position_and_numeric_keys() -> None:
+    """Misaligned exporter rows read positions/numbers where names belong."""
+    atlas = CraftingAtlas(fetched_at_iso="t", source_base_url="b")
+    csv_text = (
+        "WorldObjectItem,Citizen,ItemUsed,Count\n"
+        '"254,86,313",129312,"0.0",5\n'
+        "CampfireItem,129312,CharredMushroomsItem,2\n"
+    )
+    aggregate_rows("ItemCraftedAction", _rows(csv_text), atlas)
+    by_item = dict(atlas.by_item)
+    by_station = dict(atlas.by_station)
+    assert "0.0" not in by_item
+    assert "254,86,313" not in by_station
+    assert by_item["CharredMushroomsItem"] == pytest.approx(2.0)
+    assert by_station["CampfireItem"] == 1
 
 
 def test_aggregate_rows_handles_harvest_and_chop_shapes() -> None:
@@ -171,7 +191,7 @@ async def test_fetch_atlas_merges_multiple_actions() -> None:
         "ChopTree": 2,
         "DigOrMine": 0,
     }
-    assert atlas.warnings == []
+    assert atlas.warnings == [CITIZEN_ATTRIBUTION_WARNING]
 
 
 @pytest.mark.asyncio

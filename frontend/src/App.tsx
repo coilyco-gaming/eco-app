@@ -1,4 +1,6 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom"
+import Crafting from "./pages/Crafting"
+import Economy from "./pages/Economy"
 import Home from "./pages/Home"
 import Jobs from "./pages/Jobs"
 import Server from "./pages/Server"
@@ -14,6 +16,8 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/server" element={<Server />} />
         <Route path="/jobs/*" element={<Jobs />} />
+        <Route path="/economy" element={<Economy />} />
+        <Route path="/crafting" element={<Crafting />} />
       </Routes>
     </BrowserRouter>
   )

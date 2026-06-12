@@ -48,6 +48,16 @@ export default function Home() {
           )}
         </Link>
 
+        <Link className="dir-card" to="/economy" data-testid="dir-economy">
+          <h3>Economy</h3>
+          <p>Trades per day, contracts, loans, wages, and the treasury.</p>
+        </Link>
+
+        <Link className="dir-card" to="/crafting" data-testid="dir-crafting">
+          <h3>Crafting atlas</h3>
+          <p>What the world is making — top items and stations, deep-linkable.</p>
+        </Link>
+
         <div className="dir-card dir-card-static">
           <h3>Community</h3>
           <p>

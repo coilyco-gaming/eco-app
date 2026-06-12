@@ -27,6 +27,7 @@ import csv
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import time
 from collections import defaultdict
@@ -56,6 +57,18 @@ DEFAULT_CACHE_TTL_S = float(os.environ.get("ECO_CRAFTING_CACHE_TTL", "300"))
 # cycle CSVs). 500k is ~50 MB of CSV; well past the ~20 MB end-cycle estimate,
 # and still sub-second to aggregate.
 MAX_ROWS_PER_ACTION = int(os.environ.get("ECO_CRAFTING_MAX_ROWS", "500000"))
+
+# Exporter rows sometimes carry an extra tool column the header doesn't
+# declare, shifting every later field - header-indexed picks then read a
+# position triple ("254,86,313") or bare number ("0.0") where a name belongs.
+# Keys of that shape are never legitimate items/stations, so they're dropped
+# at fold time. Citizen attribution is disabled outright: even aligned rows
+# hold a numeric user id with no name mapping. See eco-app#5.
+_NONSENSE_KEY_RE = re.compile(r"^-?\d+(?:\.\d+)?(?:,-?\d+(?:\.\d+)?)*$")
+CITIZEN_ATTRIBUTION_WARNING = (
+    "citizen attribution disabled: exporter Citizen column is unstable "
+    "(numeric ids / shifted positions) - see eco-app#5"
+)
 
 
 @dataclass
@@ -246,7 +259,6 @@ def aggregate_rows(
     # call-side via closure-like bags so each call can fold into shared totals.
     by_item: dict[str, float] = dict(atlas.by_item)
     by_station: dict[str, int] = dict(atlas.by_station)
-    by_citizen: dict[str, float] = dict(atlas.by_citizen)
     flows: dict[tuple[str, str], float] = {(s, t): c for s, t, c in atlas.flows}
 
     consumed = 0
@@ -262,7 +274,6 @@ def aggregate_rows(
             count = float(pick(row, "Count") or "0")
         except ValueError:
             count = 0.0
-        citizen = pick(row, "Citizen") or ""
         # Item: for crafts the output is ItemUsed; for harvests/chops the
         # Species IS the produced stack; for mining the block destroyed.
         item = (
@@ -279,12 +290,17 @@ def aggregate_rows(
         # hand/tool-driven, record the tool when we have it.
         station = pick(row, "WorldObjectItem", "ToolUsed") or "(hand)"
 
+        # Misaligned rows put positions/numbers where names belong - drop
+        # those keys rather than render them. See eco-app#5.
+        if item and _NONSENSE_KEY_RE.match(item):
+            item = ""
+        if station and _NONSENSE_KEY_RE.match(station):
+            station = ""
+
         if item:
             by_item[item] = by_item.get(item, 0.0) + count
         if station:
             by_station[station] = by_station.get(station, 0) + 1
-        if citizen:
-            by_citizen[citizen] = by_citizen.get(citizen, 0.0) + count
         if station and item:
             flows[(station, item)] = flows.get((station, item), 0.0) + count
         consumed += 1
@@ -293,7 +309,9 @@ def aggregate_rows(
     atlas.per_action_counts[action_name] = atlas.per_action_counts.get(action_name, 0) + consumed
     atlas.by_item = sorted(by_item.items(), key=lambda kv: kv[1], reverse=True)
     atlas.by_station = sorted(by_station.items(), key=lambda kv: kv[1], reverse=True)
-    atlas.by_citizen = sorted(by_citizen.items(), key=lambda kv: kv[1], reverse=True)
+    atlas.by_citizen = []
+    if consumed and CITIZEN_ATTRIBUTION_WARNING not in atlas.warnings:
+        atlas.warnings.append(CITIZEN_ATTRIBUTION_WARNING)
     atlas.flows = sorted(
         ((s, t, c) for (s, t), c in flows.items()),
         key=lambda edge: edge[2],
