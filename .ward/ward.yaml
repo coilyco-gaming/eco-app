@@ -1,0 +1,65 @@
+# Per-repo command allowlist for the eco-app monorepo (the `ward` gate).
+#
+# `ward lint` enforces: each command's `run` equals `make <verb>`, the
+# Makefile declares that target, and the description equals the target's
+# `## desc` auto-help comment.
+#
+# Deploy verbs are deliberately absent — the deploy surface for this service
+# lives in coilyco-bridge/deploy/services/eco-app per the layer invariant
+# (infra -> eco-app -> deploy). See coilysiren/inbox#101.
+
+commands:
+  sync:
+    run: make sync
+    description: uv lock + uv sync with dev deps.
+  test:
+    run: make test
+    description: Run the pytest suite (tests/mcp + tests/jobs).
+  lint:
+    run: make lint
+    description: ruff check + ruff format --check + mypy on src/ and tests/.
+  fmt:
+    run: make fmt
+    description: Apply ruff fixes and formatting in place.
+  precommit:
+    run: make precommit
+    description: Run all pre-commit hooks against every file.
+  smoke:
+    run: make smoke
+    description: End-to-end smoke test the MCP server via stdio.
+  http:
+    run: make http
+    description: Run the fused server (MCP + /jobs) with autoreload. Args - http_port=<int>.
+  harness:
+    run: make harness
+    description: Serve static/harness.html, the local Claude-Desktop-mimicking iframe host. Args - harness_port=<int>.
+  install-desktop:
+    run: make install-desktop
+    description: Wire eco-mcp-app into Claude Desktop's claude_desktop_config.json.
+  build-docker:
+    run: make build-docker
+    description: Build the eco-app docker image locally.
+  build-mod-jobs:
+    run: make build-mod-jobs
+    description: Build the jobs-tracker Eco mod DLL (mods/jobs/src).
+  build-mod-replay:
+    run: make build-mod-replay
+    description: Build the replay Eco mod DLL (mods/replay/src).
+  build-mod-telemetry:
+    run: make build-mod-telemetry
+    description: Build the telemetry Eco mod DLL (mods/telemetry).
+  run-shell-jobs:
+    run: make run-shell-jobs
+    description: Run the jobs C# shell harness on :5100 (same API shape as the real Eco mod).
+
+catalog:
+  kind: Component
+  type: service
+  system: gaming
+  owner: kai
+  lifecycle: production
+  description: "The Eco application monorepo: MCP/web service (eco_mcp_app), jobs tracker mounted at /jobs (eco_spec_tracker), replay viewer (eco_replay), and the in-game C# plugins under mods/. One fused image; deploy surface lives in coilyco-bridge/deploy."
+  dependsOn: []
+  providesApis:
+    - eco-mcp
+    - eco-jobs

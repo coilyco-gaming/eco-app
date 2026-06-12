@@ -1,0 +1,103 @@
+[project]
+name = "eco-app"
+version = "0.1.0"
+description = "The Eco application monorepo: MCP/web service, jobs tracker, replay viewer, and their in-game C# plugins."
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+authors = [{ name = "Kai Siren" }]
+# eco_mcp_app's dependency list was already a superset of eco_spec_tracker's
+# and eco_replay's, so the union is just this list.
+dependencies = [
+  "mcp>=1.14.0",
+  "httpx>=0.28.0",
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+  "jinja2>=3.1.0",
+  # Already pulled in transitively by uvicorn[standard]; listed explicitly
+  # because livereload.py imports it directly.
+  "watchfiles>=1.0",
+  "sentry-sdk[fastapi]>=2.58.0,<3.0.0",
+  "cachetools>=5.3.0",
+  "aiolimiter>=1.1.0",
+]
+
+[project.scripts]
+# Keeps the name Claude Desktop configs already point at.
+eco-mcp-app = "eco_mcp_app.__main__:main"
+
+[tool.uv]
+managed = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/eco_mcp_app", "src/eco_spec_tracker", "src/eco_replay"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/eco_mcp_app/templates" = "eco_mcp_app/templates"
+"src/eco_spec_tracker/templates" = "eco_spec_tracker/templates"
+"src/eco_spec_tracker/static" = "eco_spec_tracker/static"
+"src/eco_replay/templates" = "eco_replay/templates"
+"data/ecoregions.json" = "eco_mcp_app/data/ecoregions.json"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "A", "RUF"]
+
+[tool.mypy]
+python_version = "3.13"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "eco_mcp_app.server"
+# mcp SDK's low-level Server exposes untyped decorators and accepts `_meta`
+# via kwarg-spread, which strict mode can't model. Revisit after migrating
+# to FastMCP / FastAPI transport.
+disallow_untyped_decorators = false
+disable_error_code = ["arg-type", "no-any-return", "no-untyped-call"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+# Tests drive the MCP Server handlers directly and narrow through its
+# union-typed request/response envelopes; full narrowing for every branch
+# is noise, not signal.
+disable_error_code = ["union-attr"]
+
+[dependency-groups]
+dev = [
+  "mypy>=1.20.0",
+  "pre-commit>=4.5.1",
+  "ruff>=0.15.10",
+  "pytest>=8.0.0",
+  "pytest-asyncio>=0.24.0",
+  "respx>=0.22.0",
+  "httpx>=0.28.0",
+  "types-cachetools>=5.3.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+
+# Per-repo opt-outs for agentic-os pre-commit hooks (agentic_os/config.py).
+
+[tool.agentic-os.documentation-layout]
+# investigation/ is a preserved chronological post-mortem (see AGENTS.md).
+# docs/ holds long-form per-component FEATURES docs migrated from the four
+# source repos, predating the size caps. mods/ subtrees carry their own
+# README + mod.io listing copy as part of their distributed shape.
+excludes = ["investigation/", "docs/", "mods/"]
+
+[tool.agentic-os.code-comments]
+# Generated build output (.NET obj/bin) is not hand-written source.
+excludes = ["**/obj/**", "**/bin/**"]

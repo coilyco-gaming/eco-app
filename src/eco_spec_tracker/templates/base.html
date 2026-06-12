@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}eco-jobs-tracker{% endblock %}</title>
+  <link rel="icon" type="image/x-icon" href="{{ request.scope.root_path }}/static/favicon.ico">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            accent: { DEFAULT: '#7ec27e', dim: '#4f7a4f' },
+          },
+          fontFamily: {
+            sans: ['system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+  <style>{{ eco_mcp_css | safe }}</style>
+  <script src="https://unpkg.com/htmx.org@2.0.3"></script>
+</head>
+<body class="min-h-full font-sans antialiased">
+  {% if using_mock_data %}
+    <div class="border-b-2 border-amber-400 bg-amber-500/90 px-6 py-3 text-center text-sm font-semibold text-slate-900">
+      <span class="text-lg">⚠️</span>
+      <span class="mx-2">MOCK DATA</span>
+      <span class="text-lg">⚠️</span>
+      <span class="mx-2 font-normal">
+        The Eco mod endpoint isn't wired up yet — every player, skill, and count on this page is fabricated
+        from <code class="rounded bg-amber-900/30 px-1 py-0.5 font-mono text-xs text-amber-950">mock_data.py</code>.
+        Set the <code class="rounded bg-amber-900/30 px-1 py-0.5 font-mono text-xs text-amber-950">UPSTREAM_URL</code>
+        env var to pull real data.
+      </span>
+      <span class="text-lg">⚠️</span>
+    </div>
+  {% endif %}
+  <header class="border-b border-slate-800 bg-slate-900 px-6 py-4">
+    <div class="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+      <h1 class="m-0 text-lg font-semibold tracking-wide">
+        <a href="{{ request.scope.root_path }}/" class="text-slate-100 hover:text-accent">eco-jobs-tracker</a>
+      </h1>
+      <nav class="flex flex-wrap gap-4 font-mono text-sm">
+        <a href="{{ request.scope.root_path }}/" class="text-accent hover:underline">./home</a>
+        <a href="{{ request.scope.root_path }}/professions" class="text-accent hover:underline">./professions</a>
+        <a href="{{ request.scope.root_path }}/specialties" class="text-accent hover:underline">./specialties</a>
+        <a href="{{ request.scope.root_path }}/players" class="text-accent hover:underline">./players</a>
+        <a href="{{ request.scope.root_path }}/api/v1/professions" class="text-accent hover:underline">./json</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-6xl px-6 py-6">
+    {% block content %}{% endblock %}
+  </main>
+
+  <div class="mx-auto mt-12 max-w-6xl px-6 pb-8">
+    <div class="footer">
+      <div class="footer-meta">
+        <span>jobs data is mock; Eco server card above is live via eco-mcp-app</span>
+        <div class="footer-actions">
+          <a class="cta steam" href="https://store.steampowered.com/app/382310/Eco/" target="_blank" rel="noopener">Eco on Steam ↗</a>
+        </div>
+      </div>
+      <div class="credits-line">
+        <span>Built by <a href="https://www.coilysiren.me/" target="_blank" rel="noopener">Kai Siren</a></span>
+        <span class="sep">·</span>
+        <a href="https://github.com/coilyco-flight-deck/eco-jobs-tracker" target="_blank" rel="noopener">source on GitHub ↗</a>
+        <span class="sep">·</span>
+        <span>Eco is &copy; <a href="https://www.strangeloopgames.com/" target="_blank" rel="noopener">StrangeLoopGames</a> — unofficial fan tool</span>
+      </div>
+    </div>
+  </div>
+  <script>window.__root_path = "{{ request.scope.root_path }}";</script>
+  {{ livereload_script | safe }}
+</body>
+</html>

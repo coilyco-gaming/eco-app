@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block body %}
+<form method="get" class="flex flex-wrap gap-2 items-end mb-4 text-sm">
+  <label class="flex flex-col">
+    <span class="text-slate-400">Citizen</span>
+    <input type="text" name="citizen" value="{{ citizen or '' }}"
+           class="bg-slate-800 border border-slate-700 rounded px-2 py-1">
+  </label>
+  <label class="flex flex-col">
+    <span class="text-slate-400">Action type</span>
+    <input type="text" name="type" value="{{ type or '' }}"
+           class="bg-slate-800 border border-slate-700 rounded px-2 py-1">
+  </label>
+  <label class="flex flex-col">
+    <span class="text-slate-400">Limit</span>
+    <input type="number" name="limit" value="{{ limit }}" min="1" max="1000"
+           class="bg-slate-800 border border-slate-700 rounded px-2 py-1 w-20">
+  </label>
+  <button class="bg-emerald-600 hover:bg-emerald-500 text-white rounded px-3 py-1">Filter</button>
+</form>
+
+<div class="text-xs text-slate-400 mb-2">{{ events|length }} events</div>
+
+<table class="w-full text-sm border-collapse">
+  <thead class="text-slate-400 text-left">
+    <tr>
+      <th class="py-1 pr-3">Time (UTC)</th>
+      <th class="py-1 pr-3">Citizen</th>
+      <th class="py-1 pr-3">Type</th>
+      <th class="py-1">Body</th>
+    </tr>
+  </thead>
+  <tbody class="align-top">
+    {% for e in events %}
+    <tr class="border-t border-slate-800 hover:bg-slate-800/40">
+      <td class="py-1 pr-3 text-slate-400 whitespace-nowrap">
+        {{ e.unixTime | int }}
+      </td>
+      <td class="py-1 pr-3 text-cyan-300">{{ e.citizen or '-' }}</td>
+      <td class="py-1 pr-3 text-emerald-300">{{ e.type }}</td>
+      <td class="py-1 text-slate-300"><pre class="text-xs">{{ e.body }}</pre></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,41 @@
+{
+  "ServiceName": "eco-server",
+  "ResourceAttributes": {
+    "deployment.environment": "production",
+    "service.namespace": "games"
+  },
+
+  // Default OTLP target. Used as a fallback when a per-signal endpoint is empty.
+  // For a single-backend setup, fill this in and leave the per-signal overrides blank.
+  "OtlpEndpoint": "",
+  "OtlpProtocol": "HttpProtobuf",
+  "OtlpHeaders": "",
+
+  // Per-signal endpoints. Use these when logs and metrics route to different backends
+  // (e.g. logs to Sentry, metrics to VictoriaMetrics). Empty means "fall back to OtlpEndpoint above".
+  //
+  // Sentry logs example:
+  //   "OtlpLogsEndpoint": "https://o<org-id>.ingest.us.sentry.io/api/<project-id>/otlp/v1/logs",
+  //   "OtlpLogsProtocol": "HttpProtobuf",
+  //   "OtlpLogsHeaders": "x-sentry-auth=Sentry sentry_key=<dsn-public-key>",
+  //
+  // VictoriaMetrics example (no auth, native OTLP ingest):
+  //   "OtlpMetricsEndpoint": "http://<vmsingle-host>:8428/opentelemetry/api/v1/push",
+  //   "OtlpMetricsProtocol": "HttpProtobuf",
+  //   "OtlpMetricsHeaders": "",
+  "OtlpLogsEndpoint": "",
+  "OtlpLogsProtocol": "",
+  "OtlpLogsHeaders": "",
+  "OtlpMetricsEndpoint": "",
+  "OtlpMetricsProtocol": "",
+  "OtlpMetricsHeaders": "",
+
+  "EnableLogs": true,
+  "EnableMetrics": false,
+  "EnableTraces": false,
+
+  "MetricsIntervalSeconds": 15,
+
+  "FirstChanceExceptionsEnabled": false,
+  "InterceptLogWriter": true
+}

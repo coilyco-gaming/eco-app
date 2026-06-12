@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>EcoReplay</AssemblyName>
+    <RootNamespace>EcoReplay</RootNamespace>
+    <Version>0.1.0</Version>
+    <!-- CA1416: ModKit types are flagged Windows-only; Eco server runs on Linux .NET. -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Eco.ReferenceAssemblies" Version="0.13.0-beta-release-998" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" PrivateAssets="all" />
+    <!-- Microsoft.Data.Sqlite uses SQLitePCLRaw.bundle_e_sqlite3, which ships a
+         Linux-native libe_sqlite3.so alongside the managed assemblies. No
+         Windows/Linux interop dance required (unlike System.Data.SQLite). -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+</Project>
