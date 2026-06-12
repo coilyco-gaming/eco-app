@@ -1,0 +1,71 @@
+import { Link } from "react-router-dom"
+import Layout from "../components/Layout"
+import { useEcoStatus } from "../hooks/useEcoStatus"
+import { formatCount, safeHttpUrl } from "../lib/format"
+
+const STEAM_URL = "https://store.steampowered.com/app/382310/Eco/"
+
+// The homepage is a thin directory: a short hero and one card per surface.
+// The heavy live content lives on the subpages it points at.
+export default function Home() {
+  const { status } = useEcoStatus()
+  const discordUrl = safeHttpUrl(status?.server.discord)
+
+  return (
+    <Layout>
+      <section className="hero hero-compact">
+        <p className="hero-kicker">Eco via Sirens</p>
+        <h1 className="hero-title">
+          A live window into a <span className="accent">world worth saving</span>
+        </h1>
+        <p className="hero-tagline">
+          Dashboards for the Eco via Sirens game server. Pick a surface — everything is one
+          click from here.
+        </p>
+      </section>
+
+      <section className="dir-cards" aria-label="site directory">
+        <Link className="dir-card" to="/server" data-testid="dir-server">
+          <h3>Server</h3>
+          <p>Meteor countdown, players, world stats, and the economy at a glance.</p>
+          {status && (
+            <p className="dir-badges" data-testid="server-badges">
+              {status.cycle.hasMeteor && (
+                <span className="mini-pill">☄ {status.cycle.daysUntilMeteor}d to meteor</span>
+              )}
+              <span className="mini-pill">{formatCount(status.players.online)} online</span>
+            </p>
+          )}
+        </Link>
+
+        <a className="dir-card" href="/jobs/" data-testid="dir-jobs">
+          <h3>Jobs</h3>
+          <p>Who can make what — professions, specialties, and every player's skills.</p>
+          {status && (
+            <p className="dir-badges">
+              <span className="mini-pill">{formatCount(status.players.total)} settlers</span>
+            </p>
+          )}
+        </a>
+
+        <a className="dir-card" href="/preview" data-testid="dir-preview">
+          <h3>Server card</h3>
+          <p>The embeddable live status card, exactly as MCP hosts render it.</p>
+        </a>
+
+        <div className="dir-card dir-card-static">
+          <h3>Community</h3>
+          <p>
+            {discordUrl && (
+              <>
+                <a href={discordUrl}>Join the Discord</a>
+                {" · "}
+              </>
+            )}
+            <a href={STEAM_URL}>Eco on Steam</a>
+          </p>
+        </div>
+      </section>
+    </Layout>
+  )
+}

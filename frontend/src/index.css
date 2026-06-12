@@ -57,6 +57,11 @@ body {
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--leaf);
+  text-decoration: none;
+}
+
+.wordmark:hover {
+  text-decoration: underline;
 }
 
 .topnav {
@@ -164,6 +169,73 @@ body {
 .loading {
   color: var(--ink-faint);
   font-size: 1rem;
+}
+
+/* --- Homepage directory ------------------------------------------------ */
+
+.hero-compact .hero-title {
+  font-size: clamp(2rem, 5vw, 2.9rem);
+}
+
+.dir-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+.dir-card {
+  display: block;
+  padding: 1.4rem 1.5rem;
+  border-radius: 14px;
+  border: 1px solid var(--card-border);
+  background: var(--card);
+  backdrop-filter: blur(6px);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+a.dir-card:hover {
+  border-color: var(--leaf-dim);
+  background: rgba(28, 58, 40, 0.65);
+  transform: translateY(-2px);
+}
+
+.dir-card h3 {
+  margin: 0 0 0.45rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--leaf);
+}
+
+.dir-card p {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.dir-card p a {
+  color: var(--leaf);
+  font-weight: 600;
+}
+
+.dir-badges {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.9rem !important;
+}
+
+.mini-pill {
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--card-border);
+  background: rgba(0, 0, 0, 0.25);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
 }
 
 /* --- Meteor banner --------------------------------------------------- */

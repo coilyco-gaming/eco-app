@@ -143,6 +143,21 @@ def create_app() -> Starlette:
             return FileResponse(frontend_index)
         return RedirectResponse(url="/preview", status_code=302)
 
+    async def spa_fallback(request: Request) -> Response:
+        """Catch-all so the SPA's client-side routes survive a hard refresh.
+
+        Registered last: every API route and mount above wins first. Real
+        files in dist (favicon, robots.txt) serve as themselves; anything
+        else gets index.html and the router takes it from there. Without a
+        frontend build, fall back to the same redirect as the root route.
+        """
+        if not frontend_index.is_file():
+            return RedirectResponse(url="/preview", status_code=302)
+        candidate = (frontend_dist / request.path_params["path"]).resolve()
+        if candidate.is_file() and candidate.is_relative_to(frontend_dist.resolve()):
+            return FileResponse(candidate)
+        return FileResponse(frontend_index)
+
     async def service_info(_: Request) -> JSONResponse:
         tools_result = await _list_tools()
         names = sorted(t.name for t in tools_result.tools)
@@ -326,6 +341,7 @@ def create_app() -> Starlette:
         routes.append(Mount("/assets", app=StaticFiles(directory=frontend_dist / "assets")))
     if DEBUG:
         routes.append(livereload_route)
+    routes.append(Route("/{path:path}", spa_fallback, methods=["GET"]))
     inner = Starlette(lifespan=lifespan, routes=routes)
     inner.add_middleware(NormalizeMcpPath)
     return inner
