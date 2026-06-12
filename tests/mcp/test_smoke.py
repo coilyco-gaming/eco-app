@@ -10,6 +10,8 @@ Covers the public-facing routes without spinning up a real network server:
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import httpx
 import pytest
 import respx
@@ -71,10 +73,16 @@ def test_healthz(client: TestClient) -> None:
     assert r.json() == {"ok": True}
 
 
-def test_root_redirects_to_preview(client: TestClient) -> None:
+def test_root_serves_spa_or_redirects_to_preview(client: TestClient) -> None:
+    # With a frontend build present (frontend/dist, as in the Docker image)
+    # the root serves the React SPA; without one it keeps the old redirect.
     r = client.get("/", follow_redirects=False)
-    assert r.status_code == 302
-    assert r.headers["location"] == "/preview"
+    if Path("frontend/dist/index.html").is_file():
+        assert r.status_code == 200
+        assert r.headers["content-type"].startswith("text/html")
+    else:
+        assert r.status_code == 302
+        assert r.headers["location"] == "/preview"
 
 
 def test_info(client: TestClient) -> None:

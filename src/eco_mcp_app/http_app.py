@@ -17,9 +17,11 @@ the templates without going through the MCP Apps handshake.
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import httpx
@@ -27,8 +29,15 @@ import mcp.types as mt
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
+from starlette.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+)
 from starlette.routing import BaseRoute, Mount, Route
+from starlette.staticfiles import StaticFiles
 
 from .livereload import DEBUG, livereload_route
 from .map import build_map_payload, fetch_map_bundle
@@ -121,7 +130,17 @@ def create_app() -> Starlette:
             )
         return links
 
-    async def root(_: Request) -> RedirectResponse:
+    # The built React SPA (frontend/dist, baked into the Docker image)
+    # owns the root. A checkout without a frontend build keeps the old
+    # redirect so stdio/dev flows need no node toolchain. Path is
+    # cwd-relative because the image WORKDIR and local `make http` both
+    # run from the repo root; FRONTEND_DIST overrides for anything else.
+    frontend_dist = Path(os.getenv("FRONTEND_DIST", "frontend/dist"))
+    frontend_index = frontend_dist / "index.html"
+
+    async def root(_: Request) -> Response:
+        if frontend_index.is_file():
+            return FileResponse(frontend_index)
         return RedirectResponse(url="/preview", status_code=302)
 
     async def service_info(_: Request) -> JSONResponse:
@@ -303,6 +322,8 @@ def create_app() -> Starlette:
         Mount("/mcp", app=handle_mcp),
         Mount("/jobs", app=jobs_app),
     ]
+    if (frontend_dist / "assets").is_dir():
+        routes.append(Mount("/assets", app=StaticFiles(directory=frontend_dist / "assets")))
     if DEBUG:
         routes.append(livereload_route)
     inner = Starlette(lifespan=lifespan, routes=routes)

@@ -7,6 +7,7 @@ Living inventory of what ships from this monorepo. Component-level detail lives 
 One image, one uvicorn process, entrypoint `eco_mcp_app.http_app:app` on port 4000.
 
 - **MCP server** - `src/eco_mcp_app/`, the core. Stdio for Claude Desktop, Streamable-HTTP at `/mcp/` for URL-connected hosts, browser preview surface at `/preview/*`. Full tool/resource inventory: [docs/mcp/FEATURES.md](mcp/FEATURES.md).
+- **React frontend** - `frontend/`, a Vite + React + TypeScript SPA (no SSR). The Docker image builds it in a node stage and the fused service serves it at `/` (assets under `/assets`); a checkout without a build keeps the old `/` -> `/preview` redirect. Placeholder landing page today, the eco-app.coilysiren.me site as it iterates. Dev verbs: `frontend-install` / `frontend-dev` / `frontend-build`.
 - **Jobs tracker** - `src/eco_spec_tracker/`, mounted at `/jobs`. Jinja2 + HTMX UI over player professions and specialties plus a JSON API. Detail: [docs/jobs/FEATURES.md](jobs/FEATURES.md).
 - **Sentry telemetry** - one shared idempotent init (`eco_mcp_app/telemetry.py`), DSN via the `SENTRY_DSN` env var from the deploy repo's ExternalSecret.
 

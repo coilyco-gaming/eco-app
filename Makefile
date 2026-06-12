@@ -1,6 +1,6 @@
 DEFAULT_GOAL := help
 
-.PHONY: help sync test lint fmt precommit smoke http harness install-desktop build-docker build-mod-jobs build-mod-replay build-mod-telemetry run-shell-jobs
+.PHONY: help sync test lint fmt precommit smoke http harness install-desktop build-docker build-mod-jobs build-mod-replay build-mod-telemetry run-shell-jobs frontend-install frontend-dev frontend-build
 
 name ?= eco-app
 port ?= 4000
@@ -37,6 +37,15 @@ smoke: ## End-to-end smoke test the MCP server via stdio.
 	  '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"get_eco_server_status","arguments":{}}}' \
 	  '{"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":"ui://eco/economy.html"}}' \
 	  '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"get_eco_economy","arguments":{}}}'; sleep 8) | uv run python -m eco_mcp_app
+
+frontend-install: ## Install frontend deps into frontend/node_modules (pnpm).
+	cd frontend && pnpm install
+
+frontend-dev: ## Vite dev server with HMR on :5173, proxying API routes to :4000.
+	cd frontend && pnpm dev
+
+frontend-build: ## Typecheck + production-build the React SPA into frontend/dist.
+	cd frontend && pnpm build
 
 http: ## Run the fused server (MCP + /jobs) with autoreload. Args - http_port=<int>.
 	DEBUG=1 uv run uvicorn eco_mcp_app.http_app:app --reload --reload-dir src --host 0.0.0.0 --port $(or $(http_port),$(port))

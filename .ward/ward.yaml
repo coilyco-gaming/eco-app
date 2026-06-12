@@ -27,6 +27,15 @@ commands:
   smoke:
     run: make smoke
     description: End-to-end smoke test the MCP server via stdio.
+  frontend-install:
+    run: make frontend-install
+    description: Install frontend deps into frontend/node_modules (pnpm).
+  frontend-dev:
+    run: make frontend-dev
+    description: Vite dev server with HMR on :5173, proxying API routes to :4000.
+  frontend-build:
+    run: make frontend-build
+    description: Typecheck + production-build the React SPA into frontend/dist.
   http:
     run: make http
     description: Run the fused server (MCP + /jobs) with autoreload. Args - http_port=<int>.
