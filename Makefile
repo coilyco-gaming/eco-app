@@ -62,6 +62,8 @@ http: ## Run the fused server (MCP + /jobs) with autoreload, eco target auto-res
 	ECO_MAP_BASE_URL="$${ECO_MAP_BASE_URL:-$$BASE}" \
 	UPSTREAM_URL="$${UPSTREAM_URL:-$$BASE/api/v1/skills}" \
 	UPSTREAM_API_KEY="$$KEY" \
+	ECO_ADMIN_TOKEN="$${ECO_ADMIN_TOKEN:-$$KEY}" \
+	ECO_ADMIN_API_KEY="$${ECO_ADMIN_API_KEY:-$$KEY}" \
 	uv run uvicorn eco_mcp_app.http_app:app --reload --reload-dir src --host 0.0.0.0 --port $(or $(http_port),$(port))
 
 harness: ## Serve static/harness.html, the local Claude-Desktop-mimicking iframe host. Args - harness_port=<int>.
