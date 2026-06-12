@@ -38,7 +38,7 @@ commands:
     description: Typecheck + production-build the React SPA into frontend/dist.
   http:
     run: make http
-    description: Run the fused server (MCP + /jobs) with autoreload. Args - http_port=<int>.
+    description: Run the fused server (MCP + /jobs) with autoreload, eco target auto-resolved. Args - http_port=<int>.
   harness:
     run: make harness
     description: Serve static/harness.html, the local Claude-Desktop-mimicking iframe host. Args - harness_port=<int>.

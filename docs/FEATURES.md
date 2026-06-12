@@ -10,6 +10,7 @@ One image, one uvicorn process, entrypoint `eco_mcp_app.http_app:app` on port 40
 - **React frontend** - `frontend/`, a Vite + React + TypeScript SPA (no SSR). The Docker image builds it in a node stage and the fused service serves it at `/` (assets under `/assets`); a checkout without a build keeps the old `/` -> `/preview` redirect. Placeholder landing page today, the eco-app.coilysiren.me site as it iterates. Dev verbs: `frontend-install` / `frontend-dev` / `frontend-build`.
 - **Jobs tracker** - `src/eco_spec_tracker/`, mounted at `/jobs`. Jinja2 + HTMX UI over player professions and specialties plus a JSON API. Detail: [docs/jobs/FEATURES.md](jobs/FEATURES.md).
 - **Sentry telemetry** - one shared idempotent init (`eco_mcp_app/telemetry.py`), DSN via the `SENTRY_DSN` env var from the deploy repo's ExternalSecret.
+- **Dev target resolver** - `scripts/resolve-eco-target.sh`, run by the `http` verb to pick the eco game server base URL: LAN mDNS path first (the home router blackholes same-LAN tailnet WireGuard, [infrastructure#294](https://forgejo.coilysiren.me/coilyco-flight-deck/infrastructure/issues/294)), then the SSM-resolved tailnet FQDN, then the public host. An explicit `ECO_INFO_URL` wins outright, and `ECO_ADMIN_BASE_URL` / `ECO_MAP_BASE_URL` default to the same base.
 
 ## Local-only components
 
