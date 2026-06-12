@@ -22,9 +22,26 @@ jobs:
       - run: uv run ruff format --check src tests
       - run: uv run mypy src tests
 
+  frontend:
+    runs-on: docker
+    steps:
+      - uses: actions/checkout@v4
+      # The docker runner label resolves to node:20-bookworm, so corepack is
+      # already aboard; the packageManager field in package.json pins pnpm.
+      - name: Enable pnpm via corepack
+        run: COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack enable
+      - run: pnpm install --frozen-lockfile
+        working-directory: frontend
+      - run: pnpm lint
+        working-directory: frontend
+      - run: pnpm test
+        working-directory: frontend
+      - run: pnpm build
+        working-directory: frontend
+
   publish:
     runs-on: docker
-    needs: test
+    needs: [test, frontend]
     steps:
       - uses: actions/checkout@v4
       # The `docker` runner label resolves to node:20-bookworm, which ships

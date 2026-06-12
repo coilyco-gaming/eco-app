@@ -1,6 +1,6 @@
 DEFAULT_GOAL := help
 
-.PHONY: help sync test lint fmt precommit smoke http harness install-desktop build-docker build-mod-jobs build-mod-replay build-mod-telemetry run-shell-jobs frontend-install frontend-dev frontend-build
+.PHONY: help sync test lint fmt precommit smoke http harness install-desktop build-docker build-mod-jobs build-mod-replay build-mod-telemetry run-shell-jobs frontend-install frontend-dev frontend-build frontend-test frontend-lint
 
 name ?= eco-app
 port ?= 4000
@@ -46,6 +46,12 @@ frontend-dev: ## Vite dev server with HMR on :5173, proxying API routes to :4000
 
 frontend-build: ## Typecheck + production-build the React SPA into frontend/dist.
 	cd frontend && pnpm build
+
+frontend-test: ## Run the frontend vitest suite.
+	cd frontend && pnpm test
+
+frontend-lint: ## ESLint over frontend/src.
+	cd frontend && pnpm lint
 
 http: ## Run the fused server (MCP + /jobs) with autoreload, eco target auto-resolved. Args - http_port=<int>.
 	@BASE=$$(scripts/resolve-eco-target.sh) && \

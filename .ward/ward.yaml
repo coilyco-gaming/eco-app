@@ -36,6 +36,12 @@ commands:
   frontend-build:
     run: make frontend-build
     description: Typecheck + production-build the React SPA into frontend/dist.
+  frontend-test:
+    run: make frontend-test
+    description: Run the frontend vitest suite.
+  frontend-lint:
+    run: make frontend-lint
+    description: ESLint over frontend/src.
   http:
     run: make http
     description: Run the fused server (MCP + /jobs) with autoreload, eco target auto-resolved. Args - http_port=<int>.

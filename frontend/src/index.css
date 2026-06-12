@@ -1,3 +1,21 @@
+/* Design tokens. Forest-dark theme carried over from the placeholder,
+   with a meteor-amber accent for the countdown. */
+:root {
+  --bg-deep: #07130c;
+  --bg-mid: #0d1f15;
+  --bg-glow: #1d3a2a;
+  --ink: #e8f3ea;
+  --ink-soft: #c4dcc9;
+  --ink-faint: #7da18a;
+  --leaf: #9fdcb4;
+  --leaf-dim: rgba(159, 220, 180, 0.4);
+  --leaf-wash: rgba(159, 220, 180, 0.12);
+  --meteor: #f0b35c;
+  --meteor-deep: #b97a2a;
+  --card: rgba(20, 44, 30, 0.55);
+  --card-border: rgba(126, 200, 148, 0.25);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -10,73 +28,281 @@ body,
 }
 
 body {
-  background: radial-gradient(
-    1200px 800px at 20% 10%,
-    #1d3a2a 0%,
-    #0d1f15 45%,
-    #07130c 100%
-  );
-  color: #e8f3ea;
+  background: radial-gradient(1200px 800px at 20% 10%, var(--bg-glow) 0%, var(--bg-mid) 45%, var(--bg-deep) 100%);
+  color: var(--ink);
   font-family: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
 .page {
   min-height: 100vh;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
+  flex-direction: column;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 1.5rem 2rem;
 }
 
-.card {
-  max-width: 640px;
-  padding: 3rem 3.5rem;
-  border-radius: 16px;
-  background: rgba(20, 44, 30, 0.55);
-  border: 1px solid rgba(126, 200, 148, 0.25);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(6px);
-  text-align: center;
+/* --- Top bar -------------------------------------------------------- */
+
+.topbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .wordmark {
-  margin: 0;
-  font-size: 3.25rem;
+  font-size: 1.35rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: #9fdcb4;
+  color: var(--leaf);
 }
 
-.tagline {
-  margin: 1rem 0 2rem;
+.topnav {
+  display: flex;
+  gap: 1.4rem;
+  flex-wrap: wrap;
+}
+
+.topnav a {
+  color: var(--ink-soft);
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border-bottom: 1px solid transparent;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.topnav a:hover {
+  color: var(--leaf);
+  border-color: var(--leaf-dim);
+}
+
+/* --- Hero ----------------------------------------------------------- */
+
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+  padding: 4rem 0 3rem;
+}
+
+.hero {
+  max-width: 760px;
+}
+
+.hero-kicker {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.hero-title {
+  margin: 0;
+  font-size: clamp(2.4rem, 6vw, 3.8rem);
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+  font-weight: 700;
+}
+
+.hero-title .accent {
+  color: var(--leaf);
+}
+
+.hero-tagline {
+  margin: 1.25rem 0 0;
   font-size: 1.15rem;
   line-height: 1.6;
-  color: #c4dcc9;
+  color: var(--ink-soft);
+  max-width: 56ch;
 }
 
-.links {
+.hero-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 1.5rem 0 0;
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--card-border);
+  background: var(--card);
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+}
+
+.hero-pill-muted {
+  color: var(--ink-faint);
+  font-style: normal;
+}
+
+.pulse-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--leaf);
+  box-shadow: 0 0 0 0 rgba(159, 220, 180, 0.6);
+  animation: pulse 2.4s ease-out infinite;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(159, 220, 180, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 9px rgba(159, 220, 180, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(159, 220, 180, 0);
+  }
+}
+
+.loading {
+  color: var(--ink-faint);
+  font-size: 1rem;
+}
+
+/* --- Meteor banner --------------------------------------------------- */
+
+.meteor {
+  padding: 1.75rem 2rem;
+  border-radius: 16px;
+  border: 1px solid rgba(240, 179, 92, 0.3);
+  background: linear-gradient(135deg, rgba(63, 41, 13, 0.55), rgba(20, 44, 30, 0.55));
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+}
+
+.meteor-clear {
+  border-color: var(--card-border);
+  background: var(--card);
+}
+
+.meteor-count {
+  margin: 0;
+  font-size: clamp(1.4rem, 3.5vw, 2rem);
+  font-weight: 700;
+  color: var(--meteor);
+}
+
+.meteor-clear .meteor-count {
+  color: var(--leaf);
+}
+
+.meteor-track {
+  margin-top: 1rem;
+  height: 0.6rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.meteor-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--meteor-deep), var(--meteor));
+  transition: width 600ms ease;
+}
+
+.meteor-caption {
+  margin: 0.75rem 0 0;
+  font-size: 0.9rem;
+  color: var(--ink-faint);
+}
+
+/* --- Stat grid -------------------------------------------------------- */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 1rem;
+}
+
+.stat {
+  padding: 1.25rem 1.4rem;
+  border-radius: 14px;
+  border: 1px solid var(--card-border);
+  background: var(--card);
+  backdrop-filter: blur(6px);
+}
+
+.stat-value {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--leaf);
+  letter-spacing: -0.01em;
+}
+
+.stat-label {
+  margin: 0.3rem 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+}
+
+.stat-detail {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+/* --- CTAs & footer ---------------------------------------------------- */
+
+.cta-row {
   display: flex;
   gap: 1rem;
-  justify-content: center;
   flex-wrap: wrap;
 }
 
 .button {
   padding: 0.7rem 1.4rem;
   border-radius: 10px;
-  border: 1px solid rgba(159, 220, 180, 0.4);
-  color: #9fdcb4;
+  border: 1px solid var(--leaf-dim);
+  color: var(--leaf);
   text-decoration: none;
   font-weight: 600;
   transition: background 120ms ease;
 }
 
 .button:hover {
-  background: rgba(159, 220, 180, 0.12);
+  background: var(--leaf-wash);
 }
 
-.footer {
-  margin-top: 2.5rem;
+.button-primary {
+  background: var(--leaf);
+  color: var(--bg-deep);
+  border-color: var(--leaf);
+}
+
+.button-primary:hover {
+  background: #b7e8c8;
+}
+
+.site-footer {
+  padding: 2rem 0 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
   font-size: 0.85rem;
-  color: #7da18a;
+  color: var(--ink-faint);
+}
+
+.site-footer a {
+  color: var(--ink-faint);
+}
+
+.footer-stamp {
+  margin: 0;
+}
+
+.site-footer p {
+  margin: 0;
 }
