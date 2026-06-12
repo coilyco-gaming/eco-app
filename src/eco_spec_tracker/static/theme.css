@@ -1,0 +1,317 @@
+/* Jobs tracker theme - the same forest-glass visual language as the SPA
+   landing page. Canonical design tokens live in frontend/src/index.css;
+   keep the :root block here in lockstep when they change. */
+:root {
+  --bg-deep: #07130c;
+  --bg-mid: #0d1f15;
+  --bg-glow: #1d3a2a;
+  --ink: #e8f3ea;
+  --ink-soft: #c4dcc9;
+  --ink-faint: #7da18a;
+  --leaf: #9fdcb4;
+  --leaf-dim: rgba(159, 220, 180, 0.4);
+  --leaf-wash: rgba(159, 220, 180, 0.12);
+  --meteor: #f0b35c;
+  --meteor-deep: #b97a2a;
+  --card: rgba(20, 44, 30, 0.55);
+  --card-border: rgba(126, 200, 148, 0.25);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+body {
+  background: radial-gradient(1200px 800px at 20% 10%, var(--bg-glow) 0%, var(--bg-mid) 45%, var(--bg-deep) 100%);
+  color: var(--ink);
+  font-family: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 1.5rem 2rem;
+}
+
+/* --- Mock-data banner -------------------------------------------------- */
+
+.mock-banner {
+  padding: 0.7rem 1.25rem;
+  text-align: center;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--meteor);
+  background: rgba(63, 41, 13, 0.75);
+  border-bottom: 1px solid rgba(240, 179, 92, 0.35);
+}
+
+.mock-banner code {
+  padding: 0.1rem 0.35rem;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 0.8rem;
+}
+
+/* --- Top bar ------------------------------------------------------------ */
+
+.topbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.wordmark {
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--leaf);
+}
+
+.wordmark a {
+  color: var(--leaf);
+  text-decoration: none;
+}
+
+.wordmark a:hover {
+  text-decoration: underline;
+}
+
+.wordmark-path {
+  color: var(--ink-faint);
+  font-weight: 600;
+}
+
+.topnav {
+  display: flex;
+  gap: 1.4rem;
+  flex-wrap: wrap;
+}
+
+.topnav a {
+  color: var(--ink-soft);
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border-bottom: 1px solid transparent;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.topnav a:hover {
+  color: var(--leaf);
+  border-color: var(--leaf-dim);
+}
+
+/* --- Content ------------------------------------------------------------ */
+
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+  padding: 2.5rem 0 2rem;
+}
+
+.intro {
+  max-width: 70ch;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+.intro p {
+  margin: 0;
+}
+
+.section-title {
+  margin: 0 0 1rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.loading {
+  color: var(--ink-faint);
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+/* --- Card grids ---------------------------------------------------------- */
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  padding: 1.1rem 1.3rem;
+  border-radius: 14px;
+  border: 1px solid var(--card-border);
+  background: var(--card);
+  backdrop-filter: blur(6px);
+}
+
+.card.dim {
+  opacity: 0.55;
+}
+
+.card-tight {
+  padding: 0;
+  overflow: hidden;
+}
+
+.card-title {
+  margin: 0 0 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.count {
+  font-variant-numeric: tabular-nums;
+  color: var(--leaf);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.kicker {
+  margin: 0 0 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-faint);
+}
+
+/* Dotted member rows inside cards */
+
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rows li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+  font-size: 0.85rem;
+  border-bottom: 1px dotted var(--card-border);
+}
+
+.rows li:last-child {
+  border-bottom: 0;
+}
+
+.rows li.faded {
+  opacity: 0.55;
+}
+
+.rows .lvl {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+}
+
+.empty-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+}
+
+/* --- Profession expanders -------------------------------------------------- */
+
+.prof-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 1rem 1.3rem;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.prof-btn:hover {
+  background: var(--leaf-wash);
+}
+
+.detail {
+  padding: 0 1.3rem 0.9rem;
+  border-top: 1px solid var(--card-border);
+}
+
+.detail:empty {
+  display: none;
+  padding: 0;
+  border-top: 0;
+}
+
+/* --- Pills ------------------------------------------------------------------ */
+
+.pill {
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.pill-active {
+  background: var(--leaf-wash);
+  border: 1px solid var(--leaf-dim);
+  color: var(--leaf);
+}
+
+.pill-inactive {
+  background: rgba(63, 41, 13, 0.55);
+  border: 1px solid rgba(240, 179, 92, 0.35);
+  color: var(--meteor);
+}
+
+/* --- Footer ------------------------------------------------------------------ */
+
+.site-footer {
+  padding: 2rem 0 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  color: var(--ink-faint);
+}
+
+.site-footer p {
+  margin: 0;
+}
+
+.site-footer a {
+  color: var(--ink-faint);
+}

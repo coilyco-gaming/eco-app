@@ -8,9 +8,9 @@ Two processes: a C# Eco mod exposing a read-only HTTP endpoint of every player's
 
 ## Web dashboard (FastAPI)
 
-- **Live HTML dashboard at `eco-jobs-tracker.coilysiren.me`** - Stacked Professions, Specialties, Players sections. Tailwind CDN, no build step.
+- **Live HTML dashboard, mounted at `/jobs` of the fused service** - Stacked Professions, Specialties, Players sections. Hand-rolled `static/theme.css` shares the forest-glass visual language with the SPA landing page (tokens mirrored from `frontend/src/index.css`), htmx vendored into `static/` - no CDNs, no build step.
 - **Drill-down pages** - `/professions`, `/specialties`, `/players` each render one section without the eco-card header.
-- **Embedded live server-status card** - Homepage embeds the card from sibling `eco-mcp-app` (git dep), in lockstep with the MCP widget.
+- **Embedded live server-status card** - Homepage embeds the card from `eco_mcp_app` (same repo since the consolidation), in lockstep with the MCP widget.
 - **HTMX partials** - `/partials/eco-card` and `/partials/profession/{name}` serve fragments for in-page expansion.
 - **JSON API mirror** - `/api/v1/professions`, `/api/v1/players`, `/api/v1/specialties` return same data, machine-readable.
 - **Iframe embedding** - CSP `frame-ancestors` allows `coilysiren.me` to embed (eco-modding page on personal site).

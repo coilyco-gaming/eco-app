@@ -32,7 +32,7 @@ def test_pages_render(client: TestClient, path: str) -> None:
     r = client.get(path)
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
-    assert "eco-jobs-tracker" in r.text
+    assert "Jobs tracker" in r.text
 
 
 @pytest.mark.parametrize("path", ["/api/v1/professions", "/api/v1/players", "/api/v1/specialties"])

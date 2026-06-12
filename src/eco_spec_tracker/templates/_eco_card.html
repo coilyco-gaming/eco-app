@@ -4,10 +4,10 @@
   first paint isn't blocked on the upstream /info fetch.
 -->
 <section
-  class="shell eco-mcp-card mb-8"
+  class="shell eco-mcp-card"
   hx-get="{{ request.scope.root_path }}/partials/eco-card"
   hx-trigger="load"
   hx-swap="innerHTML"
 >
-  <p class="text-sm text-slate-400">Loading Eco server status…</p>
+  <p class="loading">Loading Eco server status…</p>
 </section>

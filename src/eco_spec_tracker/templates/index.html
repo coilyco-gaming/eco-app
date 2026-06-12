@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}eco-jobs-tracker{% endblock %}
+{% block title %}Jobs tracker - eco-app{% endblock %}
 {% block content %}
   {% include "_eco_card.html" %}
 
-  <section class="my-8 text-sm leading-relaxed text-slate-300">
+  <section class="intro">
     <p>
       This page shows who can make what on the Eco server — professions, specialties,
       and which players have which skills learned. "Active" means the player has logged
@@ -13,11 +13,7 @@
 
   {% include "_professions_section.html" %}
 
-  <hr class="my-10 border-slate-800">
-
   {% include "_specialties_section.html" %}
-
-  <hr class="my-10 border-slate-800">
 
   {% include "_players_section.html" %}
 {% endblock %}
