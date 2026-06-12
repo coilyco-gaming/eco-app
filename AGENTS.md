@@ -20,7 +20,7 @@ The Eco application monorepo: one fused Python service (MCP + SPA + jobs API), a
 
 ## Repo boundaries
 
-This repo is the application layer (`infra -> eco-app -> deploy`). Its deploy surface (k8s manifests, rollout) lives in `coilyco-bridge/deploy/services/eco-app`, never here. Gameplay mods belong in `coilyco-gaming/eco-mods`. The four source repos stay in place until cycle-end deprovision (coilysiren/inbox#100).
+This repo is the application layer (`infra -> eco-app -> deploy`). Its deploy surface (k8s manifests, rollout) lives in `coilyco-bridge/deploy/services/eco-app`, never here. Gameplay mods belong in `coilyco-gaming/eco-mods`.
 
 ## Commands
 
@@ -55,6 +55,7 @@ Name the actor in action sentences. Route every command through the gate, never 
 
 - [README.md](README.md) - human-facing intro.
 - [docs/FEATURES.md](docs/FEATURES.md) - inventory of what ships today.
+- [docs/datasets/README.md](docs/datasets/README.md) - dataset survey + probe how-to.
 - [.ward/ward.yaml](.ward/ward.yaml) - allowlisted commands.
 
 Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilyco-flight-deck/agentic-os/issues/59).

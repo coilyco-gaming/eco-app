@@ -17,3 +17,17 @@ Point-in-time capture: Eco via Sirens, cycle 13 day 56 (2026-06-12). Action data
 * [World & misc (series)](series-world.md) - 7
 
 Empty-this-cycle datasets are listed in the issue, not here, per review scope.
+
+## How to probe (fresh-session bootstrap)
+
+Everything below was derived live on 2026-06-12; it is the complete recipe for drilling into any dataset without re-deriving the mechanics.
+
+* **Base URL** - resolve via [`scripts/resolve-eco-target.sh`](../../scripts/resolve-eco-target.sh): LAN mDNS `kai-server.local:3001` first (same-LAN tailnet is blackholed, infrastructure#294), then the SSM tailnet FQDN, then public `eco.coilysiren.me:3001`. `ward exec http` wires all of this plus the keys into the dev loop automatically.
+* **Auth** - admin endpoints take `X-API-Key`. The key is SSM `/eco-mcp-app/api-admin-token` (us-east-1), fetched via `coily ops aws ssm get-parameter --with-decryption`. Never echo or commit it.
+* **Catalog** - `GET /datasets/flatlist` lists all datasets with `IsAction`, `Unit`, `StatType`, `Tags` metadata. 205 entries this cycle.
+* **Series** - `GET /datasets/get?dataset=<Name>&dayStart=0&dayEnd=<day>` returns `{"Times": [...], "Values": [...], "Interval": 86400, "Unit": "..."}`. Times are **seconds since cycle start**, daily samples. Get the current day from `/info` `DaysRunning`.
+* **Action rows** - `GET /api/v1/exporter/actions?actionName=<Name>` returns CSV. Parse header-keyed but defensively: some rows carry an undeclared extra tool column that shifts every later field ([#5](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/5)). `Citizen`/`Buyer`/`Seller`/`ShopOwner` are numeric in-game ids with no name join yet (#5). `Time` is seconds since cycle start. Enums arrive undecoded (e.g. CurrencyTrade `BoughtOrSold` = 32/33, [#6](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/6)).
+* **Names** - `GET /api/v1/users` returns `Name`/`PlayFabId`/`SteamId` for every settler, but not the numeric id the CSVs key on - that join is the #5 blocker.
+* **Skills** - the jobs mod serves `GET /api/v1/skills` (same key), consumed by `eco_spec_tracker`.
+* **Existing consumers to crib from** - `eco_mcp_app/crafting.py` (streamed CSV aggregation of 4 actions), `eco_mcp_app/climate.py` (`/datasets/get` series), `server.py` `ECONOMY_DATASETS` (14 aggregate series). The SPA consumes their `/preview/*.json` mirrors.
+* **Beyond the exporter** - the Eco source is checked out at `~/projects/StrangeLoopGames/Eco` (access granted 2026-06-12) for finding data the server holds but does not export. Findings worth pulling get a Forgejo issue per the AGENTS.md pull-everything rule.

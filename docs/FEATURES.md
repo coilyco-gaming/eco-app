@@ -34,6 +34,10 @@ Server plugins for the Eco game server. Built with the `build-mod-*` ward verbs,
 - The 20M `species_profiles.json` + `ecopedia.json` offline caches, their build scripts, and the `_preload.py` lookup layer that fronted them ([#1](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/1)). Species/ecopedia lookups go straight to the live Wikidata/iNaturalist/Wikipedia paths in `species.py` / `wikidata.py`.
 - The per-repo deploy stages and `deploy/main.yml` manifests (moved to the deploy repo, merged to one namespace).
 
+## Data surfaces
+
+- **Dataset survey + probe how-to** - [docs/datasets/](datasets/README.md): every populated dataset on the live server (192/205, cycle-13 capture) split per theme, plus the full fresh-session recipe for probing series (`/datasets/get`), action CSVs (`/api/v1/exporter/actions`), auth, time semantics, and known traps. Umbrella tracker: [#7](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/7).
+
 ## See also
 
 - [README.md](../README.md) - human-facing intro.
