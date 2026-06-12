@@ -4,16 +4,16 @@ Workspace conventions load globally via `~/.claude/CLAUDE.md`. This file covers 
 
 ## Scope
 
-The Eco application monorepo: one fused Python service (MCP server + jobs tracker UI), a local replay browser, and the in-game C# plugins that feed them. Consolidated per [coilysiren/inbox#101](https://forgejo.coilysiren.me/coilysiren/inbox/issues/101).
+The Eco application monorepo: one fused Python service (MCP + SPA + jobs API), a local replay browser, and the in-game C# plugins that feed them. Consolidated per [coilysiren/inbox#101](https://forgejo.coilysiren.me/coilysiren/inbox/issues/101).
 
 ## Project shape
 
-- `src/eco_mcp_app/` - the core service. `server.py` is the transport-agnostic MCP server, `__main__.py` the stdio entry for Claude Desktop, `http_app.py` the Starlette ASGI app.
+- `src/eco_mcp_app/` - the core service. `server.py` is the MCP server, `__main__.py` the stdio entry for Claude Desktop, `http_app.py` the Starlette ASGI app.
 - `src/eco_spec_tracker/` - jobs JSON API (FastAPI), mounted at `/jobs/api`. The jobs UI is the SPA's `/jobs` route.
-- `src/eco_replay/` - FastAPI browser for the replay mod's SQLite event log. Local-only, not in the fused image's routes yet.
-- `frontend/` - Vite + React + TypeScript SPA, served at `/` by the fused service when its build (`frontend/dist`) exists. Built in the Dockerfile's node stage; local dev via `ward exec frontend-dev` against `ward exec http`.
+- `src/eco_replay/` - FastAPI browser for the replay mod's SQLite event log. Local-only.
+- `frontend/` - Vite + React + TypeScript SPA, served at `/` by the fused service. Built in the Dockerfile's node stage; local dev via `ward exec frontend-dev` against `ward exec http`.
 - `mods/jobs/`, `mods/replay/`, `mods/telemetry/` - C# Eco server plugins. jobs and replay share DTO contracts with their Python consumers, so they live here, not in eco-mods.
-- `data/ecoregions.json` - the only committed data file. Species/ecopedia lookups go straight to live Wikidata/iNaturalist/Wikipedia fetches.
+- `data/ecoregions.json` - the only committed data file. Species/ecopedia lookups go to live web fetches.
 - `tests/mcp/`, `tests/jobs/` - per-component pytest suites under one `tests/` root.
 - `investigation/` - preserved post-mortem from eco-mcp-app. Read before questioning weird-looking decisions.
 - `Dockerfile` - the single fused image, entrypoint `eco_mcp_app.http_app:app` on port 4000.
@@ -35,7 +35,7 @@ Route every dev command through the ward gate as `ward exec <verb>`. The canonic
 
 ## Safety
 
-Keep every artifact public-safe. Opaque ids, tokens, and sensitive hosts go in AWS SSM, never tracked files. The production Sentry DSN arrives as the `SENTRY_DSN` env var via the deploy repo's ExternalSecret, never hardcoded.
+Keep every artifact public-safe. Opaque ids, tokens, and sensitive hosts go in AWS SSM, never tracked files. `SENTRY_DSN` arrives via the deploy repo's ExternalSecret, never hardcoded.
 
 ## Cross-repo contracts
 
@@ -49,7 +49,7 @@ Canonical history lives on Forgejo (`coilyco-gaming/eco-app`). CI tests, builds,
 
 ## Agent rules
 
-Name the actor in action sentences. Route every command through the gate, never bare tooling. The `/preview/*` surface is browser-poking convenience, not product UX - keep it simple.
+Name the actor in action sentences. Route every command through the gate, never bare tooling. The `/preview/*` surface is browser-poking convenience, not product UX - keep it simple. Pull every server dataset that could be remotely interesting - code is cheap, the game server is colocated, CPU is fine. Interesting-but-messy data gets a Forgejo cleanup issue, never a silent skip.
 
 ## See also
 
