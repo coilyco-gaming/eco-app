@@ -1,4 +1,5 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom"
+import Climate from "./pages/Climate"
 import Crafting from "./pages/Crafting"
 import Economy from "./pages/Economy"
 import Home from "./pages/Home"
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="/jobs/*" element={<Jobs />} />
         <Route path="/economy" element={<Economy />} />
         <Route path="/crafting" element={<Crafting />} />
+        <Route path="/climate" element={<Climate />} />
       </Routes>
     </BrowserRouter>
   )

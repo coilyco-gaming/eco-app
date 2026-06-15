@@ -69,6 +69,22 @@ POLLUTION_DATASET_CANDIDATES: tuple[str, ...] = (
     "AveragePollution",
     "Pollution",
 )
+# Average global temperature, in Celsius. Eco 0.13.0.3 exposes
+# `AverageGlobalTemperature`; older / modded builds vary.
+TEMPERATURE_DATASET_CANDIDATES: tuple[str, ...] = (
+    "AverageGlobalTemperature",
+    "GlobalTemperature",
+    "AverageTemperature",
+    "Temperature",
+)
+# CO2 source/sink attribution series. These are *cumulative lifetime* PPM
+# totals — the same three lines the in-game pollution-machine status breaks
+# out under "Global CO2 Sources and Sinks". Pollution and animals add CO2
+# (positive); plants remove it (negative). The day-over-day delta of each
+# series is that source's "ppm per day" contribution.
+CO2_FROM_POLLUTION_CANDIDATES: tuple[str, ...] = ("LifetimeCO2FromPollution",)
+CO2_FROM_ANIMALS_CANDIDATES: tuple[str, ...] = ("LifetimeCO2FromAnimals",)
+CO2_FROM_PLANTS_CANDIDATES: tuple[str, ...] = ("LifetimeCO2FromPlants",)
 
 # Action names for polluter attribution. `PolluteAir` is the canonical
 # event-stat on Eco 0.13.0.3 ("Air pollution was released (triggered every
@@ -106,6 +122,21 @@ _PREINDUSTRIAL_PPM = 280.0
 _WARMING_PPM = 350.0
 _CRITICAL_PPM = 500.0
 
+# Eco's *default* climate ruleset, from the game source
+# (Server/Eco.Simulation/Settings/EcoDef.cs, ClimateSettings). These drive
+# the in-game pollution-machine "CO2 Effects" lines:
+#   "Temperature rises 1 degree for every {ppm_per_degree}ppm past {threshold}ppm"
+#   "Sea level rises 1 meter every {ppm_per_meter}ppm past {threshold}ppm"
+# Eco lets a server admin retune them and exposes no HTTP endpoint to read
+# the live values, so we ship the defaults (the targeted server runs them —
+# MinCO2ppm 325 matches the observed floor) and let a differently-tuned
+# deploy correct the explanation via env without a code change.
+_RULE_MIN_CO2_PPM = float(os.environ.get("ECO_CLIMATE_MIN_CO2_PPM", "325"))
+_RULE_TEMP_THRESHOLD_PPM = float(os.environ.get("ECO_CLIMATE_TEMP_THRESHOLD_PPM", "400"))
+_RULE_PPM_PER_DEGREE = float(os.environ.get("ECO_CLIMATE_PPM_PER_DEGREE", "25"))
+_RULE_SEA_THRESHOLD_PPM = float(os.environ.get("ECO_CLIMATE_SEA_THRESHOLD_PPM", "400"))
+_RULE_PPM_PER_METER = float(os.environ.get("ECO_CLIMATE_PPM_PER_METER", "25"))
+
 # Per-process cache. Climate moves slowly (one tick every game hour) so a 60s
 # TTL is plenty and prevents the iframe-on-refresh case from hammering the
 # admin endpoint.
@@ -128,9 +159,16 @@ class ClimateSnapshot:
     co2_series: list[tuple[float, float]] = field(default_factory=list)
     sea_level_series: list[tuple[float, float]] = field(default_factory=list)
     pollution_series: list[tuple[float, float]] = field(default_factory=list)
+    temperature_series: list[tuple[float, float]] = field(default_factory=list)
     co2_dataset_name: str | None = None
     sea_level_dataset_name: str | None = None
     pollution_dataset_name: str | None = None
+    temperature_dataset_name: str | None = None
+    # CO2 source/sink breakdown — cumulative lifetime PPM per origin. Mirrors
+    # the in-game "Global CO2 Sources and Sinks" status block.
+    co2_pollution_series: list[tuple[float, float]] = field(default_factory=list)
+    co2_animals_series: list[tuple[float, float]] = field(default_factory=list)
+    co2_plants_series: list[tuple[float, float]] = field(default_factory=list)
     # Worldlayers fallback for ground-pollution headline (e.g. "4%").
     pollution_layer_summary: str | None = None
     # Polluter attribution. Sorted descending by emission count.
@@ -153,9 +191,14 @@ class ClimateSnapshot:
             "co2Series": [[t, v] for t, v in self.co2_series],
             "seaLevelSeries": [[t, v] for t, v in self.sea_level_series],
             "pollutionSeries": [[t, v] for t, v in self.pollution_series],
+            "temperatureSeries": [[t, v] for t, v in self.temperature_series],
             "co2DatasetName": self.co2_dataset_name,
             "seaLevelDatasetName": self.sea_level_dataset_name,
             "pollutionDatasetName": self.pollution_dataset_name,
+            "temperatureDatasetName": self.temperature_dataset_name,
+            "co2PollutionSeries": [[t, v] for t, v in self.co2_pollution_series],
+            "co2AnimalsSeries": [[t, v] for t, v in self.co2_animals_series],
+            "co2PlantsSeries": [[t, v] for t, v in self.co2_plants_series],
             "pollutionLayerSummary": self.pollution_layer_summary,
             "topPolluterCitizens": [[n, c] for n, c in self.top_polluter_citizens],
             "topPolluterStations": [[n, c] for n, c in self.top_polluter_stations],
@@ -590,9 +633,45 @@ async def fetch_climate(
                 )
             )
 
+            # Temperature (Celsius) and the three CO2 source/sink series.
+            # These power the verbose "sources & sinks" + "effects" sections
+            # that mirror the in-game pollution-machine status. Each is
+            # absence-tolerant: a server without the stat just leaves the
+            # section out.
+            temp_task = asyncio.create_task(
+                _fetch_first_nonempty(
+                    client,
+                    base,
+                    TEMPERATURE_DATASET_CANDIDATES,
+                    snapshot.days_elapsed,
+                    headers,
+                    flatlist=flatlist,
+                    discovery_keywords=("temperature",),
+                )
+            )
+            poll_src_task = asyncio.create_task(
+                _fetch_first_nonempty(
+                    client, base, CO2_FROM_POLLUTION_CANDIDATES, snapshot.days_elapsed, headers
+                )
+            )
+            animal_src_task = asyncio.create_task(
+                _fetch_first_nonempty(
+                    client, base, CO2_FROM_ANIMALS_CANDIDATES, snapshot.days_elapsed, headers
+                )
+            )
+            plant_src_task = asyncio.create_task(
+                _fetch_first_nonempty(
+                    client, base, CO2_FROM_PLANTS_CANDIDATES, snapshot.days_elapsed, headers
+                )
+            )
+
             (snapshot.co2_dataset_name, snapshot.co2_series) = await co2_task
             (snapshot.sea_level_dataset_name, snapshot.sea_level_series) = await sea_task
             (snapshot.pollution_dataset_name, snapshot.pollution_series) = await poll_task
+            (snapshot.temperature_dataset_name, snapshot.temperature_series) = await temp_task
+            (_, snapshot.co2_pollution_series) = await poll_src_task
+            (_, snapshot.co2_animals_series) = await animal_src_task
+            (_, snapshot.co2_plants_series) = await plant_src_task
 
             # Surface every climate-related dataset name the catalog
             # exposes so the empty-state card can hint at why we found
@@ -652,6 +731,38 @@ def _series_last(pts: list[tuple[float, float]]) -> float:
 
 def _series_first(pts: list[tuple[float, float]]) -> float:
     return float(pts[0][1]) if pts else 0.0
+
+
+def _series_peak(pts: list[tuple[float, float]]) -> float:
+    return max((float(v) for _, v in pts), default=0.0)
+
+
+def _series_baseline(pts: list[tuple[float, float]]) -> float:
+    """First *meaningful* value, skipping leading zeros.
+
+    Some series (e.g. ``AverageGlobalTemperature``) record a 0 on the day the
+    stat is first allocated, before the world reports a real reading. Using
+    that 0 as the baseline would invent a bogus "rose 15 degrees" delta, so we
+    take the first non-zero sample instead and fall back to the raw first.
+    """
+    for _, v in pts:
+        if v != 0.0:
+            return float(v)
+    return _series_first(pts)
+
+
+def _daily_rate(pts: list[tuple[float, float]], days_elapsed: int) -> float:
+    """Most-recent day-over-day change of a daily-sampled series.
+
+    For the cumulative lifetime CO2 series this is "ppm this source added
+    today"; the consecutive-sample diff is already a per-day figure. Falls
+    back to the whole-series average when there's only sparse data.
+    """
+    if len(pts) >= 2:
+        return float(pts[-1][1]) - float(pts[-2][1])
+    if pts:
+        return float(pts[-1][1]) / max(days_elapsed, 1)
+    return 0.0
 
 
 def _percent_change(first: float, last: float) -> float | None:
@@ -716,6 +827,164 @@ def _parse_layer_pct(summary: str | None) -> float | None:
         return None
 
 
+def _compute_breakdown(snapshot: ClimateSnapshot, days_elapsed: int) -> dict[str, Any]:
+    """CO2 source/sink attribution — the in-game "Sources and Sinks" block.
+
+    Pollution and animals *add* CO2; plants *remove* it. We report each
+    source's cumulative lifetime total and its most-recent per-day rate, plus
+    the net daily change, so a player can see at a glance whether the world is
+    accumulating or shedding CO2 and which lever dominates.
+    """
+    poll = snapshot.co2_pollution_series
+    animals = snapshot.co2_animals_series
+    plants = snapshot.co2_plants_series
+    if not (poll or animals or plants):
+        return {"has_data": False}
+
+    poll_day = _daily_rate(poll, days_elapsed)
+    animals_day = _daily_rate(animals, days_elapsed)
+    plants_day = _daily_rate(plants, days_elapsed)
+    net_day = poll_day + animals_day + plants_day
+    return {
+        "has_data": True,
+        "pollution": {"lifetime": round(_series_last(poll), 1), "per_day": round(poll_day, 2)},
+        "animals": {"lifetime": round(_series_last(animals), 1), "per_day": round(animals_day, 2)},
+        "plants": {"lifetime": round(_series_last(plants), 1), "per_day": round(plants_day, 2)},
+        "net_per_day": round(net_day, 2),
+    }
+
+
+def _compute_effects(
+    *,
+    co2_series: list[tuple[float, float]],
+    sea_series: list[tuple[float, float]],
+    temp_series: list[tuple[float, float]],
+) -> dict[str, Any]:
+    """Translate the live state into the in-game "CO2 Effects" mechanics.
+
+    Returns the ruleset constants (so the card can state the exact formula),
+    the current CO2 standing relative to each threshold, and the observed
+    real-world deltas (degrees warmed, meters of sea-level rise) computed
+    straight from the series.
+    """
+    co2_now = _series_last(co2_series)
+    co2_peak = _series_peak(co2_series)
+
+    temp_now = _series_last(temp_series)
+    temp_base = _series_baseline(temp_series)
+    sea_now = _series_last(sea_series)
+    sea_base = _series_baseline(sea_series)
+
+    temp_headroom = _RULE_TEMP_THRESHOLD_PPM - co2_now
+    sea_headroom = _RULE_SEA_THRESHOLD_PPM - co2_now
+    return {
+        "co2_now": round(co2_now, 1) if co2_series else None,
+        "co2_peak": round(co2_peak, 1) if co2_series else None,
+        "min_floor_ppm": _RULE_MIN_CO2_PPM,
+        "at_floor": bool(co2_series) and co2_now <= _RULE_MIN_CO2_PPM + 0.5,
+        "temperature": {
+            "threshold_ppm": _RULE_TEMP_THRESHOLD_PPM,
+            "ppm_per_degree": _RULE_PPM_PER_DEGREE,
+            "headroom_ppm": round(temp_headroom, 1) if co2_series else None,
+            "current_c": round(temp_now, 2) if temp_series else None,
+            "risen_c": round(temp_now - temp_base, 2) if temp_series else None,
+            "peak_drives_c": (
+                round((co2_peak - _RULE_TEMP_THRESHOLD_PPM) / _RULE_PPM_PER_DEGREE, 2)
+                if co2_series and co2_peak > _RULE_TEMP_THRESHOLD_PPM
+                else 0.0
+            ),
+        },
+        "sea_level": {
+            "threshold_ppm": _RULE_SEA_THRESHOLD_PPM,
+            "ppm_per_meter": _RULE_PPM_PER_METER,
+            "headroom_ppm": round(sea_headroom, 1) if co2_series else None,
+            "current_m": round(sea_now, 2) if sea_series else None,
+            "risen_m": round(sea_now - sea_base, 2) if sea_series else None,
+            "peak_drives_m": (
+                round((co2_peak - _RULE_SEA_THRESHOLD_PPM) / _RULE_PPM_PER_METER, 2)
+                if co2_series and co2_peak > _RULE_SEA_THRESHOLD_PPM
+                else 0.0
+            ),
+        },
+    }
+
+
+def _build_explainer(breakdown: dict[str, Any], effects: dict[str, Any]) -> list[str]:
+    """Plain-language "what's happening and what to expect" sentences.
+
+    This is the verbose explanation the request asked for — the same story the
+    in-game pollution machine tells, but narrated rather than tabulated. Each
+    sentence is self-contained so the card can render them as a bullet list.
+    """
+    out: list[str] = []
+    co2_now = effects.get("co2_now")
+    if co2_now is None:
+        return out
+
+    temp = effects["temperature"]
+    sea = effects["sea_level"]
+
+    # 1. Where CO2 stands right now.
+    if effects["at_floor"]:
+        out.append(
+            f"CO2 sits at {co2_now:.0f} ppm — pinned to the simulation floor "
+            f"({effects['min_floor_ppm']:.0f} ppm), the cleanest the atmosphere can get."
+        )
+    else:
+        out.append(f"CO2 currently stands at {co2_now:.0f} ppm.")
+
+    # 2. Who's pushing it which way.
+    if breakdown.get("has_data"):
+        net = breakdown["net_per_day"]
+        plants_life = breakdown["plants"]["lifetime"]
+        poll_life = breakdown["pollution"]["lifetime"]
+        if net < 0:
+            out.append(
+                f"Plants are winning: they've pulled {abs(plants_life):,.0f} ppm out of the air "
+                f"over the cycle versus {poll_life:,.0f} ppm added by machines, so CO2 is "
+                f"falling about {abs(net):,.1f} ppm per day."
+            )
+        elif net > 0:
+            out.append(
+                f"Machines are outpacing the plants — CO2 is climbing about {net:,.1f} ppm per "
+                f"day ({poll_life:,.0f} ppm added by pollution so far)."
+            )
+        else:
+            out.append("Sources and sinks are roughly balanced — CO2 is holding steady.")
+
+    # 3. The warming / sea-level mechanic and how much margin remains.
+    out.append(
+        f"Past {temp['threshold_ppm']:.0f} ppm, every {temp['ppm_per_degree']:.0f} ppm of CO2 "
+        f"adds 1 °C of warming, and every {sea['ppm_per_meter']:.0f} ppm above "
+        f"{sea['threshold_ppm']:.0f} ppm raises the sea 1 m."
+    )
+    headroom = temp.get("headroom_ppm")
+    if headroom is not None and headroom > 0:
+        out.append(
+            f"That leaves {headroom:.0f} ppm of headroom before new warming kicks in — the "
+            "current trajectory is safe."
+        )
+    elif headroom is not None and headroom <= 0:
+        out.append(
+            f"CO2 is already {abs(headroom):.0f} ppm over the warming line — expect temperature "
+            "and sea level to keep climbing until emissions drop."
+        )
+
+    # 4. What's already baked in from the cycle's peak.
+    co2_peak = effects.get("co2_peak")
+    risen_m = sea.get("risen_m") or 0.0
+    if co2_peak and co2_peak > sea["threshold_ppm"] and risen_m > 0.05:
+        out.append(
+            f"Earlier in the cycle CO2 peaked at {co2_peak:.0f} ppm, which is what raised the "
+            f"sea {risen_m:.2f} m so far — that rise holds at its high-water mark even as CO2 "
+            "falls."
+        )
+    elif risen_m > 0.05:
+        out.append(f"Sea level has risen {risen_m:.2f} m since the cycle began.")
+
+    return out
+
+
 def compute_climate_payload(snapshot: ClimateSnapshot) -> dict[str, Any]:
     """Shape the snapshot for the Jinja card. Pure — no IO, no SVG.
 
@@ -754,8 +1023,20 @@ def compute_climate_payload(snapshot: ClimateSnapshot) -> dict[str, Any]:
         pollution_value = None
         pollution_source = "none"
 
+    temp_last = _series_last(snapshot.temperature_series)
+    temp_base = _series_baseline(snapshot.temperature_series)
+    temp_rate_per_day = _daily_rate(snapshot.temperature_series, days_elapsed)
+
     earth_match = _earth_year_for_ppm(co2_last) if snapshot.co2_series else None
     status = _classify_status(co2_last, sea_change_pct) if snapshot.co2_series else "unknown"
+
+    breakdown = _compute_breakdown(snapshot, days_elapsed)
+    effects = _compute_effects(
+        co2_series=snapshot.co2_series,
+        sea_series=snapshot.sea_level_series,
+        temp_series=snapshot.temperature_series,
+    )
+    explainer = _build_explainer(breakdown, effects)
 
     has_attribution = bool(snapshot.top_polluter_citizens or snapshot.top_polluter_stations)
 
@@ -800,6 +1081,16 @@ def compute_climate_payload(snapshot: ClimateSnapshot) -> dict[str, Any]:
             "layer_summary": snapshot.pollution_layer_summary,
             "series": [list(p) for p in snapshot.pollution_series],
         },
+        "temperature": {
+            "current": round(temp_last, 2) if snapshot.temperature_series else None,
+            "risen": (round(temp_last - temp_base, 2) if snapshot.temperature_series else None),
+            "rate_per_day": round(temp_rate_per_day, 3),
+            "dataset_name": snapshot.temperature_dataset_name,
+            "series": [list(p) for p in snapshot.temperature_series],
+        },
+        "breakdown": breakdown,
+        "effects": effects,
+        "explainer": explainer,
         "earth_match": earth_match,
         "attribution": {
             "has_data": has_attribution,

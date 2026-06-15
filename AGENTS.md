@@ -49,7 +49,9 @@ Canonical history lives on Forgejo (`coilyco-gaming/eco-app`). CI tests, builds,
 
 ## Agent rules
 
-Name the actor in action sentences. Route every command through the gate, never bare tooling. The `/preview/*` surface is browser-poking convenience, not product UX - keep it simple. Pull every server dataset that could be remotely interesting - code is cheap, the game server is colocated, CPU is fine. Interesting-but-messy data gets a Forgejo cleanup issue, never a silent skip.
+Name the actor in action sentences. Route every command through the gate, never bare tooling. Pull every server dataset that could be remotely interesting - code is cheap, the game server is colocated, CPU is fine. Interesting-but-messy data gets a Forgejo cleanup issue, never a silent skip.
+
+**Product UX is the SPA (`frontend/`).** Server HTML is only the MCP `_meta.ui` card - never build browser UI as an iframe/Jinja card.
 
 ## See also
 

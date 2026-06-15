@@ -46,85 +46,6 @@
     padding: 0 28px 28px;
   }
 
-  /* ---- site header ---- */
-  /* Shape mirrors eco-spec-tracker's base.html: full-width dark bar,
-     left-aligned project name, right-aligned filesystem-style nav in mono. */
-  .site-header {
-    position: relative; z-index: 3;
-    background: rgba(20, 26, 16, 0.85);
-    border-bottom: 1px solid var(--panel-border);
-    backdrop-filter: blur(6px);
-    padding: 12px 28px;
-  }
-  .site-header-inner {
-    max-width: 1080px; margin: 0 auto;
-    display: flex; flex-wrap: wrap; align-items: baseline;
-    justify-content: space-between; gap: 8px 24px;
-  }
-  .site-title {
-    margin: 0;
-    font-size: 15px; font-weight: 600; letter-spacing: 0.01em;
-    color: var(--fg); text-decoration: none;
-  }
-  .site-title:hover { color: var(--leaf-bright); }
-  .site-nav {
-    display: flex; flex-wrap: wrap; gap: 16px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 13px;
-  }
-  .site-nav a {
-    color: var(--leaf-bright); text-decoration: none;
-  }
-  .site-nav a:hover { text-decoration: underline; }
-
-  /* Left-side tools drawer — only rendered by the HTTP /preview/<tool> routes,
-     not in the MCP iframe shell. Fixed position so it doesn't push card layout. */
-  .tools-drawer {
-    position: fixed;
-    top: 64px; left: 16px;
-    z-index: 4;
-    max-width: 220px;
-    background: rgba(20, 26, 16, 0.92);
-    border: 1px solid var(--panel-border);
-    border-radius: 10px;
-    backdrop-filter: blur(6px);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 12px;
-  }
-  .tools-drawer summary {
-    list-style: none;
-    cursor: pointer;
-    padding: 8px 12px;
-    color: var(--fg-faint);
-    user-select: none;
-    display: flex; align-items: center; gap: 6px;
-  }
-  .tools-drawer summary::-webkit-details-marker { display: none; }
-  .tools-drawer-caret {
-    display: inline-block;
-    width: 0; height: 0;
-    border-left: 5px solid var(--leaf-bright);
-    border-top: 4px solid transparent;
-    border-bottom: 4px solid transparent;
-    transition: transform 0.15s ease;
-  }
-  .tools-drawer[open] .tools-drawer-caret {
-    transform: rotate(90deg);
-  }
-  .tools-drawer-nav {
-    display: flex; flex-direction: column;
-    gap: 6px;
-    padding: 10px 12px 12px;
-    border-top: 1px dashed var(--panel-border);
-  }
-  .tools-drawer-nav a {
-    color: var(--leaf-bright); text-decoration: none;
-  }
-  .tools-drawer-nav a:hover { text-decoration: underline; }
-  .tools-drawer-nav a[aria-current="page"] {
-    color: var(--sun); text-decoration: underline;
-  }
-
   /* ---- banner ---- */
   .banner-wrap {
     margin: 20px 0 18px; border-radius: 14px; overflow: hidden;
@@ -386,6 +307,39 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .climate-rank__count { color: var(--leaf-bright);
     font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+  /* Verbose climate explanation — the plain-language "what to expect"
+     narration plus the source/sink breakdown and effects mechanics, modeled
+     on the in-game pollution-machine status panel. */
+  .climate-section-head {
+    font-size: 14px; font-weight: 600; color: var(--leaf-bright);
+    letter-spacing: 0.02em; margin: 0 0 8px;
+  }
+  .climate-explainer {
+    margin-top: 14px; padding: 12px 14px;
+    background: rgba(34, 40, 26, 0.55);
+    border: 1px solid var(--panel-border);
+    border-left: 3px solid var(--leaf-bright);
+    border-radius: 8px;
+  }
+  .climate-explainer__list {
+    list-style: none; padding: 0; margin: 0;
+    display: flex; flex-direction: column; gap: 7px;
+    font-size: 13.5px; line-height: 1.5; color: var(--fg);
+  }
+  .climate-explainer__list li { padding-left: 16px; position: relative; }
+  .climate-explainer__list li::before {
+    content: "›"; position: absolute; left: 0; top: 0;
+    color: var(--leaf-bright); font-weight: 700;
+  }
+  /* Source/sink cards: green left-bar for CO2 added, blue for CO2 removed. */
+  .climate-source { border-left: 3px solid var(--panel-border); }
+  .climate-source--add { border-left-color: var(--sunset); }
+  .climate-source--remove { border-left-color: var(--water); }
+  .climate-source .card-val {
+    font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums;
+  }
+  .climate-headroom { display: block; margin-top: 4px; color: var(--leaf-bright); }
 
   /* Pollution heatmap overlay on the map card. The image is a translucent
      red GIF rasterized server-side from the Layers/Pollution.gif endpoint;
@@ -807,3 +761,4 @@
   }
 
   .ecoregion-source { margin-top: 14px; font-size: 11px; }
+

@@ -20,12 +20,12 @@ Defined in [src/eco_mcp_app/server.py](../src/eco_mcp_app/server.py). All accept
 - **fair_price** - Real-world commodity prices via FRED (copper, wheat, lumber, iron, crude). 7d/30d/90d.
 - **get_eco_ecoregion** - WWF ecoregion classification. Donut, top-3 matches, boom/bust lists.
 - **get_eco_government** - Civic org chart. Elected titles, active elections, active laws.
-- **get_eco_climate** - CO2 ppm, sea-level + drift, ground pollution, NOAA Mauna Loa anchor, top polluters. Tolerant to dataset-name drift.
+- **get_eco_climate** - CO2 ppm, sea-level + drift, ground pollution, avg temperature, NOAA Mauna Loa anchor, top polluters. Plus a pollution-machine-style explainer: CO2 sources & sinks breakdown (pollution/animals/plants, lifetime + per-day), the CO2-effects mechanic (warming + sea-level thresholds), and a plain-language "what to expect" narration. Tolerant to dataset-name drift.
 - **list_public_eco_servers** - 6 known public servers with labels + notes.
 
 ## MCP resources
 
-- **ui://eco/status.html** - Main iframe shell + Jinja2 template for per-tool cards.
+- **ui://eco/status.html** - Main MCP Apps shell document hosts load in their sandboxed iframe; per-tool Jinja cards swap into it via `_meta.ui.fragment`.
 - **ui://eco/economy.html** - Economy dashboard shell.
 - **ui://eco/climate.html** - Climate dashboard shell.
 
@@ -34,12 +34,12 @@ Defined in [src/eco_mcp_app/server.py](../src/eco_mcp_app/server.py). All accept
 - **Stdio** - `python -m eco_mcp_app.__main__` for Claude Desktop.
 - **HTTP** - MCP over Streamable-HTTP at `POST /mcp/`. Stateless.
 - **Health probe** - `GET /healthz`.
-- **Dev preview** - `GET /preview` pre-renders Jinja2 for hot-reload iteration.
+- **Data plane** - `GET /preview.json`, `/preview-map.json`, `/preview/<tool>.json` return tool payloads as JSON for the SPA to consume. No HTML variant - the dev `/preview` card pages were removed.
 - **Livereload WS** - Debug-mode hot reload.
 
 ## UI rendering
 
-- **Jinja2 server-side** at [src/eco_mcp_app/templates/](../src/eco_mcp_app/templates/). No bundler, no React.
+- **Jinja2 server-side** at [src/eco_mcp_app/templates/](../src/eco_mcp_app/templates/), rendered only into the MCP `_meta.ui` card fragment for in-chat hosts. The web UI is the React SPA (`frontend/`); the server renders no browser-facing HTML.
 - **Main shell** `eco.html` (~5KB). Hand-rolled MCP Apps handshake. Steam banner data URI for CSP.
 - **CSS** `eco.css` (~26KB). Responsive, animated starfield, cycle ring.
 - **22 partial templates** for per-card fragments.

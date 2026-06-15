@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Eco — server status</title>
 <link rel="icon" type="image/x-icon" href="{{ favicon_src }}">
-{# Open Graph / Twitter card — makes /preview URLs shareable in chat apps.
-   Inside the Claude Desktop iframe these are inert; on the /preview route
-   they drive the link preview when the URL is pasted. #}
+{# Open Graph / Twitter card. Inert inside the Claude Desktop iframe, but
+   kept so the shell document degrades to a reasonable link preview if its
+   URL is ever surfaced directly. #}
 <meta property="og:title" content="Eco — server status">
 <meta property="og:description" content="Live dashboard for a public Eco game server: players, meteor countdown, world stats, economy.">
 <meta property="og:type" content="website">
@@ -24,7 +24,6 @@
 </head>
 <body>
   <div class="leaves"></div>
-  {% include "partials/site_header.html" %}
   <div class="shell" id="root">
     {% if prerendered %}{{ prerendered }}{% else %}{% include "partials/empty.html" %}{% endif %}
   </div>

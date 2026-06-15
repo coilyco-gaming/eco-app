@@ -71,11 +71,11 @@ def test_frame_ancestors_csp_is_site_wide() -> None:
         assert "frame-ancestors" in r.headers.get("content-security-policy", "")
 
 
-def test_no_build_falls_back_to_preview_redirect(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_no_build_returns_build_hint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # No frontend build → no HTML surface (the old /preview redirect is gone).
+    # Client routes return a 404 build hint instead.
     monkeypatch.setenv("FRONTEND_DIST", str(tmp_path / "missing"))
     client = TestClient(create_app(), follow_redirects=False)
     r = client.get("/server")
-    assert r.status_code == 302
-    assert r.headers["location"] == "/preview"
+    assert r.status_code == 404
+    assert "frontend-build" in r.text

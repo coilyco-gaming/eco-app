@@ -526,6 +526,80 @@ def test_payload_admin_unavailable_narrative() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Verbose explainer: temperature, source/sink breakdown, CO2 effects
+# ---------------------------------------------------------------------------
+
+
+def test_payload_temperature_block_skips_leading_zero_baseline() -> None:
+    """``AverageGlobalTemperature`` records 0 before the first real reading;
+    the risen-since-start delta must measure from the first non-zero sample,
+    not invent a bogus +15 jump."""
+    snap = _snap(
+        temperature_series=[(0.0, 0.0), (1.0, 14.0), (2.0, 14.9)],
+        temperature_dataset_name="AverageGlobalTemperature",
+    )
+    p = compute_climate_payload(snap)
+    assert p["temperature"]["current"] == 14.9
+    # baseline is 14.0 (first non-zero), not 0.0 → risen 0.9, not 14.9.
+    assert p["temperature"]["risen"] == 0.9
+
+
+def test_payload_breakdown_sources_and_net() -> None:
+    snap = _snap(
+        co2_pollution_series=[(0.0, 0.0), (1.0, 100.0), (2.0, 150.0)],
+        co2_animals_series=[(0.0, 0.0), (1.0, 10.0), (2.0, 25.0)],
+        co2_plants_series=[(0.0, 0.0), (1.0, -300.0), (2.0, -500.0)],
+    )
+    p = compute_climate_payload(snap)
+    b = p["breakdown"]
+    assert b["has_data"] is True
+    assert b["pollution"]["lifetime"] == 150.0
+    assert b["plants"]["lifetime"] == -500.0
+    # per-day = most recent day-over-day delta.
+    assert b["pollution"]["per_day"] == 50.0
+    assert b["plants"]["per_day"] == -200.0
+    # net = 50 + 15 + (-200) = -135 → CO2 falling.
+    assert b["net_per_day"] == -135.0
+
+
+def test_payload_breakdown_absent_without_source_series() -> None:
+    assert compute_climate_payload(_snap())["breakdown"] == {"has_data": False}
+
+
+def test_payload_effects_thresholds_and_headroom() -> None:
+    snap = _snap(
+        co2_series=[(0.0, 325.0), (1.0, 520.0), (2.0, 325.0)],  # peaked then fell
+        sea_level_series=[(0.0, 60.0), (1.0, 61.83)],
+        temperature_series=[(0.0, 14.0), (1.0, 14.9)],
+    )
+    eff = compute_climate_payload(snap)["effects"]
+    assert eff["co2_now"] == 325.0
+    assert eff["co2_peak"] == 520.0
+    assert eff["at_floor"] is True
+    # default ruleset: warming starts at 400 ppm → 75 ppm of headroom.
+    assert eff["temperature"]["headroom_ppm"] == 75.0
+    assert eff["temperature"]["threshold_ppm"] == 400.0
+    assert eff["sea_level"]["risen_m"] == 1.83
+
+
+def test_explainer_tells_at_floor_recovery_story() -> None:
+    snap = _snap(
+        co2_series=[(0.0, 325.0), (1.0, 520.0), (2.0, 325.0)],
+        sea_level_series=[(0.0, 60.0), (1.0, 61.83)],
+        temperature_series=[(0.0, 14.0), (1.0, 14.9)],
+        co2_pollution_series=[(0.0, 0.0), (1.0, 12000.0), (2.0, 12687.0)],
+        co2_animals_series=[(0.0, 0.0), (1.0, 1400.0), (2.0, 1450.0)],
+        co2_plants_series=[(0.0, 0.0), (1.0, -28000.0), (2.0, -28989.0)],
+    )
+    sentences = compute_climate_payload(snap)["explainer"]
+    joined = " ".join(sentences)
+    assert "pinned to the simulation floor" in joined
+    assert "Plants are winning" in joined
+    assert "headroom" in joined
+    assert "peaked at 520 ppm" in joined
+
+
+# ---------------------------------------------------------------------------
 # Pure helpers
 # ---------------------------------------------------------------------------
 
@@ -653,11 +727,14 @@ async def test_call_get_eco_climate_returns_iframe_fragment() -> None:
     assert "climate" in md.lower()
     assert "ppm" in md.lower()
 
-    # JSON is parseable; carries the snapshot dataset names.
-    snapshot = json.loads(blocks[1].text)
-    assert snapshot["co2DatasetName"] == "CO2PPM"
-    assert snapshot["seaLevelDatasetName"] == "SeaLevel"
-    assert snapshot["pollutionDatasetName"] == "GroundPollution"
+    # JSON block is the computed payload (what the SPA Climate page consumes),
+    # not the raw snapshot — carries the KPI blocks with dataset names.
+    payload = json.loads(blocks[1].text)
+    assert payload["co2"]["dataset_name"] == "CO2PPM"
+    assert payload["sea_level"]["dataset_name"] == "SeaLevel"
+    assert payload["pollution"]["dataset_name"] == "GroundPollution"
+    assert payload["status"] in {"stable", "warming", "critical", "unknown"}
+    assert "explainer" in payload
 
     # MCP Apps fragment is on _meta and contains card markup.
     meta = result.root.meta

@@ -9,9 +9,11 @@ matches both `/mcp` and `/mcp/` without the trailing-slash redirect FastAPI
 inserts by default. Middleware normalizes bare-path `/mcp` to the mount path
 so both forms work.
 
-Also exposes `/preview` — a dev-only route that renders the iframe shell
-with the Jinja2 card already spliced in. Useful for hot-reload iteration on
-the templates without going through the MCP Apps handshake.
+Also exposes the `/preview*.json` data plane the React SPA consumes
+(`/preview.json`, `/preview-map.json`, `/preview/<tool>.json`). The old HTML
+`/preview` card pages were removed: product UX lives in the SPA (`frontend/`),
+and the Jinja cards survive only on the MCP `_meta.ui` fragment for in-chat
+hosts.
 """
 
 from __future__ import annotations
@@ -32,9 +34,8 @@ from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
 from starlette.responses import (
     FileResponse,
-    HTMLResponse,
     JSONResponse,
-    RedirectResponse,
+    PlainTextResponse,
     Response,
 )
 from starlette.routing import BaseRoute, Mount, Route
@@ -44,10 +45,6 @@ from .livereload import DEBUG, livereload_route
 from .map import build_map_payload, fetch_map_bundle
 from .server import (
     HTMX_PREFIX,
-    _render_card,
-    _render_error,
-    _render_map,
-    _render_shell,
     build_server,
     fetch_eco_info,
     redact,
@@ -119,58 +116,29 @@ def create_app() -> Starlette:
     call_tool_handler = mcp_server.request_handlers[mt.CallToolRequest]
     list_tools_handler = mcp_server.request_handlers[mt.ListToolsRequest]
 
-    # Hard-coded default query strings for the tools that need arguments — the
-    # preview nav strip is for browser-poking, not full UX, so a sensible
-    # default gets each card to render something without a 400. Tools omitted
-    # from this map get an empty query string.
-    preview_defaults = {
-        "get_eco_species": "?name=Bison",
-        "explain_eco_item": "?name=Iron&category=material",
-        "fair_price": "?item=Copper",
-    }
-
     async def _list_tools() -> mt.ListToolsResult:
         result = await list_tools_handler(mt.ListToolsRequest(method="tools/list"))
         return cast(mt.ListToolsResult, result.root)
 
-    async def _preview_tool_links(current: str | None = None) -> list[dict[str, str]]:
-        tools_result = await _list_tools()
-        links: list[dict[str, str]] = []
-        for tool in sorted(tools_result.tools, key=lambda t: t.name):
-            # Tools with no UI fragment (no `_meta.ui.resourceUri`) aren't worth
-            # linking — clicking through would just show the empty iframe.
-            # pydantic aliases the JSON `_meta` key to the `meta` attribute.
-            meta = getattr(tool, "meta", None) or {}
-            ui = (meta.get("ui") if isinstance(meta, dict) else None) or {}
-            if not ui.get("resourceUri"):
-                continue
-            # get_eco_server_status is already the bare /preview/ page — the
-            # top-nav "./preview" link covers it. Skipping here avoids a
-            # duplicate tools-row entry that renders the same card.
-            if tool.name == "get_eco_server_status":
-                continue
-            qs = preview_defaults.get(tool.name, "")
-            links.append(
-                {
-                    "label": tool.name,
-                    "href": f"/preview/{tool.name}{qs}",
-                    "current": "page" if tool.name == current else "",
-                }
-            )
-        return links
-
-    # The built React SPA (frontend/dist, baked into the Docker image)
-    # owns the root. A checkout without a frontend build keeps the old
-    # redirect so stdio/dev flows need no node toolchain. Path is
-    # cwd-relative because the image WORKDIR and local `make http` both
-    # run from the repo root; FRONTEND_DIST overrides for anything else.
+    # The built React SPA (frontend/dist, baked into the Docker image) owns
+    # the root and every client route. A checkout without a frontend build
+    # has no HTML surface at all (the dev `/preview` cards were removed) — it
+    # serves the JSON/MCP APIs only and points the visitor at the build verb.
+    # Path is cwd-relative because the image WORKDIR and local `make http`
+    # both run from the repo root; FRONTEND_DIST overrides for anything else.
     frontend_dist = Path(os.getenv("FRONTEND_DIST", "frontend/dist"))
     frontend_index = frontend_dist / "index.html"
+
+    no_build_msg = (
+        "Frontend not built. Run `ward exec frontend-build` (or `ward exec "
+        "frontend-dev` for hot reload). JSON APIs are live at /preview.json, "
+        "/preview/<tool>.json, /info, and /jobs/api/v1/*."
+    )
 
     async def root(_: Request) -> Response:
         if frontend_index.is_file():
             return FileResponse(frontend_index)
-        return RedirectResponse(url="/preview", status_code=302)
+        return PlainTextResponse(no_build_msg, status_code=404)
 
     async def spa_fallback(request: Request) -> Response:
         """Catch-all so the SPA's client-side routes survive a hard refresh.
@@ -178,10 +146,10 @@ def create_app() -> Starlette:
         Registered last: every API route and mount above wins first. Real
         files in dist (favicon, robots.txt) serve as themselves; anything
         else gets index.html and the router takes it from there. Without a
-        frontend build, fall back to the same redirect as the root route.
+        frontend build there's no HTML surface, so return the build hint.
         """
         if not frontend_index.is_file():
-            return RedirectResponse(url="/preview", status_code=302)
+            return PlainTextResponse(no_build_msg, status_code=404)
         candidate = (frontend_dist / request.path_params["path"]).resolve()
         if candidate.is_file() and candidate.is_relative_to(frontend_dist.resolve()):
             return FileResponse(candidate)
@@ -197,11 +165,8 @@ def create_app() -> Starlette:
                 "jobs": "/jobs",
                 "jobsApi": "/jobs/api/v1",
                 "health": "/healthz",
-                "preview": "/preview",
                 "previewJson": "/preview.json",
-                "previewMap": "/preview-map",
                 "previewMapJson": "/preview-map.json",
-                "previewTools": [f"/preview/{name}" for name in names],
                 "previewToolsJson": [f"/preview/{name}.json" for name in names],
             }
         )
@@ -209,30 +174,10 @@ def create_app() -> Starlette:
     async def healthz(_: Request) -> JSONResponse:
         return JSONResponse({"ok": True})
 
-    def _json_url(path: str, request: Request) -> str:
-        qs = request.url.query
-        return f"{path}?{qs}" if qs else path
-
-    async def preview(request: Request) -> HTMLResponse:
-        """Render the iframe shell + Jinja2 card inline, bypassing MCP handshake."""
-        server_arg = request.query_params.get("server")
-        try:
-            raw = await fetch_eco_info(server_arg)
-        except httpx.HTTPError as e:
-            fragment = _render_error(str(e))
-        else:
-            info = redact(raw)
-            info["_fetchedAtISO"] = datetime.now(UTC).isoformat()
-            fragment = _render_card(to_payload(info))
-        tool_links = await _preview_tool_links()
-        return HTMLResponse(
-            _render_shell(
-                prerendered=fragment,
-                preview_tools=tool_links,
-                json_url=_json_url("/preview.json", request),
-            )
-        )
-
+    # The `/preview*.json` family is the SPA's data plane: the React pages
+    # (/server, /economy, /crafting, /climate) fetch these. The HTML `/preview`
+    # cards that used to share these handlers were removed — product UX lives
+    # in the SPA, the Jinja cards live only on MCP `_meta.ui` for in-chat hosts.
     async def preview_json(request: Request) -> JSONResponse:
         server_arg = request.query_params.get("server")
         try:
@@ -243,24 +188,6 @@ def create_app() -> Starlette:
         info["_fetchedAtISO"] = datetime.now(UTC).isoformat()
         return JSONResponse(to_payload(info))
 
-    async def preview_map(request: Request) -> HTMLResponse:
-        """Render the iframe shell with the map card inline — dev preview."""
-        server_arg = request.query_params.get("server")
-        try:
-            bundle = await fetch_map_bundle(server_arg)
-        except httpx.HTTPError as e:
-            fragment = _render_error(str(e))
-        else:
-            fragment = _render_map(build_map_payload(bundle))
-        tool_links = await _preview_tool_links(current="get_eco_map")
-        return HTMLResponse(
-            _render_shell(
-                prerendered=fragment,
-                preview_tools=tool_links,
-                json_url=_json_url("/preview-map.json", request),
-            )
-        )
-
     async def preview_map_json(request: Request) -> JSONResponse:
         server_arg = request.query_params.get("server")
         try:
@@ -270,9 +197,10 @@ def create_app() -> Starlette:
         return JSONResponse(build_map_payload(bundle))
 
     def _extract_json_block(call_result: mt.CallToolResult) -> Any:
-        # Each tool emits markdown + JSON + HTMX TextContent blocks (see
-        # server.call_tool). Find the JSON one by skipping HTMX and trying
-        # to parse each remaining text block; first that parses wins.
+        # Each tool emits markdown + JSON TextContent blocks (see
+        # server.call_tool). Find the JSON one by skipping any HTMX-prefixed
+        # block and trying to parse each remaining text block; first that
+        # parses wins.
         for block in call_result.content:
             text = getattr(block, "text", "") or ""
             if text.startswith(HTMX_PREFIX):
@@ -283,67 +211,39 @@ def create_app() -> Starlette:
                 continue
         return None
 
-    async def preview_tool(request: Request) -> HTMLResponse | JSONResponse:
-        """Dispatch any MCP tool by name and splice its HTMX fragment into the shell.
+    async def preview_tool(request: Request) -> JSONResponse:
+        """Dispatch any MCP tool by name and return its JSON content block.
 
-        Query-string args are passed straight through as the tool's `arguments`,
-        so `/preview/get_eco_species?name=Bison` and
-        `/preview/explain_eco_item?name=Iron&category=material` work out of the
-        box. Tools that produce no HTMX fragment (e.g. list_public_eco_servers)
-        render the empty iframe shell — still useful as a signal that the tool
-        was reachable.
-
-        A `.json` suffix on the tool name (`/preview/get_eco_species.json?...`)
-        returns the tool's JSON content block instead of the HTML shell. Same
-        dispatch path, different output.
+        The SPA consumes `/preview/<tool>.json?<args>` — query-string args pass
+        straight through as the tool's `arguments`, so
+        `/preview/get_eco_species.json?name=Bison` works. The `.json` suffix is
+        required; the HTML card variant was removed (the in-chat card now lives
+        only on the MCP `_meta.ui` fragment, and the web UI is the SPA).
         """
         raw_name = request.path_params["tool"]
-        as_json = raw_name.endswith(".json")
-        tool_name = raw_name[: -len(".json")] if as_json else raw_name
+        if not raw_name.endswith(".json"):
+            return JSONResponse(
+                {"error": "only the .json data endpoint is served (e.g. /preview/<tool>.json)"},
+                status_code=404,
+            )
+        tool_name = raw_name[: -len(".json")]
         args = dict(request.query_params)
         req = mt.CallToolRequest(
             method="tools/call",
             params=mt.CallToolRequestParams(name=tool_name, arguments=args),
         )
-        json_url = _json_url(f"/preview/{tool_name}.json", request)
         try:
             result = await call_tool_handler(req)
         except Exception as e:
-            if as_json:
-                return JSONResponse({"error": str(e)}, status_code=500)
-            tool_links = await _preview_tool_links(current=tool_name)
-            return HTMLResponse(
-                _render_shell(
-                    prerendered=_render_error(str(e)),
-                    preview_tools=tool_links,
-                    json_url=json_url,
-                )
-            )
+            return JSONResponse({"error": str(e)}, status_code=500)
         call_result = cast(mt.CallToolResult, result.root)
-        if as_json:
-            payload = _extract_json_block(call_result)
-            if payload is None:
-                return JSONResponse(
-                    {"error": f"tool '{tool_name}' did not return a JSON content block"},
-                    status_code=404,
-                )
-            return JSONResponse(payload)
-        tool_links = await _preview_tool_links(current=tool_name)
-        fragment = ""
-        ui_meta = (call_result.meta or {}).get("ui") if call_result.meta else None
-        if isinstance(ui_meta, dict):
-            meta_fragment = ui_meta.get("fragment")
-            if isinstance(meta_fragment, str):
-                fragment = meta_fragment
-        if not fragment:
-            for block in call_result.content:
-                text = getattr(block, "text", "") or ""
-                if text.startswith(HTMX_PREFIX):
-                    fragment = text[len(HTMX_PREFIX) :]
-                    break
-        return HTMLResponse(
-            _render_shell(prerendered=fragment, preview_tools=tool_links, json_url=json_url)
-        )
+        payload = _extract_json_block(call_result)
+        if payload is None:
+            return JSONResponse(
+                {"error": f"tool '{tool_name}' did not return a JSON content block"},
+                status_code=404,
+            )
+        return JSONResponse(payload)
 
     async def handle_mcp(scope: Scope, receive: Receive, send: Send) -> None:
         await session_manager.handle_request(scope, receive, send)
@@ -359,9 +259,7 @@ def create_app() -> Starlette:
         Route("/", root, methods=["GET"]),
         Route("/info", service_info, methods=["GET"]),
         Route("/healthz", healthz, methods=["GET"]),
-        Route("/preview", preview, methods=["GET"]),
         Route("/preview.json", preview_json, methods=["GET"]),
-        Route("/preview-map", preview_map, methods=["GET"]),
         Route("/preview-map.json", preview_map_json, methods=["GET"]),
         Route("/preview/{tool}", preview_tool, methods=["GET"]),
         Mount("/mcp", app=handle_mcp),

@@ -58,6 +58,11 @@ export default function Home() {
           <p>What the world is making — top items and stations, deep-linkable.</p>
         </Link>
 
+        <Link className="dir-card" to="/climate" data-testid="dir-climate">
+          <h3>Climate</h3>
+          <p>CO₂, temperature, sea level, and what the pollution is doing to the world.</p>
+        </Link>
+
         <div className="dir-card dir-card-static">
           <h3>Community</h3>
           <p>

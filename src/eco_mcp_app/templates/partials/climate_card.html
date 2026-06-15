@@ -99,7 +99,101 @@
       {%- if pollution.dataset_name %} · <code>{{ pollution.dataset_name }}</code>{% endif %}
     </div>
   </div>
+
+  <div class="card">
+    <div class="card-label">Avg temperature</div>
+    <div class="card-val">
+      {% if temperature.current is not none %}
+        {{ '%.1f' % temperature.current }}&deg;C
+      {% else %}—{% endif %}
+    </div>
+    {{ temperature.spark_svg }}
+    <div class="card-sub">
+      {% if temperature.risen %}
+        {{ '%+.2f' % temperature.risen }}&deg;C since cycle start
+      {% elif temperature.current is not none %}
+        no measurable change
+      {% else %}no series yet{% endif %}
+      {%- if temperature.dataset_name %} · <code>{{ temperature.dataset_name }}</code>{% endif %}
+    </div>
+  </div>
 </div>
+
+{% if explainer %}
+<div class="climate-explainer">
+  <div class="climate-section-head">What this means &amp; what to expect</div>
+  <ul class="climate-explainer__list">
+    {% for sentence in explainer %}
+    <li>{{ sentence }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if breakdown.has_data %}
+<div class="climate-section-head" style="margin-top:14px">CO2 sources &amp; sinks</div>
+<div class="hint" style="margin-bottom:8px">
+  Where the atmosphere's CO2 comes from and goes — lifetime totals with each
+  source's current daily push. Pollution and animals add CO2, plants remove it.
+</div>
+<div class="grid">
+  <div class="card climate-source climate-source--add">
+    <div class="card-label">From pollution</div>
+    <div class="card-val">{{ '{:+,.0f}'.format(breakdown.pollution.lifetime) }}</div>
+    <div class="card-sub">ppm lifetime · {{ '{:+,.2f}'.format(breakdown.pollution.per_day) }}/day</div>
+  </div>
+  <div class="card climate-source climate-source--add">
+    <div class="card-label">From animals</div>
+    <div class="card-val">{{ '{:+,.0f}'.format(breakdown.animals.lifetime) }}</div>
+    <div class="card-sub">ppm lifetime · {{ '{:+,.2f}'.format(breakdown.animals.per_day) }}/day</div>
+  </div>
+  <div class="card climate-source climate-source--remove">
+    <div class="card-label">From plants</div>
+    <div class="card-val">{{ '{:+,.0f}'.format(breakdown.plants.lifetime) }}</div>
+    <div class="card-sub">ppm lifetime · {{ '{:+,.2f}'.format(breakdown.plants.per_day) }}/day</div>
+  </div>
+  <div class="card climate-source {{ 'climate-source--remove' if breakdown.net_per_day < 0 else 'climate-source--add' }}">
+    <div class="card-label">Net change</div>
+    <div class="card-val">{{ '{:+,.2f}'.format(breakdown.net_per_day) }}</div>
+    <div class="card-sub">ppm per day {{ '(CO2 falling)' if breakdown.net_per_day < 0 else '(CO2 rising)' if breakdown.net_per_day > 0 else '(steady)' }}</div>
+  </div>
+</div>
+{% endif %}
+
+{% if effects.co2_now is not none %}
+<div class="climate-section-head" style="margin-top:14px">CO2 effects</div>
+<div class="hint" style="margin-bottom:8px">Eco's default climate ruleset — a server admin can retune these.</div>
+<div class="grid spark-grid">
+  <div class="card">
+    <div class="card-label">Temperature rise</div>
+    <div class="card-sub" style="line-height:1.5">
+      +1&deg;C for every <strong>{{ '%.0f' % effects.temperature.ppm_per_degree }} ppm</strong>
+      past <strong>{{ '%.0f' % effects.temperature.threshold_ppm }} ppm</strong>.
+      {% if effects.temperature.current_c is not none %}
+        Now <strong>{{ '%.1f' % effects.temperature.current_c }}&deg;C</strong>{% if effects.temperature.risen_c %},
+        up {{ '%.2f' % effects.temperature.risen_c }}&deg;C this cycle{% endif %}.
+      {% endif %}
+      {% if effects.temperature.headroom_ppm is not none and effects.temperature.headroom_ppm > 0 %}
+        <span class="climate-headroom">{{ '%.0f' % effects.temperature.headroom_ppm }} ppm of headroom.</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-label">Sea level rise</div>
+    <div class="card-sub" style="line-height:1.5">
+      +1 m for every <strong>{{ '%.0f' % effects.sea_level.ppm_per_meter }} ppm</strong>
+      past <strong>{{ '%.0f' % effects.sea_level.threshold_ppm }} ppm</strong>.
+      {% if effects.sea_level.current_m is not none %}
+        Now <strong>{{ '%.1f' % effects.sea_level.current_m }} m</strong>{% if effects.sea_level.risen_m %},
+        up {{ '%.2f' % effects.sea_level.risen_m }} m this cycle{% endif %}.
+      {% endif %}
+      {% if effects.co2_peak and effects.sea_level.peak_drives_m %}
+        <span class="climate-headroom">Cycle peak {{ '%.0f' % effects.co2_peak }} ppm.</span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
 
 {% if attribution.has_data %}
 <div class="grid spark-grid" style="margin-top:14px">

@@ -1159,21 +1159,14 @@ def _get_admin_token() -> str | None:
     return _ECO_ADMIN_TOKEN
 
 
-def _render_shell(
-    prerendered: str | None = None,
-    preview_tools: list[dict[str, str]] | None = None,
-    json_url: str | None = None,
-) -> str:
-    """Render the iframe shell — what the MCP resource returns.
+def _render_shell(prerendered: str | None = None) -> str:
+    """Render the iframe shell — what the MCP `ui://eco/*` resource returns.
+
+    This is the document MCP Apps hosts (e.g. Claude Desktop) load in their
+    sandboxed iframe; it runs the handshake and swaps the tool's
+    `_meta.ui.fragment` card into #root.
 
     `prerendered`: if given, placed inside #root instead of the empty state.
-    The HTTP /preview endpoint uses this to splice the Jinja2 card into the
-    shell directly so a browser sees real data without the MCP handshake.
-
-    `preview_tools`: dev-only list of `{name, href}` entries rendered as a
-    second-row nav so browser visitors can hop between the 11 tool cards.
-    Passed only from the HTTP preview routes — omitted for the MCP resource
-    shell so Claude Desktop doesn't see the navigation strip.
     """
     return _JINJA.get_template("eco.html").render(
         htmx_src=_HTMX_SRC,
@@ -1181,8 +1174,6 @@ def _render_shell(
         favicon_src=_FAVICON_SRC,
         steam_url=STEAM_URL,
         prerendered=Markup(prerendered) if prerendered else None,
-        preview_tools=preview_tools,
-        json_url=json_url,
     )
 
 
@@ -1629,7 +1620,7 @@ def _attach_climate_sparklines(payload: dict[str, Any]) -> dict[str, Any]:
     economy card, where compute_economy_payload returns raw points and the
     render path attaches SVG.
     """
-    for slot in ("co2", "sea_level", "pollution"):
+    for slot in ("co2", "sea_level", "pollution", "temperature"):
         section = payload.get(slot) or {}
         pts_raw = section.get("series") or []
         pts = [(float(t), float(v)) for t, v in pts_raw if v is not None]
@@ -1649,6 +1640,10 @@ def _render_climate_card(payload: dict[str, Any]) -> str:
         co2=payload["co2"],
         sea_level=payload["sea_level"],
         pollution=payload["pollution"],
+        temperature=payload.get("temperature") or {},
+        breakdown=payload.get("breakdown") or {},
+        effects=payload.get("effects") or {},
+        explainer=payload.get("explainer") or [],
         earth_match=payload.get("earth_match"),
         attribution=payload["attribution"],
         warnings=payload.get("warnings") or [],
@@ -1679,9 +1674,33 @@ def _format_climate_markdown(payload: dict[str, Any]) -> str:
         lines.append(f"- Sea level: **{sea['current']:.3f}**{rate_str}")
     if poll.get("current") is not None:
         lines.append(f"- Ground pollution: **{poll['current']:.1f}%** ({poll['source']})")
+    temp = payload.get("temperature") or {}
+    if temp.get("current") is not None:
+        risen = temp.get("risen")
+        risen_str = f" (+{risen:.2f} since cycle start)" if risen else ""
+        lines.append(f"- Avg temperature: **{temp['current']:.2f} °C**{risen_str}")
     earth = payload.get("earth_match")
     if earth:
         lines.append(f"- Real-world anchor: {earth['note']} ({earth['ppm']:.0f} ppm).")
+
+    breakdown = payload.get("breakdown") or {}
+    if breakdown.get("has_data"):
+        lines.append("")
+        lines.append("**CO2 sources & sinks (lifetime / per day):**")
+        for label, key in (
+            ("From pollution", "pollution"),
+            ("From animals", "animals"),
+            ("From plants", "plants"),
+        ):
+            b = breakdown[key]
+            lines.append(f"- {label}: {b['lifetime']:+,.0f} ppm ({b['per_day']:+,.2f}/day)")
+        lines.append(f"- Net: {breakdown['net_per_day']:+,.2f} ppm/day")
+
+    explainer = payload.get("explainer") or []
+    if explainer:
+        lines.append("")
+        lines.append("**What this means:**")
+        lines.extend(f"- {sentence}" for sentence in explainer)
     attrib = payload["attribution"]
     if attrib.get("has_data"):
         lines.append("")
@@ -2359,11 +2378,17 @@ def build_server() -> Server:
                 default_admin_base=default_admin_base,
             )
             payload = climate_mod.compute_climate_payload(snapshot)
+            # Serialize the computed payload (status, narrative, KPI blocks,
+            # source/sink breakdown, CO2-effects, explainer) as the JSON block
+            # — that's what the SPA's /economy-style Climate page consumes. We
+            # dump it *before* attaching sparkline SVGs, which are Jinja Markup
+            # and only needed for the iframe card render.
+            climate_json_text = json.dumps(payload, default=str)
             payload = _attach_climate_sparklines(payload)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=_format_climate_markdown(payload)),
-                    TextContent(type="text", text=json.dumps(snapshot.to_dict(), default=str)),
+                    TextContent(type="text", text=climate_json_text),
                 ],
                 **{"_meta": _ui_meta(_render_climate_card(payload))},
             )

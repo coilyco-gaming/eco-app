@@ -3,9 +3,12 @@
 Covers the public-facing routes without spinning up a real network server:
   - `/healthz` for k8s probes
   - `/` for the tiny JSON landing page
-  - `/preview` with upstream mocked (happy path + failure path)
+  - `/preview*.json` data endpoints with upstream mocked (happy + failure)
   - `/mcp/` returns a sensible 4xx when called without a valid MCP client
     handshake (we only care that the route is mounted and reachable)
+
+The old HTML `/preview` card pages were removed — product UX is the SPA and
+the Jinja cards live only on the MCP `_meta.ui` fragment now.
 """
 
 from __future__ import annotations
@@ -73,16 +76,17 @@ def test_healthz(client: TestClient) -> None:
     assert r.json() == {"ok": True}
 
 
-def test_root_serves_spa_or_redirects_to_preview(client: TestClient) -> None:
+def test_root_serves_spa_or_build_hint(client: TestClient) -> None:
     # With a frontend build present (frontend/dist, as in the Docker image)
-    # the root serves the React SPA; without one it keeps the old redirect.
+    # the root serves the React SPA; without one there's no HTML surface, so
+    # it returns a 404 build hint (the old /preview redirect was removed).
     r = client.get("/", follow_redirects=False)
     if Path("frontend/dist/index.html").is_file():
         assert r.status_code == 200
         assert r.headers["content-type"].startswith("text/html")
     else:
-        assert r.status_code == 302
-        assert r.headers["location"] == "/preview"
+        assert r.status_code == 404
+        assert "frontend-build" in r.text
 
 
 def test_info(client: TestClient) -> None:
@@ -93,10 +97,11 @@ def test_info(client: TestClient) -> None:
     assert body["mcp"] == "/mcp/"
     assert body["jobs"] == "/jobs"
     assert body["jobsApi"] == "/jobs/api/v1"
-    assert body["preview"] == "/preview"
     assert body["previewJson"] == "/preview.json"
-    # Every tool advertised has a .json sibling at the same path.
-    assert body["previewToolsJson"] == [f"{p}.json" for p in body["previewTools"]]
+    # Only the .json data plane is advertised now (the HTML preview is gone).
+    assert "preview" not in body
+    assert "previewTools" not in body
+    assert all(p.endswith(".json") and p.startswith("/preview/") for p in body["previewToolsJson"])
 
 
 def test_jobs_mount(client: TestClient) -> None:
@@ -107,48 +112,14 @@ def test_jobs_mount(client: TestClient) -> None:
 
 
 @respx.mock
-def test_preview_html_links_to_json(client: TestClient) -> None:
-    route = respx.get("http://eco.example.com:3001/info").mock(
-        return_value=httpx.Response(200, json=_FAKE_INFO)
-    )
-    r = client.get("/preview", params={"server": "eco.example.com"})
-    assert r.status_code == 200
-    assert route.called
-    # Site header surfaces the .json variant of the current page, query string
-    # preserved so robots see the same view.
-    assert 'href="/preview.json?server=eco.example.com"' in r.text
-
-
-@respx.mock
-def test_preview_tool_html_links_to_tool_json(client: TestClient) -> None:
-    respx.get(DEFAULT_ECO_INFO_URL).mock(return_value=httpx.Response(200, json=_FAKE_INFO))
+def test_preview_tool_requires_json_suffix(client: TestClient) -> None:
+    # The dev HTML card route was removed; only the `.json` data endpoint is
+    # served. The bare tool path is rejected at the route (it does not fall
+    # through to a Jinja card). `/preview` and `/preview-map` are no longer
+    # special routes — they fall to the SPA catch-all like any client path.
     r = client.get("/preview/get_eco_server_status")
-    assert r.status_code == 200
-    assert 'href="/preview/get_eco_server_status.json"' in r.text
-
-
-@respx.mock
-def test_preview_renders_card(client: TestClient) -> None:
-    respx.get(DEFAULT_ECO_INFO_URL).mock(return_value=httpx.Response(200, json=_FAKE_INFO))
-    r = client.get("/preview")
-    assert r.status_code == 200
-    html = r.text
-    # Shell rendered
-    assert "<html" in html.lower()
-    # Card rendered (not the empty state)
-    assert "Eco" in html
-    # Player names are redacted
-    assert "alice" not in html
-    assert "bob" not in html
-
-
-@respx.mock
-def test_preview_handles_upstream_error(client: TestClient) -> None:
-    respx.get(DEFAULT_ECO_INFO_URL).mock(side_effect=httpx.ConnectError("refused"))
-    r = client.get("/preview")
-    assert r.status_code == 200
-    # Error partial should be spliced in; shell still returned OK.
-    assert "<html" in r.text.lower()
+    assert r.status_code == 404
+    assert r.json()["error"]
 
 
 @respx.mock
@@ -183,11 +154,11 @@ def test_preview_tool_json_suffix(client: TestClient) -> None:
 
 
 @respx.mock
-def test_preview_forwards_server_arg(client: TestClient) -> None:
+def test_preview_json_forwards_server_arg(client: TestClient) -> None:
     route = respx.get("http://eco.example.com:5679/info").mock(
         return_value=httpx.Response(200, json=_FAKE_INFO)
     )
-    r = client.get("/preview", params={"server": "eco.example.com:5679"})
+    r = client.get("/preview.json", params={"server": "eco.example.com:5679"})
     assert r.status_code == 200
     assert route.called
 

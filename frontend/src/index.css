@@ -336,6 +336,55 @@ a.dir-card:hover {
   color: var(--ink-soft);
 }
 
+.stat-detail strong {
+  color: var(--leaf);
+  font-weight: 700;
+}
+
+/* Source/sink accent bars on the climate page: amber = adds CO2 (watch),
+   mint = removes CO2 (good). */
+.stat-add {
+  border-left: 3px solid var(--meteor);
+}
+
+.stat-remove {
+  border-left: 3px solid var(--leaf);
+}
+
+/* Climate explainer — the plain-language "what to expect" narration, the
+   verbose pollution-machine-style readout. A translucent card with a mint
+   accent bar and arrow bullets. */
+.explainer {
+  margin: 0;
+  padding: 1.25rem 1.5rem 1.25rem 1.6rem;
+  list-style: none;
+  border-radius: 14px;
+  border: 1px solid var(--card-border);
+  border-left: 3px solid var(--leaf);
+  background: var(--card);
+  backdrop-filter: blur(6px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.explainer li {
+  position: relative;
+  padding-left: 1.1rem;
+  font-size: 1rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.explainer li::before {
+  content: "›";
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--leaf);
+  font-weight: 700;
+}
+
 /* --- Jobs page ---------------------------------------------------------- */
 
 .mock-banner {
