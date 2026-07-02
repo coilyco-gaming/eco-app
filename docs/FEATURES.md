@@ -20,7 +20,7 @@ One image, one uvicorn process, entrypoint `eco_mcp_app.http_app:app` on port 40
 
 Server plugins for the Eco game server. Built with the `build-mod-*` ward verbs, shipped to the server out of band.
 
-- **mods/jobs** - skills API plugin (`/api/v1/skills`) the jobs tracker consumes, plus a C# shell harness mirroring the API shape for local dev.
+- **mods/jobs** - skills API plugin (`/api/v1/skills` for the jobs tracker, `/api/v1/citizens` for the crafting atlas's id→name join) plus a C# shell harness mirroring the API shape for local dev.
 - **mods/replay** - player-action recorder writing the SQLite event log the replay browser reads.
 - **mods/telemetry** - logs, exception capture, Eco game + runtime metrics, and OTLP traces (plugin-init spans plus a slow-handler detector) inside the game server. Detail: [mods/telemetry/docs/FEATURES.md](../mods/telemetry/docs/FEATURES.md).
 
