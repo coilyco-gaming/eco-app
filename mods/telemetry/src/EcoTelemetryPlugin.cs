@@ -45,18 +45,28 @@ public sealed class EcoTelemetryPlugin : IModKitPlugin, IInitializablePlugin, IS
         this.pipeline = new TelemetryPipeline(this.config);
         this.pipeline.Start();
 
+        // pipeline.Start brought up the tracer, so this span (and the slow-handler
+        // spans below) have a listener from here on. Null when traces are disabled.
+        using var initSpan = TraceSurface.Start("eco.telemetry.init");
+
         if (this.pipeline.Logger is { } logger)
         {
-            this.exceptionCapture = new ExceptionCapture(logger, this.config.FirstChanceExceptionsEnabled);
-            this.exceptionCapture.Install();
+            TraceSurface.TrackHandler("eco.telemetry.init.exception_capture", () =>
+            {
+                this.exceptionCapture = new ExceptionCapture(logger, this.config.FirstChanceExceptionsEnabled);
+                this.exceptionCapture.Install();
+            });
 
             if (this.config.InterceptLogWriter)
             {
-                this.logInterceptor = new LogWriterInterceptor(logger);
-                if (!this.logInterceptor.TryInstall())
+                TraceSurface.TrackHandler("eco.telemetry.init.log_interceptor", () =>
                 {
-                    logger.LogWarning("EcoTelemetry: could not install log writer interceptor (reflection failed). Logs from Eco's Log.* will not be forwarded; exceptions still are.");
-                }
+                    this.logInterceptor = new LogWriterInterceptor(logger);
+                    if (!this.logInterceptor.TryInstall())
+                    {
+                        logger.LogWarning("EcoTelemetry: could not install log writer interceptor (reflection failed). Logs from Eco's Log.* will not be forwarded; exceptions still are.");
+                    }
+                });
             }
 
             logger.LogInformation("EcoTelemetry initialized: service={ServiceName} endpoint={Endpoint}",
@@ -67,7 +77,7 @@ public sealed class EcoTelemetryPlugin : IModKitPlugin, IInitializablePlugin, IS
         this.metricsWorker = new MetricsWorker(this.config, this.pipeline.Logger);
         if (this.pipeline.Meter is { } meter)
         {
-            this.metricsWorker.Install(meter);
+            TraceSurface.TrackHandler("eco.telemetry.init.metrics", () => this.metricsWorker.Install(meter));
         }
     }
 

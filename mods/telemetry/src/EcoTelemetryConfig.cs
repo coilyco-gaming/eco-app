@@ -29,12 +29,19 @@ public sealed class EcoTelemetryConfig
     public string OtlpMetricsProtocol { get; set; } = "";
     public string OtlpMetricsHeaders { get; set; } = "";
 
+    public string OtlpTracesEndpoint { get; set; } = "";
+    public string OtlpTracesProtocol { get; set; } = "";
+    public string OtlpTracesHeaders { get; set; } = "";
+
     public string ResolvedLogsEndpoint => Pick(this.OtlpLogsEndpoint, this.OtlpEndpoint);
     public string ResolvedLogsProtocol => Pick(this.OtlpLogsProtocol, this.OtlpProtocol);
     public string ResolvedLogsHeaders => Pick(this.OtlpLogsHeaders, this.OtlpHeaders);
     public string ResolvedMetricsEndpoint => Pick(this.OtlpMetricsEndpoint, this.OtlpEndpoint);
     public string ResolvedMetricsProtocol => Pick(this.OtlpMetricsProtocol, this.OtlpProtocol);
     public string ResolvedMetricsHeaders => Pick(this.OtlpMetricsHeaders, this.OtlpHeaders);
+    public string ResolvedTracesEndpoint => Pick(this.OtlpTracesEndpoint, this.OtlpEndpoint);
+    public string ResolvedTracesProtocol => Pick(this.OtlpTracesProtocol, this.OtlpProtocol);
+    public string ResolvedTracesHeaders => Pick(this.OtlpTracesHeaders, this.OtlpHeaders);
 
     private static string Pick(string specific, string fallback) => string.IsNullOrWhiteSpace(specific) ? fallback : specific;
 
@@ -43,6 +50,9 @@ public sealed class EcoTelemetryConfig
     public bool EnableTraces { get; set; } = false;
 
     public int MetricsIntervalSeconds { get; set; } = 15;
+
+    /// <summary>Slow-handler span threshold in ms. See docs/internals.md.</summary>
+    public int SlowHandlerThresholdMs { get; set; } = 100;
 
     /// <summary>Diagnostic dual export. See docs/internals.md.</summary>
     public bool EmitConsoleAlongsideOtlp { get; set; } = false;

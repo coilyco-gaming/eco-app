@@ -11,6 +11,7 @@ using OpenTelemetry.Exporter;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 /// <summary>Owns the OTel SDK objects per signal. See docs/internals.md.</summary>
 internal sealed class TelemetryPipeline : IDisposable
@@ -21,6 +22,7 @@ internal sealed class TelemetryPipeline : IDisposable
     public ILogger? Logger { get; private set; }
     public MeterProvider? MeterProvider { get; private set; }
     public Meter? Meter { get; private set; }
+    public TracerProvider? TracerProvider { get; private set; }
 
     private readonly EcoTelemetryConfig config;
     private ResourceBuilder? resourceBuilder;
@@ -46,6 +48,11 @@ internal sealed class TelemetryPipeline : IDisposable
         if (this.config.EnableMetrics)
         {
             this.StartMetrics(version);
+        }
+
+        if (this.config.EnableTraces)
+        {
+            this.StartTraces();
         }
     }
 
@@ -158,6 +165,31 @@ internal sealed class TelemetryPipeline : IDisposable
         }
     }
 
+    private void StartTraces()
+    {
+        var builder = Sdk.CreateTracerProviderBuilder()
+            .SetResourceBuilder(this.resourceBuilder!)
+            .AddSource(TraceSurface.ActivitySourceName);
+
+        if (string.IsNullOrWhiteSpace(this.config.ResolvedTracesEndpoint))
+        {
+            builder.AddConsoleExporter();
+        }
+        else
+        {
+            builder.AddOtlpExporter(otlp => ConfigureOtlp(
+                otlp,
+                this.config.ResolvedTracesEndpoint,
+                this.config.ResolvedTracesProtocol,
+                this.config.ResolvedTracesHeaders));
+        }
+
+        this.TracerProvider = builder.Build();
+
+        // The ActivitySource only records once a listener (this provider) is attached.
+        TraceSurface.Configure(this.config.SlowHandlerThresholdMs);
+    }
+
     private static void ConfigureOtlp(OtlpExporterOptions otlp, string endpoint, string protocol, string headers)
     {
         otlp.Endpoint = new Uri(endpoint);
@@ -180,6 +212,8 @@ internal sealed class TelemetryPipeline : IDisposable
 
     public void Dispose()
     {
+        this.TracerProvider?.Dispose();
+        this.TracerProvider = null;
         this.MeterProvider?.Dispose();
         this.MeterProvider = null;
         this.Meter?.Dispose();

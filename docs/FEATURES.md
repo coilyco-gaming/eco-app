@@ -22,7 +22,7 @@ Server plugins for the Eco game server. Built with the `build-mod-*` ward verbs,
 
 - **mods/jobs** - skills API plugin (`/api/v1/skills`) the jobs tracker consumes, plus a C# shell harness mirroring the API shape for local dev.
 - **mods/replay** - player-action recorder writing the SQLite event log the replay browser reads.
-- **mods/telemetry** - logs, metrics, and exception capture inside the game server. Detail: [mods/telemetry/docs/FEATURES.md](../mods/telemetry/docs/FEATURES.md).
+- **mods/telemetry** - logs, exception capture, Eco game + runtime metrics, and OTLP traces (plugin-init spans plus a slow-handler detector) inside the game server. Detail: [mods/telemetry/docs/FEATURES.md](../mods/telemetry/docs/FEATURES.md).
 
 ## Build and release
 
