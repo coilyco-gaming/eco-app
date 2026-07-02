@@ -14,7 +14,7 @@ commands:
     description: uv lock + uv sync with dev deps.
   test:
     run: make test
-    description: Run the pytest suite (tests/mcp + tests/jobs).
+    description: Run the pytest suite (tests/mcp + tests/jobs + tests/replay).
   lint:
     run: make lint
     description: ruff check + ruff format --check + mypy on src/ and tests/.

@@ -134,6 +134,31 @@ async def fetch_events(
     return rows[:limit]
 
 
+def _stats_from_db(db_path: str) -> dict:
+    uri = f"file:{db_path}?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)
+    try:
+        total = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+        return {"ready": True, "total": total}
+    finally:
+        conn.close()
+
+
+async def fetch_stats() -> dict:
+    """Mirror the mod's `/api/v1/events/stats`: `{ ready, total }`."""
+    if ECO_REPLAY_DB:
+        return _stats_from_db(ECO_REPLAY_DB)
+
+    if UPSTREAM_URL:
+        headers = {"X-API-Key": UPSTREAM_API_KEY} if UPSTREAM_API_KEY else {}
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{UPSTREAM_URL}/stats", headers=headers)
+            resp.raise_for_status()
+            return resp.json()
+
+    return {"ready": True, "total": len(_MOCK_EVENTS)}
+
+
 @app.get("/healthz")
 def healthz() -> JSONResponse:
     return JSONResponse({"ok": True})
@@ -163,3 +188,9 @@ async def api_events(
     """JSON mirror of the upstream mod endpoint, with mock fallback."""
     events = await fetch_events(citizen=citizen, type_=type_, limit=limit)
     return JSONResponse({"events": events, "count": len(events)})
+
+
+@app.get("/api/v1/events/stats")
+async def api_events_stats() -> JSONResponse:
+    """JSON mirror of the upstream mod `/stats` endpoint, with mock fallback."""
+    return JSONResponse(await fetch_stats())

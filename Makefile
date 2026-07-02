@@ -13,7 +13,7 @@ sync: ## uv lock + uv sync with dev deps.
 	uv lock
 	uv sync --group dev
 
-test: ## Run the pytest suite (tests/mcp + tests/jobs).
+test: ## Run the pytest suite (tests/mcp + tests/jobs + tests/replay).
 	uv run pytest
 
 lint: ## ruff check + ruff format --check + mypy on src/ and tests/.
