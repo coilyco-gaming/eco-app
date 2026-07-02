@@ -23,18 +23,29 @@
   //   "OtlpMetricsEndpoint": "http://<vmsingle-host>:8428/opentelemetry/api/v1/push",
   //   "OtlpMetricsProtocol": "HttpProtobuf",
   //   "OtlpMetricsHeaders": "",
+  //
+  // Traces example (OTLP-native span backend, e.g. Grafana Tempo / Jaeger collector):
+  //   "OtlpTracesEndpoint": "http://<tempo-host>:4318/v1/traces",
+  //   "OtlpTracesProtocol": "HttpProtobuf",
+  //   "OtlpTracesHeaders": "",
   "OtlpLogsEndpoint": "",
   "OtlpLogsProtocol": "",
   "OtlpLogsHeaders": "",
   "OtlpMetricsEndpoint": "",
   "OtlpMetricsProtocol": "",
   "OtlpMetricsHeaders": "",
+  "OtlpTracesEndpoint": "",
+  "OtlpTracesProtocol": "",
+  "OtlpTracesHeaders": "",
 
   "EnableLogs": true,
   "EnableMetrics": false,
   "EnableTraces": false,
 
   "MetricsIntervalSeconds": 15,
+
+  // Handlers slower than this (ms) get a trace span; faster ones are skipped.
+  "SlowHandlerThresholdMs": 100,
 
   "FirstChanceExceptionsEnabled": false,
   "InterceptLogWriter": true
