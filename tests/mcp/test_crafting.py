@@ -25,8 +25,9 @@ import respx
 
 from eco_mcp_app import crafting as crafting_mod
 from eco_mcp_app.crafting import (
-    CITIZEN_ATTRIBUTION_WARNING,
+    CITIZEN_NAMES_UNAVAILABLE_WARNING,
     CraftingAtlas,
+    _corrected_index,
     aggregate_rows,
     atlas_template_context,
     fetch_atlas,
@@ -38,8 +39,18 @@ CRAFT_URL = "http://eco.example.com:3001/api/v1/exporter/actions?actionName=Item
 HARVEST_URL = "http://eco.example.com:3001/api/v1/exporter/actions?actionName=HarvestOrHunt"
 CHOP_URL = "http://eco.example.com:3001/api/v1/exporter/actions?actionName=ChopTree"
 DIG_URL = "http://eco.example.com:3001/api/v1/exporter/actions?actionName=DigOrMine"
+CITIZENS_URL = "http://eco.example.com:3001/api/v1/citizens"
 
 BASE = "http://eco.example.com:3001"
+
+# id -> name join the crafting atlas fetches from the jobs mod (eco-app#5).
+_CITIZENS_JSON = [
+    {"id": 129312, "name": "coilysiren"},
+    {"id": 130409, "name": "ekans"},
+    {"id": 129580, "name": "redwood"},
+    {"id": 129558, "name": "salt"},
+    {"id": 4478, "name": "hammerhand"},
+]
 
 
 _CRAFT_CSV = (
@@ -109,14 +120,73 @@ def test_aggregate_rows_folds_craft_csv() -> None:
     by_station = dict(atlas.by_station)
     assert by_station["CampfireItem"] == 2
     assert by_station["WorkbenchItem"] == 2
-    # Citizen attribution is disabled (numeric ids / shifted rows, eco-app#5):
-    # always empty, with a payload warning instead.
-    assert atlas.by_citizen == []
-    assert CITIZEN_ATTRIBUTION_WARNING in atlas.warnings
+    # aggregate_rows keys by_citizen by the raw numeric id; name resolution
+    # happens later in fetch_atlas (eco-app#5). Count is the weight.
+    by_citizen = dict(atlas.by_citizen)
+    assert by_citizen["129312"] == pytest.approx(165.0)
+    assert by_citizen["129580"] == pytest.approx(197.0)
     # Flow edges exist for CampfireItem→CharredMushroomsItem etc.
     flow_keys = {(s, t) for s, t, _ in atlas.flows}
     assert ("CampfireItem", "CharredMushroomsItem") in flow_keys
     assert ("WorkbenchItem", "AdobeItem") in flow_keys
+
+
+def test_corrected_index_absorbs_extra_tool_column() -> None:
+    """A HarvestOrHunt row with an undeclared HandsItem column realigns."""
+    header = [
+        "Species",
+        "DamagedOrDestroyed",
+        "DestroyedByBlock",
+        "CaloriesToConsume",
+        "Position",
+        "Citizen",
+        "ActionLocation",
+        "Count",
+        "Time",
+    ]
+    # Extra "HandsItem" inserted before Position shifts every later field.
+    row = [
+        "BunchgrassSpecies",
+        "88",
+        "true",
+        "0.0",
+        "HandsItem",
+        "254,86,313",
+        "129312",
+        "254,86,313",
+        "173.0",
+        "3599",
+    ]
+    idx = _corrected_index(header, row)
+    # Citizen must land on the numeric id, Count on the numeric weight.
+    assert row[idx[header.index("Citizen")]] == "129312"
+    assert row[idx[header.index("Count")]] == "173.0"
+    assert row[idx[header.index("Position")]] == "254,86,313"
+
+
+def test_aggregate_rows_realigns_shifted_rows() -> None:
+    """Misaligned rows fold with correct Count and Citizen, not zeros/positions."""
+    atlas = CraftingAtlas(fetched_at_iso="t", source_base_url="b")
+    csv_text = (
+        "Species,DamagedOrDestroyed,DestroyedByBlock,CaloriesToConsume,"
+        "Position,Citizen,ActionLocation,Count,Time\n"
+        # Aligned row.
+        '"HuckleberrySpecies",87,false,0.0,"495,77,549",129569,"495,77,549",113.0,3598\n'
+        # Shifted row: extra HandsItem column before Position.
+        '"BunchgrassSpecies",88,true,0.0,"HandsItem","419,75,458",129312,'
+        '"419,75,458",173.0,3599\n'
+    )
+    aggregate_rows("HarvestOrHunt", _rows(csv_text), atlas)
+    by_item = dict(atlas.by_item)
+    # Both species fold with their real counts (the shifted row would have read
+    # Count as a position and dropped to 0 before the realign fix).
+    assert by_item["HuckleberrySpecies"] == pytest.approx(113.0)
+    assert by_item["BunchgrassSpecies"] == pytest.approx(173.0)
+    by_citizen = dict(atlas.by_citizen)
+    assert by_citizen["129312"] == pytest.approx(173.0)
+    assert by_citizen["129569"] == pytest.approx(113.0)
+    # The position triple never becomes a citizen id.
+    assert "419,75,458" not in by_citizen
 
 
 def test_aggregate_rows_drops_position_and_numeric_keys() -> None:
@@ -177,6 +247,7 @@ async def test_fetch_atlas_merges_multiple_actions() -> None:
     respx.get(HARVEST_URL).mock(return_value=httpx.Response(200, text=_HARVEST_CSV))
     respx.get(CHOP_URL).mock(return_value=httpx.Response(200, text=_CHOP_CSV))
     respx.get(DIG_URL).mock(return_value=httpx.Response(200, text=_DIG_EMPTY))
+    respx.get(CITIZENS_URL).mock(return_value=httpx.Response(200, json=_CITIZENS_JSON))
 
     atlas = await fetch_atlas(base_url=BASE, api_key="secret", cache_ttl_s=0)
     assert atlas.total_events == 5 + 2 + 2 + 0
@@ -191,7 +262,14 @@ async def test_fetch_atlas_merges_multiple_actions() -> None:
         "ChopTree": 2,
         "DigOrMine": 0,
     }
-    assert atlas.warnings == [CITIZEN_ATTRIBUTION_WARNING]
+    # Citizen ids resolved to names via the /api/v1/citizens join. coilysiren
+    # (129312) crafted 165 and harvested + chopped 173 + 7 = 345 total.
+    by_citizen = dict(atlas.by_citizen)
+    assert by_citizen["coilysiren"] == pytest.approx(165.0 + 173.0 + 7.0)
+    assert "salt" in by_citizen  # id 129558
+    # An id with no mapping falls back to a "Citizen #<id>" label, not dropped.
+    assert by_citizen["Citizen #129569"] == pytest.approx(113.0)
+    assert atlas.warnings == []
 
 
 @pytest.mark.asyncio
@@ -201,6 +279,7 @@ async def test_fetch_atlas_tolerates_partial_failures() -> None:
     respx.get(HARVEST_URL).mock(return_value=httpx.Response(401))
     respx.get(CHOP_URL).mock(side_effect=httpx.ConnectError("nope"))
     respx.get(DIG_URL).mock(return_value=httpx.Response(200, text=_DIG_EMPTY))
+    respx.get(CITIZENS_URL).mock(return_value=httpx.Response(200, json=_CITIZENS_JSON))
 
     atlas = await fetch_atlas(base_url=BASE, api_key=None, cache_ttl_s=0)
     # Still got the craft rows.
@@ -212,11 +291,28 @@ async def test_fetch_atlas_tolerates_partial_failures() -> None:
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_fetch_atlas_shows_ids_when_citizen_join_unavailable() -> None:
+    respx.get(CRAFT_URL).mock(return_value=httpx.Response(200, text=_CRAFT_CSV))
+    respx.get(HARVEST_URL).mock(return_value=httpx.Response(200, text=_DIG_EMPTY))
+    respx.get(CHOP_URL).mock(return_value=httpx.Response(200, text=_DIG_EMPTY))
+    respx.get(DIG_URL).mock(return_value=httpx.Response(200, text=_DIG_EMPTY))
+    # No citizens surface deployed yet (404) — ids show, dimension not dropped.
+    respx.get(CITIZENS_URL).mock(return_value=httpx.Response(404))
+
+    atlas = await fetch_atlas(base_url=BASE, api_key=None, cache_ttl_s=0)
+    by_citizen = dict(atlas.by_citizen)
+    assert by_citizen["Citizen #129312"] == pytest.approx(165.0)
+    assert CITIZEN_NAMES_UNAVAILABLE_WARNING in atlas.warnings
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_fetch_atlas_cache_hits_within_ttl() -> None:
     craft_route = respx.get(CRAFT_URL).mock(return_value=httpx.Response(200, text=_CRAFT_CSV))
     respx.get(HARVEST_URL).mock(return_value=httpx.Response(200, text=_HARVEST_CSV))
     respx.get(CHOP_URL).mock(return_value=httpx.Response(200, text=_CHOP_CSV))
     respx.get(DIG_URL).mock(return_value=httpx.Response(200, text=_DIG_EMPTY))
+    respx.get(CITIZENS_URL).mock(return_value=httpx.Response(200, json=_CITIZENS_JSON))
 
     a1 = await fetch_atlas(base_url=BASE, api_key="k", cache_ttl_s=60)
     a2 = await fetch_atlas(base_url=BASE, api_key="k", cache_ttl_s=60)
@@ -256,6 +352,7 @@ async def test_fetch_atlas_large_stream_stays_bounded(
     respx.get(HARVEST_URL).mock(return_value=httpx.Response(200, text=_DIG_EMPTY))
     respx.get(CHOP_URL).mock(return_value=httpx.Response(200, text=_DIG_EMPTY))
     respx.get(DIG_URL).mock(return_value=httpx.Response(200, text=_DIG_EMPTY))
+    respx.get(CITIZENS_URL).mock(return_value=httpx.Response(200, json=[]))
 
     atlas = await fetch_atlas(base_url=BASE, api_key="k", cache_ttl_s=0)
     assert atlas.per_action_counts["ItemCraftedAction"] == 5000
@@ -293,6 +390,7 @@ async def test_tool_call_returns_three_text_blocks(
     respx.get(HARVEST_URL).mock(return_value=httpx.Response(200, text=_HARVEST_CSV))
     respx.get(CHOP_URL).mock(return_value=httpx.Response(200, text=_CHOP_CSV))
     respx.get(DIG_URL).mock(return_value=httpx.Response(200, text=_DIG_EMPTY))
+    respx.get(CITIZENS_URL).mock(return_value=httpx.Response(200, json=_CITIZENS_JSON))
 
     mcp = build_server()
     handler = mcp.request_handlers[mt.CallToolRequest]

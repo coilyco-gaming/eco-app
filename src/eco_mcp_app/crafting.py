@@ -59,16 +59,99 @@ DEFAULT_CACHE_TTL_S = float(os.environ.get("ECO_CRAFTING_CACHE_TTL", "300"))
 MAX_ROWS_PER_ACTION = int(os.environ.get("ECO_CRAFTING_MAX_ROWS", "500000"))
 
 # Exporter rows sometimes carry an extra tool column the header doesn't
-# declare, shifting every later field - header-indexed picks then read a
-# position triple ("254,86,313") or bare number ("0.0") where a name belongs.
-# Keys of that shape are never legitimate items/stations, so they're dropped
-# at fold time. Citizen attribution is disabled outright: even aligned rows
-# hold a numeric user id with no name mapping. See eco-app#5.
+# declare (e.g. HarvestOrHunt rows gain "HandsItem" before Position), shifting
+# every later field. `_corrected_index` detects and absorbs that column so
+# header-keyed picks land on the right value; keys that still parse as a
+# position triple / bare number are never legitimate items/stations, so they
+# are dropped at fold time. See eco-app#5.
 _NONSENSE_KEY_RE = re.compile(r"^-?\d+(?:\.\d+)?(?:,-?\d+(?:\.\d+)?)*$")
-CITIZEN_ATTRIBUTION_WARNING = (
-    "citizen attribution disabled: exporter Citizen column is unstable "
-    "(numeric ids / shifted positions) - see eco-app#5"
+
+# Citizen is a numeric in-game user id in the exporter CSV; names come from a
+# separate join against the jobs mod's /api/v1/citizens surface. When that
+# surface is unreachable we still show the ids rather than dropping the
+# dimension - this warning flags that the labels are ids, not names.
+CITIZEN_NAMES_UNAVAILABLE_WARNING = (
+    "citizen names unavailable (/api/v1/citizens) - showing numeric ids, see eco-app#5"
 )
+
+_POSITION_RE = re.compile(r"^-?\d+,-?\d+,-?\d+$")
+_INT_RE = re.compile(r"^-?\d+$")
+
+
+def _is_float(v: str) -> bool:
+    try:
+        float(v)
+    except ValueError:
+        return False
+    return True
+
+
+def _looks_like_name(v: str) -> bool:
+    """A PascalCase item/species id - anything that isn't a number/position."""
+    return not _NONSENSE_KEY_RE.match(v)
+
+
+# Value-shape validators for the columns we can recognize on sight. Only used
+# to realign rows that carry an undeclared extra column: we score each
+# candidate insertion point by how well the shifted columns match these shapes
+# and keep the best fit. Both typed columns (numbers/positions) and name
+# columns are validated so a shift that pushes a name into a numeric slot (or
+# vice-versa) scores worse. Names span every action shape we aggregate plus the
+# economy actions the same realign path will serve later.
+_COLUMN_SHAPE: dict[str, Any] = {
+    "Count": _is_float,
+    "Time": lambda v: bool(_INT_RE.match(v)),
+    "Position": lambda v: bool(_POSITION_RE.match(v)),
+    "ActionLocation": lambda v: bool(_POSITION_RE.match(v)),
+    "Citizen": lambda v: bool(_INT_RE.match(v)),
+    "Buyer": lambda v: bool(_INT_RE.match(v)),
+    "Seller": lambda v: bool(_INT_RE.match(v)),
+    "ShopOwner": lambda v: bool(_INT_RE.match(v)),
+    "Species": _looks_like_name,
+    "WorldObjectItem": _looks_like_name,
+    "ItemUsed": _looks_like_name,
+    "ToolUsed": _looks_like_name,
+    "BlockItemOnDestroy": _looks_like_name,
+    "BlockDestroyed": _looks_like_name,
+}
+
+
+def _corrected_index(header: list[str], row: list[str]) -> list[int]:
+    """Map each header column to its real index in `row`.
+
+    The exporter occasionally inserts one or more undeclared columns (a tool
+    item like "HandsItem") contiguously before some header position, shifting
+    every later field right. We recover the shift by trying each candidate
+    insertion point and scoring how well the recognizable columns
+    (`_COLUMN_SHAPE`) validate under it, then return the index map for the best
+    fit. Aligned rows (and the rare short row) get the identity map. See
+    eco-app#5.
+    """
+    n = len(header)
+    extra = len(row) - n
+    if extra <= 0:
+        return list(range(n))
+
+    typed = [(i, name) for i, name in enumerate(header) if name in _COLUMN_SHAPE]
+    best_p = 0
+    best_score: int | None = None
+    for p in range(n + 1):
+        score = 0
+        for i, name in typed:
+            ri = i if i < p else i + extra
+            if ri >= len(row):
+                continue
+            v = row[ri].strip()
+            if not v:
+                continue  # empty cells (missing tool, no item) are neutral
+            score += 1 if _COLUMN_SHAPE[name](v) else -1
+        # `>=` so that among equally-scoring insertion points we keep the
+        # latest, which leaves the most leading columns at their header index -
+        # the correct choice when the columns before the true insertion point
+        # aren't typed enough to distinguish it.
+        if best_score is None or score >= best_score:
+            best_score, best_p = score, p
+    return [i if i < best_p else i + extra for i in range(n)]
 
 
 @dataclass
@@ -247,10 +330,11 @@ def aggregate_rows(
 
     col = {name: i for i, name in enumerate(header)}
 
-    def pick(row: list[str], *candidates: str) -> str | None:
+    def pick(row: list[str], idx: list[int], *candidates: str) -> str | None:
         for c in candidates:
-            if c in col and col[c] < len(row):
-                v = row[col[c]].strip()
+            j = col.get(c)
+            if j is not None and idx[j] < len(row):
+                v = row[idx[j]].strip()
                 if v:
                     return v
         return None
@@ -259,6 +343,9 @@ def aggregate_rows(
     # call-side via closure-like bags so each call can fold into shared totals.
     by_item: dict[str, float] = dict(atlas.by_item)
     by_station: dict[str, int] = dict(atlas.by_station)
+    # by_citizen holds raw numeric ids here; fetch_atlas resolves them to names
+    # once, after every action has folded. See eco-app#5.
+    by_citizen: dict[str, float] = dict(atlas.by_citizen)
     flows: dict[tuple[str, str], float] = {(s, t): c for s, t, c in atlas.flows}
 
     consumed = 0
@@ -270,8 +357,10 @@ def aggregate_rows(
                 f"{action_name}: truncated at {max_rows} rows (late-cycle size cap)"
             )
             break
+        # Absorb any undeclared extra column so header-keyed picks stay aligned.
+        idx = _corrected_index(header, row)
         try:
-            count = float(pick(row, "Count") or "0")
+            count = float(pick(row, idx, "Count") or "0")
         except ValueError:
             count = 0.0
         # Item: for crafts the output is ItemUsed; for harvests/chops the
@@ -279,6 +368,7 @@ def aggregate_rows(
         item = (
             pick(
                 row,
+                idx,
                 "ItemUsed",
                 "Species",
                 "BlockItemOnDestroy",
@@ -288,10 +378,13 @@ def aggregate_rows(
         )
         # Station: only crafts have a distinct WorldObjectItem; harvests are
         # hand/tool-driven, record the tool when we have it.
-        station = pick(row, "WorldObjectItem", "ToolUsed") or "(hand)"
+        station = pick(row, idx, "WorldObjectItem", "ToolUsed") or "(hand)"
+        # Citizen: a numeric user id (resolved to a name later). Anything not a
+        # bare integer is a residual misalignment artifact - skip it.
+        citizen = pick(row, idx, "Citizen")
 
-        # Misaligned rows put positions/numbers where names belong - drop
-        # those keys rather than render them. See eco-app#5.
+        # Rows that still put positions/numbers where names belong - drop those
+        # keys rather than render them. See eco-app#5.
         if item and _NONSENSE_KEY_RE.match(item):
             item = ""
         if station and _NONSENSE_KEY_RE.match(station):
@@ -303,21 +396,75 @@ def aggregate_rows(
             by_station[station] = by_station.get(station, 0) + 1
         if station and item:
             flows[(station, item)] = flows.get((station, item), 0.0) + count
+        if citizen and _INT_RE.match(citizen):
+            by_citizen[citizen] = by_citizen.get(citizen, 0.0) + count
         consumed += 1
 
     atlas.total_events += consumed
     atlas.per_action_counts[action_name] = atlas.per_action_counts.get(action_name, 0) + consumed
     atlas.by_item = sorted(by_item.items(), key=lambda kv: kv[1], reverse=True)
     atlas.by_station = sorted(by_station.items(), key=lambda kv: kv[1], reverse=True)
-    atlas.by_citizen = []
-    if consumed and CITIZEN_ATTRIBUTION_WARNING not in atlas.warnings:
-        atlas.warnings.append(CITIZEN_ATTRIBUTION_WARNING)
+    atlas.by_citizen = sorted(by_citizen.items(), key=lambda kv: kv[1], reverse=True)
     atlas.flows = sorted(
         ((s, t, c) for (s, t), c in flows.items()),
         key=lambda edge: edge[2],
         reverse=True,
     )
     return consumed
+
+
+async def _fetch_citizen_names(
+    client: httpx.AsyncClient,
+    base_url: str,
+    headers: dict[str, str],
+    atlas: CraftingAtlas,
+) -> dict[str, str]:
+    """Fetch the id -> display-name map from the jobs mod's citizens surface.
+
+    The exporter keys Citizen by a numeric in-game user id; only the jobs mod
+    (running inside the Eco process, with UserManager access) can join that id
+    to a name. Best-effort: a missing / erroring endpoint is a non-fatal
+    warning, and callers fall back to showing the bare ids. See eco-app#5.
+    """
+    url = f"{base_url}/api/v1/citizens"
+    try:
+        resp = await client.get(url, headers=headers)
+        resp.raise_for_status()
+        payload = resp.json()
+    except (httpx.HTTPError, ValueError) as e:
+        atlas.warnings.append(f"citizens: {type(e).__name__}: {e}")
+        return {}
+    mapping: dict[str, str] = {}
+    for entry in payload or []:
+        cid = entry.get("id")
+        name = entry.get("name")
+        if cid is not None and name:
+            mapping[str(cid)] = str(name)
+    return mapping
+
+
+def _apply_citizen_names(atlas: CraftingAtlas, name_map: dict[str, str]) -> None:
+    """Rewrite by_citizen id keys to display names, in place.
+
+    Unmapped ids render as ``Citizen #<id>`` so a player the join misses still
+    shows up ranked rather than vanishing. When nothing resolved we flag it so
+    the card reads as "ids, not names" instead of silently wrong.
+    """
+    if not atlas.by_citizen:
+        return
+    resolved: dict[str, float] = {}
+    matched = 0
+    for cid, count in atlas.by_citizen:
+        name = name_map.get(cid)
+        if name is None:
+            label = f"Citizen #{cid}"
+        else:
+            label = name
+            matched += 1
+        resolved[label] = resolved.get(label, 0.0) + count
+    atlas.by_citizen = sorted(resolved.items(), key=lambda kv: kv[1], reverse=True)
+    if matched == 0 and CITIZEN_NAMES_UNAVAILABLE_WARNING not in atlas.warnings:
+        atlas.warnings.append(CITIZEN_NAMES_UNAVAILABLE_WARNING)
 
 
 async def fetch_atlas(
@@ -378,6 +525,12 @@ async def fetch_atlas(
                 atlas.warnings.append(f"{action}: HTTP {e.response.status_code}")
             except httpx.HTTPError as e:
                 atlas.warnings.append(f"{action}: {type(e).__name__}: {e}")
+
+        # Join the accumulated numeric Citizen ids to display names once every
+        # action has folded. Skipped when no citizen rows survived. See eco-app#5.
+        if atlas.by_citizen:
+            name_map = await _fetch_citizen_names(http, normalized, headers, atlas)
+            _apply_citizen_names(atlas, name_map)
     finally:
         if owns_client:
             await http.aclose()

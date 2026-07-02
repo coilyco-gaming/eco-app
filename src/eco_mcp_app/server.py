@@ -1017,7 +1017,7 @@ def _format_crafting_markdown(ctx: dict[str, Any]) -> str:
         lines.append("")
         lines.append("**Top crafters:**")
         for i, c in enumerate(ctx["top_citizens"][:10], 1):
-            lines.append(f"{i}. Citizen #{c['name']} — {c['count']:,.0f}")
+            lines.append(f"{i}. {c['name']} — {c['count']:,.0f}")
     if ctx["warnings"]:
         lines.append("")
         for w in ctx["warnings"]:

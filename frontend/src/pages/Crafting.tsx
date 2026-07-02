@@ -47,6 +47,31 @@ function RankTable({ rows, filter, emptyNote, onPick }: RankTableProps) {
   )
 }
 
+// Top crafters ranks citizens by production count. Names arrive already
+// resolved from the server's id→name join (or a "Citizen #<id>" fallback), so
+// unlike items/stations they are shown verbatim — no Eco-id prettifying. This
+// list doesn't feed the ?q filter, which only makes sense for items/stations.
+function CrafterList({ rows }: { rows: Array<[string, number]> }) {
+  const top = rows.slice(0, TOP_N)
+  const max = Math.max(...top.map(([, count]) => count), 1)
+  if (top.length === 0) {
+    return <p className="empty-note">No citizen production recorded.</p>
+  }
+  return (
+    <ul className="rank-rows">
+      {top.map(([name, count]) => (
+        <li key={name}>
+          <div className="rank-row" data-testid="crafter-row">
+            <span className="rank-name">{name}</span>
+            <span className="rank-count">{formatCount(count)}</span>
+            <span className="rank-bar" style={{ width: `${(count / max) * 100}%` }} />
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export default function Crafting() {
   const [atlas, setAtlas] = useState<CraftingAtlas | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -129,6 +154,11 @@ export default function Crafting() {
               />
             </section>
           </div>
+
+          <section>
+            <h2 className="section-title">Top crafters</h2>
+            <CrafterList rows={atlas.byCitizen} />
+          </section>
 
           <section className="dir-cards">
             <Link className="dir-card" to="/economy" data-testid="link-economy">

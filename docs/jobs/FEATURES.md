@@ -19,13 +19,14 @@ Three pieces: a C# Eco mod exposing a read-only HTTP endpoint of every player's 
 
 - **`GET /api/v1/skills` endpoint** - ModKit UserCode mod, `[ApiController]` picked up by Eco's ASP.NET host.
 - **Every player's learned specialties** - Iterates `UserManager.Users`, filters `Level > 0 && IsSpecialty`, returns name/level/max-level + online state.
+- **`GET /api/v1/citizens` endpoint** - Iterates `UserManager.Users` returning `{id, name}`. Exposes the numeric in-game user id the action exporter keys `Citizen` by (the admin `/api/v1/users` surface omits it), so the crafting atlas can join exporter ids to display names ([eco-app#5](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/5)).
 - **Auth via Eco's admin-token middleware** - Same `X-API-Key` gate as the rest of `/api/v1/*`. No bespoke auth.
 - **Dual-attribute DTOs** - Records carry `System.Text.Json` and `Newtonsoft.Json` camelCase attributes, serializing identically under either pipeline.
 - **mod.io distribution** - Listing copy + zip-shape in `mod/modio.md`.
 
 ## Shell harness (`mod/shell/`)
 
-- **Standalone ASP.NET mock on `:5100`** - Same route, same DTOs (`<Compile Include>`-linked), canned data. Iterate without booting Eco.
+- **Standalone ASP.NET mock on `:5100`** - Same routes (`/api/v1/skills`, `/api/v1/citizens`), same DTOs (`<Compile Include>`-linked), canned data. Iterate without booting Eco.
 
 ## Deploy and ops
 

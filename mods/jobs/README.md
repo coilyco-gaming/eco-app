@@ -4,8 +4,8 @@ Two projects share one solution (`eco-jobs-tracker.sln`):
 
 | Project | Purpose | Runs where |
 |---|---|---|
-| `src/EcoJobsTracker.csproj` | The real mod. Exposes `GET /api/v1/skills` from inside the Eco server process by declaring an `[ApiController]` that Eco's ASP.NET Core host picks up via `AddApplicationPart`. | Eco dedicated server, after `dotnet build -c Release` and dropping the resulting DLL into `Server/Mods/<Name>/`. |
-| `shell/EcoJobsTracker.Shell.csproj` | Standalone ASP.NET Core harness. Same route, same DTOs, mock data. Lets the Python tracker iterate against a real C# HTTP server without booting Eco. | `localhost:5100`, launched by `make run-shell` from the repo root. |
+| `src/EcoJobsTracker.csproj` | The real mod. Exposes `GET /api/v1/skills` (learned specialties) and `GET /api/v1/citizens` (numeric user id → name, for the crafting atlas's citizen join, [eco-app#5](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/5)) from inside the Eco server process by declaring `[ApiController]`s that Eco's ASP.NET Core host picks up via `AddApplicationPart`. | Eco dedicated server, after `dotnet build -c Release` and dropping the resulting DLL into `Server/Mods/<Name>/`. |
+| `shell/EcoJobsTracker.Shell.csproj` | Standalone ASP.NET Core harness. Same routes, same DTOs, mock data. Lets the Python tracker iterate against a real C# HTTP server without booting Eco. | `localhost:5100`, launched by `make run-shell` from the repo root. |
 
 DTOs (`src/Dtos.cs`) are shared — the shell project `<Compile Include>`s the file, so any change to the shape propagates to both.
 

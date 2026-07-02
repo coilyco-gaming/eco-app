@@ -16,7 +16,10 @@ const ATLAS = {
     ["(hand)", 2471],
     ["GreenhouseItem", 1003],
   ],
-  byCitizen: [],
+  byCitizen: [
+    ["coilysiren", 8421],
+    ["Citizen #129569", 5102],
+  ],
   flows: [],
   perActionCounts: { ItemCraftedAction: 8261, HarvestOrHunt: 2471, ChopTree: 1076, DigOrMine: 2443 },
   warnings: [],
@@ -59,6 +62,18 @@ describe("Crafting", () => {
     expect(screen.getByText("Flax Seed")).toBeInTheDocument()
     expect(screen.getByText("Greenhouse")).toBeInTheDocument()
     expect(screen.getByTestId("link-economy")).toHaveAttribute("href", "/economy")
+  })
+
+  it("ranks citizens by production with names shown verbatim", async () => {
+    stubAtlasFetch()
+    renderCrafting()
+
+    await waitFor(() => {
+      expect(screen.getByText("coilysiren")).toBeInTheDocument()
+    })
+    // Unmapped ids fall back to a "Citizen #<id>" label, rendered as-is.
+    expect(screen.getByText("Citizen #129569")).toBeInTheDocument()
+    expect(screen.getAllByTestId("crafter-row")).toHaveLength(2)
   })
 
   it("honors a ?q= deep link by filtering both tables", async () => {

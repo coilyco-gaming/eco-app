@@ -122,7 +122,7 @@
         {% for c in top_citizens %}
           <li>
             <span class="rank">{{ loop.index }}.</span>
-            <span class="name">Citizen #{{ c.name }}</span>
+            <span class="name">{{ c.name }}</span>
             <span class="count">{{ fmt(c.count) }}</span>
             <span class="bar-wrap"><span class="bar" style="--w:{{ '%.1f' % c.pct }}%"></span></span>
           </li>

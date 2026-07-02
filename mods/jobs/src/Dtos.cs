@@ -16,3 +16,11 @@ public record PlayerSkillsDto(
     [property: JsonPropertyName("player"), JsonProperty("player")] string Player,
     [property: JsonPropertyName("lastSeen"), JsonProperty("lastSeen")] string? LastSeen,
     [property: JsonPropertyName("specialties"), JsonProperty("specialties")] SpecialtyDto[] Specialties);
+
+// id is the numeric in-game user id the action exporter keys Citizen by; name
+// is the display name. The crafting atlas joins exporter ids to names through
+// this, since only in-process UserManager access can bridge the two. See
+// eco-app#5.
+public record CitizenDto(
+    [property: JsonPropertyName("id"), JsonProperty("id")] int Id,
+    [property: JsonPropertyName("name"), JsonProperty("name")] string Name);

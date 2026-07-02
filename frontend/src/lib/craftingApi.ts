@@ -1,5 +1,6 @@
 // Typed client for the crafting atlas (/preview/get_eco_crafting_atlas.json).
-// byCitizen ships empty until exporter citizen attribution is fixed (eco-app#5).
+// byCitizen carries display names joined from the jobs mod's /api/v1/citizens
+// surface, falling back to "Citizen #<id>" when a name is missing (eco-app#5).
 
 export interface CraftingAtlas {
   fetchedAtISO: string
