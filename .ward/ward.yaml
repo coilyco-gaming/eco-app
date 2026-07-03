@@ -74,7 +74,8 @@ catalog:
   owner: kai
   lifecycle: production
   description: "The Eco application monorepo: MCP/web service (eco_mcp_app), jobs tracker mounted at /jobs (eco_spec_tracker), replay viewer (eco_replay), and the in-game C# plugins under mods/. One fused image; deploy surface lives in coilyco-bridge/deploy."
-  dependsOn: []
+  dependsOn:
+    - github.com/StrangeLoopGames/Eco
   providesApis:
     - eco-mcp
     - eco-jobs
