@@ -17,18 +17,29 @@ The issue floated a fast path: if Eco Gnome were Blazor **WASM**, its `wwwroot` 
 - The app is **Blazor Server**, not WASM. `Components/App.razor` renders with `@rendermode="@InteractiveServer"`, and `ecocraft.csproj` is `Microsoft.NET.Sdk.Web` on `net9.0` with a `FrameworkReference` to `Microsoft.AspNetCore.App`. It runs as `dotnet ecocraft.dll`, a live ASP.NET Core process, not a static bundle.
 - It needs a **PostgreSQL** database. The csproj pulls `Microsoft.EntityFrameworkCore` and `Npgsql.EntityFrameworkCore.PostgreSQL`, carries EF `Migrations/`, and the compose file stands up `postgres:17` with a `ConnectionStrings__DefaultConnection`.
 - It needs **persistent volumes** and **data-protection keys**. The upstream `docker-compose.yml` mounts `app-assets`, `app-videos`, and `app-dpkeys`, and `entrypoint.sh` seeds `eco-icons` and `lang` into the assets volume on start.
-- Initial data comes from a **DataMigrator** that loads a SQLite `ecocraft.db` (vanilla Eco data, `ecocraft/eco_gnome_data.json`) into Postgres.
+- Vanilla item/recipe data ships bundled in the image (`ecocraft/eco_gnome_data.json`) and imports through the app's own ImportData path after first boot. (The upstream `DataMigrator`, a SQLite `ecocraft.db` -> Postgres tool, is their internal migration and needs a `.db` the repo does not ship, so it is not our seed path.)
 
-So self-hosting is a stateful second service, not a static publish. It cannot be baked into eco-app's single Python image, and it needs a build toolchain (the .NET 9 SDK) this repo does not otherwise carry.
+So self-hosting is a stateful second service, not a static publish. It cannot be baked into eco-app's single Python image - but it needs **no build here**: the upstream publishes `ghcr.io/eco-gnome/eco-gnome-website` (and a `-migrator`), so the deploy slot pins that image directly, the open-webui pattern.
 
-## Deploy shape (belongs in coilyco-bridge/deploy)
+## Deploy slot (landed in coilyco-bridge/deploy/services/eco-gnome)
 
-Per the layer invariant (`infra -> eco-app -> deploy`), the calculator's runtime lands in the deploy repo's `services/eco-app` slot, not here. The new pieces a deploy change needs:
+Per the layer invariant (`infra -> eco-app -> deploy`), the calculator's runtime lives in the deploy repo, not here. That slot now exists at [`coilyco-bridge/deploy/services/eco-gnome`](https://forgejo.coilysiren.me/coilyco-bridge/deploy) - a `deploy/main.yml` + `namespace.yml` + `scripts/rollout.sh`, the `services/eco-app` envsubst pattern. What it stands up:
 
-- A **Postgres** for the calculator (a small StatefulSet or a shared instance), with a connection string wired in.
-- A **calculator Deployment** running the `mcr.microsoft.com/dotnet/aspnet:9.0` based image built from a fork of eco-gnome-website, with volumes for assets, videos, and dpkeys.
-- An **ingress route** onto `eco-app.coilysiren.me`. A subpath like `/calculator` needs Blazor's `<base href>` and the SignalR `_blazor` websocket path handled, so a dedicated host or subdomain is the simpler first cut. The `/calculator` SPA page then links to whatever host the deploy claims.
-- The fork itself. Preserve the MIT `LICENSE` and the Eco-Gnome attribution. eco-gnome-website ships no `LICENSE` file despite its MIT README, so a self-host should add one carrying the upstream copyright.
+- The **upstream published image**, not a fork build. eco-gnome-website publishes `ghcr.io/eco-gnome/eco-gnome-website` (and a `-migrator`); the deploy pins it by digest, the open-webui pattern. No .NET build, no fork repo needed for Phase 1 (a fork comes later, only for the house-style reskin).
+- A **Postgres** (`postgres:17`) Deployment + a `local-path` PVC, its password synced from SSM `/eco-gnome/postgres-password` by an ExternalSecret into both the DB and the app connection string. The app **self-applies its EF migrations on boot** (with a retry loop while Postgres warms), so no migration Job - a fresh DB schemas itself.
+- Three `local-path` PVCs for the volume mounts the image expects: `/app/wwwroot/assets`, `/app/wwwroot/videos`, and `/app/dpkeys` (data-protection keys).
+- A public **Traefik ingress** on a dedicated host, **eco-gnome.coilysiren.me** (not an `eco-app.coilysiren.me/calculator` subpath: Blazor's `<base href>` + the SignalR `_blazor` websocket make a subpath deploy fiddly). cert-manager `letsencrypt-production` TLS + ExternalDNS.
+
+The MIT license + Eco-Gnome attribution are preserved in the slot's `ATTRIBUTION.md`, since we run their published image rather than vendoring their source.
+
+### Remaining to go live (operator, on kai-server)
+
+The deploy artifacts are complete; going live is the standard operator rollout, the same boundary every service here has:
+
+1. Put the DB password at SSM `/eco-gnome/postgres-password`.
+2. Grant the CD `deployer` SA a RoleBinding in the `coilysiren-eco-gnome` namespace (infra), or roll by hand: `bash services/eco-gnome/scripts/rollout.sh`.
+3. After first boot, import vanilla Eco data through the app (the bundled `eco_gnome_data.json`).
+4. Point this `/calculator` page's primary link at `https://eco-gnome.coilysiren.me` once it serves.
 
 ## Phase 2 - Sirens' own numbers
 

@@ -6,8 +6,10 @@ import Layout from "../components/Layout"
 // public instance; the roadmap (issue #40) is a self-hosted instance on
 // eco-app.coilysiren.me fed by Sirens' own recipe/skill data via the
 // DataExporter mod, so the pricing matches this server, not vanilla Eco.
-// The self-host is a deploy-repo change (a Blazor Server + Postgres service)
-// and is scoped in docs/calculator.md. Not built from scratch by design.
+// The self-host deploy slot (Blazor Server + Postgres, pinned upstream image)
+// now lives in coilyco-bridge/deploy/services/eco-gnome and serves at
+// eco-gnome.coilysiren.me once rolled out; scoped in docs/calculator.md. Not
+// built from scratch by design.
 const ECO_GNOME_URL = "https://eco-gnome.com"
 const ECO_GNOME_REPO = "https://github.com/Eco-Gnome/eco-gnome-website"
 const ECO_GNOME_MOD = "https://github.com/Eco-Gnome/eco-gnome-mod"
@@ -55,10 +57,11 @@ export default function Calculator() {
       <h2 className="section-title">The road to server-accurate prices</h2>
       <ul className="explainer" data-testid="calc-roadmap">
         <li>
-          <strong>Phase 1 - live on our domain.</strong> Self-host the MIT Eco Gnome calculator on
-          eco-app.coilysiren.me, unchanged, so there is a working calculator on the site fast. It
-          is a Blazor Server service with a Postgres backend, so it lands as its own deploy slot in
-          the deploy repo, not baked into the fused image.
+          <strong>Phase 1 - live on our domain.</strong> Self-host the MIT Eco Gnome calculator,
+          unchanged, so there is a working calculator on the site fast. The deploy slot is built
+          (a Blazor Server + Postgres service in coilyco-bridge/deploy, pinning the upstream image,
+          not baked into the fused Python image); once rolled out on kai-server it serves at{" "}
+          <strong>eco-gnome.coilysiren.me</strong>.
         </li>
         <li>
           <strong>Phase 2 - Sirens' own numbers.</strong> Export Sirens' modded recipes, skills,
