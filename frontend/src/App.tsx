@@ -1,4 +1,5 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom"
+import Calculator from "./pages/Calculator"
 import Climate from "./pages/Climate"
 import Crafting from "./pages/Crafting"
 import Economy from "./pages/Economy"
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="/economy" element={<Economy />} />
         <Route path="/crafting" element={<Crafting />} />
         <Route path="/climate" element={<Climate />} />
+        <Route path="/calculator" element={<Calculator />} />
       </Routes>
     </BrowserRouter>
   )
