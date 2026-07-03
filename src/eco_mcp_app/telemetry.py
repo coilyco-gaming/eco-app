@@ -12,12 +12,15 @@ the production pod wired in via the ExternalSecret in deploy/main.yml.
 
 from __future__ import annotations
 
+import logging
 import os
 
 import sentry_sdk
 import sentry_sdk.integrations.fastapi as sentry_fastapi
 import sentry_sdk.integrations.logging as sentry_logging
 import sentry_sdk.integrations.starlette as sentry_starlette
+
+_log = logging.getLogger(__name__)
 
 _initialized = False
 
@@ -29,15 +32,23 @@ def init_sentry() -> None:
         return
     dsn = os.getenv("SENTRY_DSN")
     if dsn:
-        sentry_sdk.init(
-            dsn=dsn,
-            enable_logs=True,
-            integrations=[
-                sentry_starlette.StarletteIntegration(),
-                sentry_fastapi.FastApiIntegration(),
-                sentry_logging.LoggingIntegration(),
-            ],
-        )
+        try:
+            sentry_sdk.init(
+                dsn=dsn,
+                enable_logs=True,
+                integrations=[
+                    sentry_starlette.StarletteIntegration(),
+                    sentry_fastapi.FastApiIntegration(),
+                    sentry_logging.LoggingIntegration(),
+                ],
+            )
+        except Exception:
+            # A truthy-but-malformed SENTRY_DSN (e.g. missing scheme) makes
+            # sentry_sdk raise BadDsn. Telemetry misconfig must never crash the
+            # service, so log-and-skip exactly as an unset DSN already does,
+            # rather than crash-looping the pod at boot. See eco-app#43.
+            _log.warning("SENTRY_DSN is set but invalid; continuing without Sentry", exc_info=True)
+            sentry_sdk.init()
     else:
         sentry_sdk.init()
     _initialized = True
