@@ -70,6 +70,7 @@ describe("Climate", () => {
     expect(screen.getByText("14.9 °C")).toBeInTheDocument()
     expect(screen.getByText("From pollution")).toBeInTheDocument()
     expect(screen.getByText("From plants")).toBeInTheDocument()
+    expect(screen.getByTestId("climate-effects-explainer")).toHaveTextContent("pinned to the simulation floor")
   })
 
   it("degrades when the snapshot fetch fails", async () => {

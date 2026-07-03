@@ -101,6 +101,12 @@ export default function Climate() {
 
   const eff = snap?.effects
   const warnTone = snap && snap.status !== "stable" && snap.status !== "unknown"
+  const pollutionIntro =
+    snap?.pollution.current != null
+      ? `Ground pollution is currently ${snap.pollution.current.toFixed(1)}%, from ${
+          snap.pollution.source === "none" ? "no live series" : snap.pollution.source
+        }.`
+      : "Ground pollution is not available for this server right now."
 
   return (
     <Layout fetchedAtISO={snap?.fetched_at_iso}>
@@ -178,6 +184,13 @@ export default function Climate() {
               <p className="intro">
                 <span>Eco's default climate ruleset — a server admin can retune these.</span>
               </p>
+              <p className="intro">
+                <span>
+                  {pollutionIntro} Rising CO₂ drives temperature and sea level once the world
+                  crosses the configured thresholds, so the practical effect is slower heat,
+                  wetter coasts, and a tougher time keeping low ground dry.
+                </span>
+              </p>
               <div className="stats">
                 <div className="stat">
                   <p className="stat-value">Temperature rise</p>
@@ -208,6 +221,13 @@ export default function Climate() {
                   </p>
                 </div>
               </div>
+              {snap.explainer.length > 0 && (
+                <ul className="explainer" data-testid="climate-effects-explainer">
+                  {snap.explainer.map((line, i) => (
+                    <li key={i}>{line}</li>
+                  ))}
+                </ul>
+              )}
             </section>
           )}
         </>
