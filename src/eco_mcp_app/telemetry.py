@@ -47,8 +47,12 @@ def init_sentry() -> None:
             # sentry_sdk raise BadDsn. Telemetry misconfig must never crash the
             # service, so log-and-skip exactly as an unset DSN already does,
             # rather than crash-looping the pod at boot. See eco-app#43.
+            #
+            # Pass dsn=None explicitly: a bare sentry_sdk.init() re-reads
+            # SENTRY_DSN from the environment, which is the same bad value that
+            # just failed, so it would raise BadDsn all over again.
             _log.warning("SENTRY_DSN is set but invalid; continuing without Sentry", exc_info=True)
-            sentry_sdk.init()
+            sentry_sdk.init(dsn=None)
     else:
         sentry_sdk.init()
     _initialized = True

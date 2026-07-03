@@ -22,14 +22,22 @@ def _reset_init_flag():
 
 
 def test_malformed_dsn_does_not_crash(monkeypatch):
-    """A truthy-but-invalid DSN falls back to a no-op init, never raising."""
+    """A truthy-but-invalid DSN falls back to an explicit disable, never raising.
+
+    Emulates the real sentry_sdk: it raises BadDsn both when the bad DSN is
+    passed explicitly AND when a bare init() re-reads it from SENTRY_DSN in the
+    env. Only an explicit ``dsn=None`` disables cleanly. The fallback MUST use
+    that form - a bare ``sentry_sdk.init()`` would crash-loop identically
+    (eco-app#43).
+    """
     monkeypatch.setenv("SENTRY_DSN", "bare-string-with-no-scheme")
     calls = []
 
     def fake_init(*args, **kwargs):
-        # First call mimics sentry_sdk rejecting the bad DSN; the fallback
-        # (no kwargs) must succeed.
-        if kwargs.get("dsn"):
+        # Raise for an explicit bad DSN, and also for a bare init() that would
+        # read the malformed SENTRY_DSN from the environment. Passing
+        # dsn=None explicitly is the only path that disables without reading env.
+        if "dsn" not in kwargs or kwargs["dsn"]:
             raise telemetry.sentry_sdk.utils.BadDsn("Unsupported scheme ''")
         calls.append(kwargs)
 
@@ -37,7 +45,7 @@ def test_malformed_dsn_does_not_crash(monkeypatch):
 
     telemetry.init_sentry()  # must not raise
 
-    assert calls == [{}], "expected exactly one no-DSN fallback init"
+    assert calls == [{"dsn": None}], "fallback must pass dsn=None, not bare init()"
     assert telemetry._initialized is True
 
 
