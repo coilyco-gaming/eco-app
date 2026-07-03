@@ -8,6 +8,8 @@ unset DSN already does.
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 import eco_mcp_app.telemetry as telemetry
@@ -34,10 +36,15 @@ def test_malformed_dsn_does_not_crash(monkeypatch):
     calls = []
 
     def fake_init(*args, **kwargs):
-        # Raise for an explicit bad DSN, and also for a bare init() that would
-        # read the malformed SENTRY_DSN from the environment. Passing
-        # dsn=None explicitly is the only path that disables without reading env.
-        if "dsn" not in kwargs or kwargs["dsn"]:
+        # Emulate sentry_sdk._get_options: a resolved dsn of None (unset kwarg
+        # OR dsn=None) re-reads SENTRY_DSN from the env (client.py:312), so both
+        # would hit the malformed value and raise. Only an explicit empty string
+        # is kept verbatim and disables cleanly.
+        if "dsn" in kwargs and kwargs["dsn"] is not None:
+            dsn = kwargs["dsn"]
+        else:
+            dsn = os.getenv("SENTRY_DSN")
+        if dsn:  # non-empty resolved dsn -> real parse -> BadDsn for our garbage
             raise telemetry.sentry_sdk.utils.BadDsn("Unsupported scheme ''")
         calls.append(kwargs)
 
@@ -45,7 +52,19 @@ def test_malformed_dsn_does_not_crash(monkeypatch):
 
     telemetry.init_sentry()  # must not raise
 
-    assert calls == [{"dsn": None}], "fallback must pass dsn=None, not bare init()"
+    assert calls == [{"dsn": ""}], "fallback must pass dsn='' so no env re-read"
+    assert telemetry._initialized is True
+
+
+def test_malformed_dsn_real_sentry_sdk(monkeypatch):
+    """Integration guard: exercise the REAL sentry_sdk, not a mock.
+
+    This is the check that would have caught the two failed hardening passes -
+    a bare init()/dsn=None re-reads SENTRY_DSN and raises BadDsn against the
+    real SDK. init_sentry must survive a genuinely malformed env DSN.
+    """
+    monkeypatch.setenv("SENTRY_DSN", "155d9e7e9784c54e1255e6e4497598fe")  # no scheme
+    telemetry.init_sentry()  # real sentry_sdk.init under the hood; must not raise
     assert telemetry._initialized is True
 
 

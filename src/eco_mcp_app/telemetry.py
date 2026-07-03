@@ -48,11 +48,14 @@ def init_sentry() -> None:
             # service, so log-and-skip exactly as an unset DSN already does,
             # rather than crash-looping the pod at boot. See eco-app#43.
             #
-            # Pass dsn=None explicitly: a bare sentry_sdk.init() re-reads
-            # SENTRY_DSN from the environment, which is the same bad value that
-            # just failed, so it would raise BadDsn all over again.
+            # Pass dsn="" (empty string), NOT a bare init() or dsn=None. Both of
+            # those leave the resolved dsn as None, and sentry_sdk._get_options
+            # then re-reads SENTRY_DSN from the environment (client.py:312) - the
+            # same bad value that just failed, raising BadDsn again. An explicit
+            # empty string is kept verbatim (not None), so no env re-read happens
+            # and the empty dsn disables the transport cleanly.
             _log.warning("SENTRY_DSN is set but invalid; continuing without Sentry", exc_info=True)
-            sentry_sdk.init(dsn=None)
+            sentry_sdk.init(dsn="")
     else:
         sentry_sdk.init()
     _initialized = True
