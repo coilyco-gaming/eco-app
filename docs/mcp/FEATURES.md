@@ -8,7 +8,7 @@ MCP server exposing live data from Eco game servers as Claude Desktop widget car
 
 ## MCP tools
 
-Defined in [src/eco_mcp_app/server.py](../src/eco_mcp_app/server.py). All accept optional `server` arg.
+Defined in [src/eco_mcp_app/server.py](../../src/eco_mcp_app/server.py). All accept optional `server` arg.
 
 - **get_eco_server_status** - Meteor countdown, players, world dims, cycle progress, version, economy summary.
 - **get_eco_economy** - Trades/day, contract completion, loan defaults, wages, tax flow, volatility sparklines. Admin `/datasets/get`.
@@ -39,10 +39,11 @@ Defined in [src/eco_mcp_app/server.py](../src/eco_mcp_app/server.py). All accept
 
 ## UI rendering
 
-- **Jinja2 server-side** at [src/eco_mcp_app/templates/](../src/eco_mcp_app/templates/), rendered only into the MCP `_meta.ui` card fragment for in-chat hosts. The web UI is the React SPA (`frontend/`); the server renders no browser-facing HTML.
+- **Jinja2 server-side** at [src/eco_mcp_app/templates/](../../src/eco_mcp_app/templates/), rendered only into the MCP `_meta.ui` card fragment for in-chat hosts. The web UI is the React SPA (`frontend/`); the server renders no browser-facing HTML.
 - **Main shell** `eco.html` (~5KB). Hand-rolled MCP Apps handshake. Steam banner data URI for CSP.
 - **CSS** `eco.css` (~26KB). Responsive, animated starfield, cycle ring.
 - **22 partial templates** for per-card fragments.
+- **Connector icon** - the `initialize` metadata carries the official Eco game icon (48x48 PNG data URI, the blue/green world globe) as `serverInfo.icons`, so claude.ai and other URL-connected hosts brand the connector tile with the game icon. Asset: `templates/assets/eco_icon.png`.
 
 ## External data sources
 
@@ -73,18 +74,18 @@ Defined in [src/eco_mcp_app/server.py](../src/eco_mcp_app/server.py). All accept
 
 ## Dev tooling
 
-- **coily verbs** in [.coily/coily.yaml](../.coily/coily.yaml), each delegating to Make.
-  - `coily smoke` - Stdio test of all 12 tools.
-  - `coily http` - Local HTTP on 4000 with hot reload.
-  - `coily harness` - Browser dev harness on `:8765`.
-  - `coily install-desktop` - Auto-register in Claude Desktop config.
+- **ward verbs** in [.ward/ward.yaml](../../.ward/ward.yaml), each delegating to Make.
+  - `ward exec smoke` - Stdio test of all 12 tools.
+  - `ward exec http` - Local HTTP on 4000 with hot reload.
+  - `ward exec harness` - Browser dev harness on `:8765`.
+  - `ward exec install-desktop` - Auto-register in Claude Desktop config.
 - **Pre-commit** - ruff + mypy.
 - **Tests** - pytest, pytest-asyncio, respx.
 
 ## See also
 
-- [README.md](../README.md) - human-facing intro.
-- [AGENTS.md](../AGENTS.md) - agent-facing operating rules.
-- [.coily/coily.yaml](../.coily/coily.yaml) - allowlisted commands.
+- [README.md](../../README.md) - human-facing intro.
+- [AGENTS.md](../../AGENTS.md) - agent-facing operating rules.
+- [.ward/ward.yaml](../../.ward/ward.yaml) - allowlisted commands.
 
 Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilyco-flight-deck/agentic-os/issues/59).

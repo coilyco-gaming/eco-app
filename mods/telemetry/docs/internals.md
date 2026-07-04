@@ -101,5 +101,5 @@ once the hook points are confirmed on a live server.
 ## See also
 
 - [FEATURES.md](FEATURES.md) - inventory of what ships today.
-- [../AGENTS.md](../AGENTS.md) - agent-facing operating rules.
-- [../README.md](../README.md) - human-facing intro.
+- [AGENTS.md](../../../AGENTS.md) - agent-facing operating rules.
+- [README.md](../README.md) - human-facing intro.
