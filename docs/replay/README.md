@@ -7,7 +7,7 @@ Built as a clean-room alternative to the closed-source `Chronicler` mod (mod.io)
 1. **C# Eco mod** (`mod/src/`) — implements `IGameActionAware`, receives every `GameAction` Eco produces, and appends a row to SQLite (`Storage/EcoReplay.db`). Uses `Microsoft.Data.Sqlite` which bundles a Linux-native `libe_sqlite3.so` via `SQLitePCLRaw`, so it Just Works on Linux without a Windows interop dance.
 2. **FastAPI web app** (`src/eco_replay/`) — reads the mod's `GET /api/v1/events?citizen=&type=&limit=` JSON endpoint and renders a filterable HTMX/Tailwind UI.
 
-Same pattern as the sibling [`eco-jobs-tracker`](../eco-jobs-tracker): mod is source of truth, web app is the view.
+Same pattern as the sibling [`eco_spec_tracker`](../../src/eco_spec_tracker): mod is source of truth, web app is the view.
 
 ## Quick start
 
@@ -47,5 +47,4 @@ Every `GameAction` Eco fires through `ActionUtil.ActionPerformed`. The recorder 
 
 ## See also
 
-- [`mod/src/EcoReplay.csproj`](mod/src/EcoReplay.csproj) — mod targets net10.0, Eco.ReferenceAssemblies 0.13-beta.
-- [`docs/`](docs/) — design notes.
+- [`mods/replay/src/EcoReplay.csproj`](../../mods/replay/src/EcoReplay.csproj) — mod targets net10.0, Eco.ReferenceAssemblies 0.13-beta.

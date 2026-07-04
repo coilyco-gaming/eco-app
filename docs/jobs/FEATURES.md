@@ -51,8 +51,8 @@ Public name is `eco-jobs-tracker`. Internals still use `eco-spec-tracker` (k8s, 
 
 ## See also
 
-- [README.md](../README.md) - human-facing intro.
-- [AGENTS.md](../AGENTS.md) - agent-facing operating rules.
-- [.coily/coily.yaml](../.coily/coily.yaml) - allowlisted commands.
+- [README.md](../../README.md) - human-facing intro.
+- [AGENTS.md](../../AGENTS.md) - agent-facing operating rules.
+- [.ward/ward.yaml](../../.ward/ward.yaml) - allowlisted commands.
 
 Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilyco-flight-deck/agentic-os/issues/59).

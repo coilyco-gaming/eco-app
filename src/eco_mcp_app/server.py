@@ -302,6 +302,12 @@ _BANNER_SRC = _load_asset_data_uri("eco_header.jpg", "image/jpeg")
 # play.eco's ecofavicon.ico, inlined because Claude Desktop's CSP blocks
 # external origins (claude-ai-mcp#40).
 _FAVICON_SRC = _load_asset_data_uri("favicon.ico", "image/x-icon")
+# The official Eco game icon (the blue/green world globe), 48x48 PNG, wired
+# into the MCP initialize serverInfo.icons so the claude.ai connector tile
+# shows the game icon rather than a generic placeholder. A PNG at tile size,
+# not the 16x16 favicon.ico, because connector tiles do not render tiny ICOs.
+_ECO_ICON_SRC = _load_asset_data_uri("eco_icon.png", "image/png")
+_ECO_ICONS = [Icon(src=_ECO_ICON_SRC, mimeType="image/png", sizes=["48x48"])]
 
 
 def normalize_server_url(server: str | None) -> str:
@@ -1748,7 +1754,7 @@ def build_server() -> Server:
     """
     server: Server = Server(
         "eco-mcp-app",
-        icons=[Icon(src=_FAVICON_SRC, mimeType="image/x-icon")],
+        icons=_ECO_ICONS,
     )
 
     @server.list_tools()
@@ -2455,7 +2461,7 @@ def build_initialization_options(server: Server) -> InitializationOptions:
     return InitializationOptions(
         server_name="eco-mcp-app",
         server_version="0.1.0",
-        icons=[Icon(src=_FAVICON_SRC, mimeType="image/x-icon")],
+        icons=_ECO_ICONS,
         capabilities=server.get_capabilities(
             notification_options=NotificationOptions(),
             experimental_capabilities={},
