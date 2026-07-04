@@ -69,10 +69,6 @@ export default function Calculator() {
           instance. That is the differentiator the public site cannot offer - server-accurate
           pricing. It waits on the eco mod-ops pipeline.
         </li>
-        <li>
-          <strong>Over time - house style.</strong> Progressively reskin the MudBlazor UI from Eco
-          Gnome's look toward eco-app's, a reskin and not a rewrite.
-        </li>
       </ul>
 
       <p className="intro" data-testid="calc-attribution">

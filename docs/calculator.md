@@ -25,7 +25,7 @@ So self-hosting is a stateful second service, not a static publish. It cannot be
 
 Per the layer invariant (`infra -> eco-app -> deploy`), the calculator's runtime lives in the deploy repo, not here. That slot now exists at [`coilyco-bridge/deploy/services/eco-gnome`](https://forgejo.coilysiren.me/coilyco-bridge/deploy) - a `deploy/main.yml` + `namespace.yml` + `scripts/rollout.sh`, the `services/eco-app` envsubst pattern. What it stands up:
 
-- The **upstream published image**, not a fork build. eco-gnome-website publishes `ghcr.io/eco-gnome/eco-gnome-website` (and a `-migrator`); the deploy pins it by digest, the open-webui pattern. No .NET build, no fork repo needed for Phase 1 (a fork comes later, only for the house-style reskin).
+- The **upstream published image**, not a fork build. eco-gnome-website publishes `ghcr.io/eco-gnome/eco-gnome-website` (and a `-migrator`); the deploy pins it by digest, the open-webui pattern. No .NET build, no fork repo needed - eco-app runs the stock upstream UI as-is, permanently.
 - A **Postgres** (`postgres:17`) Deployment + a `local-path` PVC, its password synced from SSM `/eco-gnome/postgres-password` by an ExternalSecret into both the DB and the app connection string. The app **self-applies its EF migrations on boot** (with a retry loop while Postgres warms), so no migration Job - a fresh DB schemas itself.
 - Three `local-path` PVCs for the volume mounts the image expects: `/app/wwwroot/assets`, `/app/wwwroot/videos`, and `/app/dpkeys` (data-protection keys).
 - A public **Traefik ingress** on a dedicated host, **eco-gnome.coilysiren.me** (not an `eco-app.coilysiren.me/calculator` subpath: Blazor's `<base href>` + the SignalR `_blazor` websocket make a subpath deploy fiddly). cert-manager `letsencrypt-production` TLS + ExternalDNS.
@@ -47,7 +47,7 @@ The differentiator is server-accurate pricing. Install the DataExporter mod on t
 
 ## House style
 
-Once the self-hosted instance is live, reskin the MudBlazor UI toward eco-app's house style incrementally, a progressive reskin and not a rewrite.
+Dropped (July 2026). eco-app keeps the stock upstream Eco Gnome UI permanently - no reskin, no fork. Recorded so the idea is not resurrected.
 
 ## See also
 
