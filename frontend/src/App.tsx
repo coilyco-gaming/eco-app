@@ -5,6 +5,7 @@ import Crafting from "./pages/Crafting"
 import Economy from "./pages/Economy"
 import Home from "./pages/Home"
 import Jobs from "./pages/Jobs"
+import Progression from "./pages/Progression"
 import Server from "./pages/Server"
 import Trade from "./pages/Trade"
 import Trades from "./pages/Trades"
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/server" element={<Server />} />
         <Route path="/jobs/*" element={<Jobs />} />
+        <Route path="/progression" element={<Progression />} />
         <Route path="/economy" element={<Economy />} />
         <Route path="/trade" element={<Trade />} />
         <Route path="/trades" element={<Trades />} />

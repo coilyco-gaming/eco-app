@@ -795,3 +795,94 @@ a.dir-card:hover {
   color: var(--meteor);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+/* Progression / skills-history surface (eco-app#64). Trend small-multiples:
+   one single-hue panel per event kind, so the grid reads on one --leaf hue
+   without a categorical palette. */
+.prog-trend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.75rem;
+}
+
+.prog-trend {
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 0.75rem;
+}
+
+.prog-trend-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-transform: capitalize;
+}
+
+.prog-trend-total {
+  font-variant-numeric: tabular-nums;
+  color: var(--leaf);
+  font-weight: 700;
+}
+
+.prog-trend-chart {
+  width: 100%;
+  height: auto;
+  margin-top: 0.4rem;
+}
+
+.prog-trend-chart .axis-label {
+  fill: var(--ink-faint);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.prog-trend-single {
+  margin: 0.6rem 0 0.2rem;
+  color: var(--ink-faint);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.prog-timeline {
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.82rem;
+}
+
+.prog-timeline li {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+}
+
+.prog-day {
+  flex: 0 0 auto;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+}
+
+.prog-what {
+  color: var(--ink-soft);
+}
+
+.jobs-history-lane {
+  border-left: 3px solid var(--leaf);
+  padding-left: 0.9rem;
+}
+
+.prof-btn-sub {
+  margin-top: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--ink-faint);
+}

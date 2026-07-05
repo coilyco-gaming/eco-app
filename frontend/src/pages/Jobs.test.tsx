@@ -28,6 +28,35 @@ const PLAYERS = [
   },
   { name: "ekans", active: false, specialties: [] },
 ]
+const PROGRESSION = {
+  fetchedAtISO: "2026-06-12T13:00:00+00:00",
+  sourceBaseUrl: "http://x:3001",
+  totalEvents: 3,
+  perActionCounts: { GainSpecialty: 2, SpecialtyLevelUp: 1 },
+  citizens: [
+    {
+      name: "coilysiren",
+      eventCount: 3,
+      firstDay: 1,
+      lastDay: 3,
+      characterLevel: 4,
+      levelUpCount: 1,
+      professions: [{ name: "Carpenter", pretty: "Carpenter" }],
+      specialties: [{ name: "BasicCarpentry", pretty: "Basic Carpentry", level: 5 }],
+      timeline: [
+        { day: 3, time: 300000, kind: "specialty_levelup", skill: "BasicCarpentry", pretty: "Basic Carpentry", level: 5 },
+        { day: 1, time: 100000, kind: "specialty", skill: "BasicCarpentry", pretty: "Basic Carpentry", level: 1 },
+      ],
+    },
+  ],
+  trends: { specialty: [[1, 2]] },
+  bySpecialty: [["BasicCarpentry", 2]],
+  byProfession: [["Carpenter", 1]],
+  classCompletions: [],
+  topLevelers: [["coilysiren", 1]],
+  dailySeries: {},
+  warnings: [],
+}
 
 function stubJobsFetch() {
   vi.stubGlobal(
@@ -42,7 +71,9 @@ function stubJobsFetch() {
             ? SPECIALTIES
             : url.endsWith("/players")
               ? PLAYERS
-              : null
+              : url.endsWith("/preview/progression.json")
+                ? PROGRESSION
+                : null
       if (body === null) return Promise.reject(new Error(`unexpected fetch: ${url}`))
       return Promise.resolve(
         new Response(JSON.stringify(body), {
@@ -94,6 +125,60 @@ describe("Jobs", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Carpentry/ }))
     expect(screen.getAllByText("coilysiren").length).toBe(before + 1)
+  })
+
+  it("renders the skill-history lane and per-player timeline from progression", async () => {
+    stubJobsFetch()
+    renderJobs()
+
+    await waitFor(() => {
+      expect(screen.getByTestId("jobs-history-lane")).toBeInTheDocument()
+    })
+    // The lane links to the full progression view.
+    expect(screen.getByRole("link", { name: /progression history/i })).toHaveAttribute(
+      "href",
+      "/progression",
+    )
+    // coilysiren has a trajectory → the per-player history toggle appears; ekans
+    // has none, so exactly one toggle renders.
+    const toggles = screen.getAllByTestId("player-history-toggle")
+    expect(toggles).toHaveLength(1)
+    fireEvent.click(toggles[0])
+    expect(screen.getByTestId("player-history")).toBeInTheDocument()
+    expect(screen.getByText(/specialty level-ups: Basic Carpentry/)).toBeInTheDocument()
+  })
+
+  it("hides the history lane when progression is unavailable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input)
+        const body = url.endsWith("/meta")
+          ? META
+          : url.endsWith("/professions")
+            ? PROFESSIONS
+            : url.endsWith("/specialties")
+              ? SPECIALTIES
+              : url.endsWith("/players")
+                ? PLAYERS
+                : null
+        // Progression fetch fails → the jobs page renders exactly as before.
+        if (body === null) return Promise.reject(new Error(`no progression: ${url}`))
+        return Promise.resolve(
+          new Response(JSON.stringify(body), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        )
+      }),
+    )
+    renderJobs()
+
+    await waitFor(() => {
+      expect(screen.getByText("Professions")).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId("jobs-history-lane")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("player-history-toggle")).not.toBeInTheDocument()
   })
 
   it("shows the degraded note when the API is unreachable", async () => {

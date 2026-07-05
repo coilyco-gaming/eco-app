@@ -1,0 +1,115 @@
+{# Progression / skills history — rendered inside #root after a
+   get_eco_progression tool call. Product UX is the SPA (/progression); this
+   fragment is only the in-chat MCP Apps card, so it stays a compact summary:
+   headline event counts, the busiest trajectories, and the most-gained
+   specialties. Empty-state is a distinct branch because early in a cycle the
+   progression exporters routinely return zero events. #}
+<div class="crafting-atlas">
+  <div class="crafting-head">
+    <div>
+      <div class="crafting-title">Progression history</div>
+      <div class="crafting-sub">
+        {% if empty %}
+          No progression events recorded on this server yet.
+        {% else %}
+          {{ fmt(total_events) }} skill events · {{ source_base_url }}
+        {% endif %}
+      </div>
+    </div>
+    {% if kind_totals %}
+    <div class="crafting-actions">
+      {% for label, count in kind_totals %}
+        {% if count %}<span class="pill">{{ fmt(count) }} {{ label }}</span>{% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if empty %}
+    <div class="empty">
+      <div style="font-size:20px;font-weight:800;color:var(--leaf-bright);">
+        No skills gained yet
+      </div>
+      <div class="hint">
+        The progression exporters returned zero events. Early in the cycle this
+        is normal — check back after a few days of play.
+      </div>
+    </div>
+  {% else %}
+
+  <div class="crafting-grid">
+    <div class="crafting-panel">
+      <div class="crafting-section-label">Most-gained specialties</div>
+      {% if top_specialties %}
+      <ol class="crafting-list">
+        {% for s in top_specialties %}
+          <li>
+            <span class="rank">{{ loop.index }}.</span>
+            <span class="name" title="{{ s.name }}">{{ s.pretty }}</span>
+            <span class="count">{{ fmt(s.count) }}</span>
+            <span class="bar-wrap"><span class="bar" style="--w:{{ '%.1f' % s.pct }}%"></span></span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+        <div class="hint">No specialties gained yet.</div>
+      {% endif %}
+    </div>
+
+    <div class="crafting-panel">
+      <div class="crafting-section-label">Busiest levelers</div>
+      {% if top_levelers %}
+      <ol class="crafting-list">
+        {% for name, count in top_levelers %}
+          <li>
+            <span class="rank">{{ loop.index }}.</span>
+            <span class="name">{{ name }}</span>
+            <span class="count">{{ fmt(count) }} level-ups</span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+        <div class="hint">No level-ups recorded yet.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if citizens %}
+  <div class="crafting-section">
+    <div class="crafting-section-label">Recent trajectories</div>
+    {% for c in citizens %}
+      <div class="prog-citizen">
+        <div class="prog-citizen-head">
+          <span class="name">{{ c.name }}</span>
+          {% if c.characterLevel is not none %}
+            <span class="pill">lvl {{ '%.0f' % c.characterLevel }}</span>
+          {% endif %}
+          {% if c.professions %}
+            <span class="prog-profs">{{ c.professions | join(', ') }}</span>
+          {% endif %}
+        </div>
+        {% if c.recent %}
+        <ul class="prog-timeline">
+          {% for ev in c.recent %}
+            <li>
+              <span class="prog-day">day {{ ev.day }}</span>
+              <span class="prog-what">{{ ev.label }}{% if ev.skill %}: {{ ev.skill }}{% endif %}{% if ev.level is not none %} (lvl {{ '%.0f' % ev.level }}){% endif %}</span>
+            </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% endif %}
+
+  {% if warnings %}
+  <div class="crafting-warnings">
+    {% for w in warnings %}
+      <div class="hint">⚠ {{ w }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>

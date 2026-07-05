@@ -28,6 +28,7 @@ async def test_list_tools_advertises_all_tools() -> None:
         "get_eco_trades",
         "get_eco_market",
         "get_eco_stores",
+        "get_eco_progression",
         "find_eco_trade",
         "fair_price",
         "get_eco_government",

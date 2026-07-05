@@ -45,6 +45,7 @@ from . import species as species_mod
 from .crafting import atlas_template_context, fetch_atlas
 from .logistics import fetch_logistics, logistics_markdown, logistics_template_context
 from .map import build_map_payload, fetch_map_bundle
+from .progression import fetch_history, history_markdown, history_template_context
 from .stores import directory_markdown, directory_template_context, fetch_directory
 from .trades import fetch_ledger, ledger_markdown, ledger_template_context
 from .watchers import (
@@ -1024,6 +1025,10 @@ def _render_trades_ledger(ctx: dict[str, Any]) -> str:
 
 def _render_stores_directory(ctx: dict[str, Any]) -> str:
     return _JINJA.get_template("partials/stores.html").render(**ctx)
+
+
+def _render_progression(ctx: dict[str, Any]) -> str:
+    return _JINJA.get_template("partials/progression.html").render(**ctx)
 
 
 def _format_crafting_markdown(ctx: dict[str, Any]) -> str:
@@ -2203,6 +2208,43 @@ def build_server() -> Server:
                 **{"_meta": UI_META},
             ),
             Tool(
+                name="get_eco_progression",
+                title="Eco — progression / skills history",
+                description=(
+                    "Reconstruct skill *trajectories* from an Eco server's "
+                    "progression action-log exporters: when each citizen gained "
+                    "professions and specialties, their level-up cadence, classes "
+                    "completed, and enrollments — the history behind the current "
+                    "skills the jobs surface shows. Folds GainProfession, "
+                    "GainSpecialty, LoseSpecialty, SpecialtyLevelUp, "
+                    "CharacterLevelUp, CompleteClass, and EnrollAction into "
+                    "per-citizen timelines, server-wide per-day trends, and "
+                    "most-gained-specialty / busiest-leveler leaderboards. Numeric "
+                    "citizen ids are joined to names via the jobs mod's citizens "
+                    "surface, falling back to `Citizen #<id>`. Requires an admin "
+                    "API key configured server-side (ECO_ADMIN_API_KEY, populated "
+                    "from SSM in the homelab deploy). Stream-parses the CSVs so it "
+                    "stays bounded on late-cycle logs, and degrades gracefully when "
+                    "a server is early-cycle or an exporter is disabled. Renders as "
+                    "an inline widget; falls back to a markdown summary."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "server": {
+                            "type": "string",
+                            "description": (
+                                "Eco admin base URL (`host`, `host:port`, or "
+                                "full URL). Omit to use the configured "
+                                "default (`eco.coilysiren.me:3001`)."
+                            ),
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+                **{"_meta": UI_META},
+            ),
+            Tool(
                 name="fair_price",
                 title="Eco — fair-price advisor",
                 description=(
@@ -2713,6 +2755,33 @@ def build_server() -> Server:
                     TextContent(type="text", text=json.dumps(ledger.to_dict())),
                 ],
                 **{"_meta": _ui_meta(_render_trades_ledger(ctx))},
+            )
+
+        if name == "get_eco_progression":
+            server_arg = arguments.get("server") if arguments else None
+            api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
+            try:
+                history = await fetch_history(base_url=server_arg, api_key=api_key)
+            except httpx.HTTPError as e:
+                err_payload = {
+                    "view": "error",
+                    "message": f"Could not reach Eco exporter: {e}",
+                }
+                return CallToolResult(
+                    content=[
+                        TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
+                        TextContent(type="text", text=json.dumps(err_payload)),
+                    ],
+                    isError=True,
+                    **{"_meta": _ui_meta(_render_error(str(e)))},
+                )
+            ctx = history_template_context(history)
+            return CallToolResult(
+                content=[
+                    TextContent(type="text", text=history_markdown(history)),
+                    TextContent(type="text", text=json.dumps(history.to_dict())),
+                ],
+                **{"_meta": _ui_meta(_render_progression(ctx))},
             )
 
         if name == "eco_trade_watchers":
