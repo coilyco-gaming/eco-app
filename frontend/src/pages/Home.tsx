@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom"
 import Layout from "../components/Layout"
 import { useEcoStatus } from "../hooks/useEcoStatus"
+import { useTradePulse } from "../hooks/useTradePulse"
 import { formatCount, safeHttpUrl } from "../lib/format"
 
 const STEAM_URL = "https://store.steampowered.com/app/382310/Eco/"
@@ -9,6 +10,7 @@ const STEAM_URL = "https://store.steampowered.com/app/382310/Eco/"
 // The heavy live content lives on the subpages it points at.
 export default function Home() {
   const { status } = useEcoStatus()
+  const tradePulse = useTradePulse()
   const discordUrl = safeHttpUrl(status?.server.discord)
 
   return (
@@ -51,6 +53,17 @@ export default function Home() {
         <Link className="dir-card" to="/economy" data-testid="dir-economy">
           <h3>Economy</h3>
           <p>Trades per day, contracts, loans, wages, and the treasury.</p>
+        </Link>
+
+        <Link className="dir-card" to="/trade" data-testid="dir-trade">
+          <h3>Trade &amp; logistics</h3>
+          <p>Movers, price history, stores, and what to buy, sell, and ship next.</p>
+          {tradePulse && (
+            <p className="dir-badges" data-testid="trade-badges">
+              <span className="mini-pill">{formatCount(tradePulse.markets)} markets</span>
+              <span className="mini-pill">{formatCount(tradePulse.totalVolume)} volume</span>
+            </p>
+          )}
         </Link>
 
         <Link className="dir-card" to="/trades" data-testid="dir-trades">

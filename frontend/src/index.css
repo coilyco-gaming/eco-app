@@ -645,6 +645,15 @@ a.dir-card:hover {
   border-radius: 8px;
 }
 
+/* Price-trend tag on the /trade markets: a glyph + word + delta, coloured by
+   direction. Colour is never the only signal — the arrow glyph and the word
+   carry it too (dataviz non-negotiable). */
+.trend-tag {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* --- CTAs & footer ---------------------------------------------------- */
 
 .cta-row {

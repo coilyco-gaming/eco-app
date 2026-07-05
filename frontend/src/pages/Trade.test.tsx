@@ -1,0 +1,393 @@
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { MemoryRouter } from "react-router-dom"
+import Trade from "./Trade"
+
+const MARKET = {
+  view: "market",
+  fetchedAtISO: "2026-06-12T13:00:00+00:00",
+  sourceBaseUrl: "http://x:3001",
+  totalTrades: 42,
+  markets: [
+    {
+      item: "IronIngotItem",
+      itemPretty: "Iron Ingot",
+      currency: "Credit",
+      buckets: [
+        { day: 1, median: 20, min: 18, max: 22, volume: 10, trades: 2 },
+        { day: 2, median: 25, min: 24, max: 26, volume: 8, trades: 1 },
+      ],
+      medianPrice: 22.5,
+      latestPrice: 25,
+      latestDay: 2,
+      trend: "rising",
+      trendDeltaPct: 12,
+      shortMedian: 25,
+      longMedian: 20,
+      totalVolume: 180,
+      totalTrades: 20,
+    },
+    {
+      item: "WheatItem",
+      itemPretty: "Wheat",
+      currency: "Credit",
+      buckets: [
+        { day: 1, median: 6, min: 5, max: 7, volume: 40, trades: 3 },
+        { day: 2, median: 5, min: 4, max: 6, volume: 30, trades: 2 },
+      ],
+      medianPrice: 5.5,
+      latestPrice: 5,
+      latestDay: 2,
+      trend: "falling",
+      trendDeltaPct: -10,
+      shortMedian: 5,
+      longMedian: 6,
+      totalVolume: 120,
+      totalTrades: 12,
+    },
+    {
+      item: "BoardItem",
+      itemPretty: "Board",
+      currency: "Credit",
+      buckets: [],
+      medianPrice: 3,
+      latestPrice: 3,
+      latestDay: 2,
+      trend: "flat",
+      trendDeltaPct: 0,
+      shortMedian: 3,
+      longMedian: 3,
+      totalVolume: 60,
+      totalTrades: 6,
+    },
+  ],
+  warnings: [],
+}
+
+const STORES = {
+  view: "eco_stores",
+  fetchedAtISO: "2026-06-12T13:00:00+00:00",
+  sourceBaseUrl: "http://x:3001",
+  totalTrades: 42,
+  perTypeCounts: {},
+  stores: [
+    {
+      storeKey: "s1",
+      label: "Iron Emporium",
+      owner: "ekans",
+      ownerId: "1",
+      location: "1,2,3",
+      storeObject: "StoreItem",
+      storeObjectPretty: "Store",
+      tradeCount: 20,
+      totalVolume: 400,
+      sellCount: 18,
+      buyCount: 2,
+      uniqueCounterparties: 9,
+      lastDay: 12,
+      currencies: [["Credit", 400]],
+      topItems: [],
+      topCounterparties: [],
+    },
+    {
+      storeKey: "s2",
+      label: "Wheat Stand",
+      owner: "coilysiren",
+      ownerId: "2",
+      location: "4,5,6",
+      storeObject: "StoreItem",
+      storeObjectPretty: "Store",
+      tradeCount: 12,
+      totalVolume: 220,
+      sellCount: 10,
+      buyCount: 2,
+      uniqueCounterparties: 5,
+      lastDay: 11,
+      currencies: [["Credit", 220]],
+      topItems: [],
+      topCounterparties: [],
+    },
+  ],
+  traders: [
+    {
+      name: "ekans",
+      citizenId: "1",
+      tradeCount: 20,
+      totalVolume: 400,
+      sellVolume: 380,
+      buyVolume: 20,
+      uniqueCounterparties: 9,
+      lastDay: 12,
+      storesOperated: [],
+      topSells: [],
+      topBuys: [],
+    },
+    {
+      name: "coilysiren",
+      citizenId: "2",
+      tradeCount: 12,
+      totalVolume: 220,
+      sellVolume: 200,
+      buyVolume: 20,
+      uniqueCounterparties: 5,
+      lastDay: 11,
+      storesOperated: [],
+      topSells: [],
+      topBuys: [],
+    },
+  ],
+  totalStores: 2,
+  totalTraders: 2,
+  warnings: [],
+}
+
+const CURRENCY = {
+  fetchedAtISO: "2026-06-12T13:00:00+00:00",
+  sourceBaseUrl: "http://x:3001",
+  daysElapsed: 12,
+  adminOk: true,
+  activeCurrenciesSeries: [],
+  personalWealthSeries: [],
+  governmentHoldingsSeries: [],
+  currencies: [
+    {
+      name: "Credit",
+      isMinted: true,
+      mintedAmount: 10000,
+      mintEvents: 3,
+      tradeCount: 40,
+      tradeVolume: 5000,
+      createdBy: "coilysiren",
+    },
+    {
+      name: "Wildwood Note",
+      isMinted: false,
+      mintedAmount: 0,
+      mintEvents: 0,
+      tradeCount: 2,
+      tradeVolume: 80,
+      createdBy: null,
+    },
+  ],
+  tradeRowsTotal: 42,
+  tradeCurrencyColumnSeen: true,
+  availableCurrencyDatasets: [],
+  warnings: [],
+}
+
+const LOGISTICS = {
+  view: "logistics",
+  fetchedAtISO: "2026-06-12T13:00:00+00:00",
+  sourceBaseUrl: "http://x:3001",
+  cheapestSources: [
+    {
+      item: "IronIngotItem",
+      itemPretty: "Iron Ingot",
+      store: "Iron Emporium",
+      owner: "ekans",
+      unitPrice: 24,
+      currency: "Credit",
+      location: "1,2,3",
+    },
+  ],
+  arbitrage: [
+    {
+      item: "WheatItem",
+      itemPretty: "Wheat",
+      currency: "Credit",
+      buyPrice: 4,
+      buyStore: "Wheat Stand",
+      sellPrice: 7,
+      sellStore: "Iron Emporium",
+      spread: 3,
+      spreadPct: 75,
+    },
+  ],
+  supplyGaps: [{ item: "BoardItem", itemPretty: "Board", note: "high demand, no sellers" }],
+  warnings: [],
+}
+
+const WATCHERS_REPORT = {
+  view: "watcher_hits",
+  advanced: false,
+  hits: [
+    {
+      id: "w_abc123",
+      kind: "price",
+      value: "IronIngotItem",
+      op: "under",
+      threshold: 2.5,
+      label: "cheap iron",
+      server: null,
+      lastSeen: 0,
+      createdAt: 0,
+      describe: "Iron Ingot under 2.5",
+      feed: [],
+      feedCount: 2,
+      display: { matchCount: 5, recent: [], bestUnitPrice: 2, totalVolume: 40, lastMatchTime: 300000 },
+      newLastSeen: 300000,
+    },
+  ],
+}
+
+const NOT_FOUND = Symbol("404")
+
+function jsonResponse(payload: unknown): Response {
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  })
+}
+
+// The page fans out to five planes; a URL check routes each to its payload. A
+// plane set to NOT_FOUND resolves to a 404 so we can exercise graceful degrade.
+function stub(
+  overrides: {
+    market?: unknown
+    stores?: unknown
+    currency?: unknown
+    logistics?: unknown
+    watchers?: unknown
+  } = {},
+) {
+  const planes: Record<string, unknown> = {
+    "market.json": overrides.market ?? MARKET,
+    "stores.json": overrides.stores ?? STORES,
+    "currency.json": overrides.currency ?? CURRENCY,
+    "logistics.json": overrides.logistics ?? LOGISTICS,
+    "watchers.json": overrides.watchers ?? { hits: [] },
+  }
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string) => {
+      const u = String(url)
+      const key = Object.keys(planes).find((k) => u.includes(k))
+      const payload = key ? planes[key] : null
+      if (payload === NOT_FOUND || payload == null) {
+        return Promise.resolve(new Response("not found", { status: 404 }))
+      }
+      return Promise.resolve(jsonResponse(payload))
+    }),
+  )
+}
+
+function renderTrade(entry = "/trade") {
+  return render(
+    <MemoryRouter initialEntries={[entry]}>
+      <Trade />
+    </MemoryRouter>,
+  )
+}
+
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
+
+describe("Trade", () => {
+  it("renders the overview, currency strip, movers, drill chart, and cross-links", async () => {
+    stub()
+    renderTrade()
+
+    await waitFor(() => {
+      expect(screen.getByTestId("trade-pill")).toHaveTextContent("3 markets")
+    })
+    expect(screen.getByTestId("currency-strip")).toHaveTextContent("2 currencies")
+    // Rising / falling movers land in their own lists.
+    expect(within(screen.getByTestId("risers")).getByText("Iron Ingot")).toBeInTheDocument()
+    expect(within(screen.getByTestId("fallers")).getByText("Wheat")).toBeInTheDocument()
+    // Default drill is the busiest market (Iron Ingot), charted.
+    const drill = screen.getByTestId("drill")
+    expect(within(drill).getByTestId("price-chart")).toBeInTheDocument()
+    expect(screen.getByTestId("link-economy")).toHaveAttribute("href", "/economy")
+    expect(screen.getByTestId("link-crafting")).toHaveAttribute("href", "/crafting")
+  })
+
+  it("deep-links a drill target via ?q=", async () => {
+    stub()
+    renderTrade("/trade?q=wheat")
+
+    await waitFor(() => {
+      expect(screen.getByTestId("trade-filter")).toHaveValue("wheat")
+    })
+    const drill = screen.getByTestId("drill")
+    // Median price of Wheat (5.5) shows in the drill stat tiles.
+    expect(within(drill).getByText("5.5")).toBeInTheDocument()
+  })
+
+  it("pushes a market-row click into the drill", async () => {
+    stub()
+    renderTrade()
+
+    await waitFor(() => {
+      expect(screen.getByTestId("most-traded")).toBeInTheDocument()
+    })
+    const row = within(screen.getByTestId("most-traded")).getByText("Wheat")
+    fireEvent.click(row)
+    expect(screen.getByTestId("trade-filter")).toHaveValue("Wheat")
+  })
+
+  it("renders the store & trader directory", async () => {
+    stub()
+    renderTrade()
+
+    await waitFor(() => {
+      expect(screen.getByTestId("directory")).toBeInTheDocument()
+    })
+    expect(within(screen.getByTestId("store-list")).getByText("Iron Emporium")).toBeInTheDocument()
+    expect(screen.getAllByTestId("trader-dir-row")).toHaveLength(2)
+  })
+
+  it("renders the logistics board when the plane has landed", async () => {
+    stub()
+    renderTrade()
+
+    await waitFor(() => {
+      expect(screen.getByTestId("logistics")).toBeInTheDocument()
+    })
+    expect(screen.getByTestId("arbitrage-row")).toHaveTextContent("Wheat Stand")
+    expect(screen.getByTestId("cheapest-list")).toHaveTextContent("Iron Emporium")
+    expect(screen.getByTestId("gaps-list")).toHaveTextContent("high demand, no sellers")
+  })
+
+  it("shows the watcher panel with a feed badge when watchers exist", async () => {
+    stub({ watchers: WATCHERS_REPORT })
+    renderTrade()
+
+    await waitFor(() => {
+      expect(screen.getByTestId("watchers-section")).toBeInTheDocument()
+    })
+    expect(screen.getByTestId("watcher-row")).toHaveTextContent("cheap iron")
+    expect(screen.getByTestId("watcher-badge")).toHaveTextContent("+2 new")
+  })
+
+  it("still renders when the logistics plane 404s", async () => {
+    stub({ logistics: NOT_FOUND })
+    renderTrade()
+
+    await waitFor(() => {
+      expect(screen.getByTestId("drill")).toBeInTheDocument()
+    })
+    // The board is absent, but the rest of the page stands.
+    expect(screen.queryByTestId("logistics")).not.toBeInTheDocument()
+    expect(screen.getByTestId("directory")).toBeInTheDocument()
+  })
+
+  it("degrades to an unavailable pill when every plane 404s", async () => {
+    stub({
+      market: NOT_FOUND,
+      stores: NOT_FOUND,
+      currency: NOT_FOUND,
+      logistics: NOT_FOUND,
+      watchers: NOT_FOUND,
+    })
+    renderTrade()
+
+    await waitFor(() => {
+      expect(screen.getByTestId("trade-error")).toBeInTheDocument()
+    })
+    // No panels, but the shell and cross-links survive — no hard crash.
+    expect(screen.queryByTestId("drill")).not.toBeInTheDocument()
+    expect(screen.getByTestId("link-economy")).toBeInTheDocument()
+  })
+})
