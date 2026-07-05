@@ -39,9 +39,45 @@ jobs:
       - run: pnpm build
         working-directory: frontend
 
+  mods:
+    runs-on: docker
+    steps:
+      - uses: actions/checkout@v4
+      # The C# Eco mods (mods/{jobs,replay,telemetry,stores}) are built by the
+      # build-mod-* ward verbs and shipped to the game server out of band, so a
+      # compile error in a mod otherwise reaches the live server caught by no
+      # gate. This job is that gate: `make build-mods` compiles all four, and a
+      # broken mod fails the build before deploy. See eco-app#60.
+      #
+      # The `docker` runner label resolves to node:20-bookworm, which ships no
+      # .NET SDK. Self-install the .NET 10 SDK as a static tarball (apt-free,
+      # like the publish job's docker CLI) so this lands independent of the
+      # image. The mods target net10.0 and pull Eco.ReferenceAssemblies from
+      # NuGet at build time.
+      #
+      # TODO(eco-app#60): drop this self-install once dev-base ships the .NET
+      # SDK and switch to the image-provided dotnet - the direction
+      # coilyco-flight-deck/agentic-os#328 (CI-in-dev-base parity) points.
+      - name: Install .NET 10 SDK
+        run: |
+          set -euo pipefail
+          curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+          bash /tmp/dotnet-install.sh --channel 10.0 --install-dir "$HOME/.dotnet"
+          echo "$HOME/.dotnet" >> "$GITHUB_PATH"
+      # DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1: the runner image ships no ICU,
+      # so the CLR's globalization init would throw on startup. The mods do no
+      # culture-sensitive work, so invariant mode is safe. This is the recipe
+      # the eco-app#8 engineer proved by hand before this gate existed.
+      - name: Build all mods
+        env:
+          DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "1"
+          DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+          DOTNET_NOLOGO: "1"
+        run: make build-mods
+
   publish:
     runs-on: docker
-    needs: [test, frontend]
+    needs: [test, frontend, mods]
     steps:
       - uses: actions/checkout@v4
       # The `docker` runner label resolves to node:20-bookworm, which ships
