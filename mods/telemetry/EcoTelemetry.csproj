@@ -24,6 +24,17 @@
       <PrivateAssets>all</PrivateAssets>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
+    <!-- Eco serializes web responses with Newtonsoft.Json, so ClimateSettingsDto
+         carries Newtonsoft attributes. Compile-time only; the runtime copy comes
+         from Eco's own bundled Newtonsoft.Json. Same pattern as mods/stores. -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- The climate-settings [ApiController] needs the ASP.NET Core types. The
+       Eco server hosts ASP.NET Core, so the shared framework is provided at
+       runtime - this reference is compile-time only (nothing is copied). -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>
