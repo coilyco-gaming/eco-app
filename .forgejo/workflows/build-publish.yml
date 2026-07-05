@@ -13,14 +13,26 @@ on:
 jobs:
   test:
     runs-on: docker
+    # CI parity: run the Python validation gate inside the pinned aos dev-base
+    # image, through the same `ward exec` verbs a headless agent runs, so this
+    # gate IS the gate dispatched `warded` runs must pass. CI (`runs-on: docker`
+    # + `astral-sh/setup-uv`) stayed green while three dispatched runs died on
+    # the smoke gate in dev-base (eco-app#56); running here through ward would
+    # have caught it on a PR instead of in a silent dispatch failure. See
+    # eco-app#57 and the aos CI-parity umbrella (agentic-os#328).
+    #
+    # The tag is PINNED, not `:latest`, on purpose: a dev-base bump is then a
+    # deliberate PR that re-validates eco-app against the new image, never a
+    # silent drift under a moving tag. Bump it in lockstep with the ward version
+    # the agents actually run. dev-base bakes ward + uv + managed Pythons, so no
+    # setup-uv / sync step is needed - `ward exec` (make -> uv run) syncs the
+    # dev group on demand.
+    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.195.0
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - run: uv sync --group dev
-      - run: uv run pytest
-      - run: uv run ruff check src tests
-      - run: uv run ruff format --check src tests
-      - run: uv run mypy src tests
+      - run: ward exec test
+      - run: ward exec lint
+      - run: ward exec smoke
 
   frontend:
     runs-on: docker
