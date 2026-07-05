@@ -22,7 +22,7 @@ One image, one uvicorn process, entrypoint `eco_mcp_app.http_app:app` on port 40
 Server plugins for the Eco game server. Built with the `build-mod-*` ward verbs, shipped to the server out of band.
 
 - **mods/jobs** - skills API plugin (`/api/v1/skills` for the jobs tracker, `/api/v1/citizens` for the crafting atlas's id→name join) plus a C# shell harness mirroring the API shape for local dev.
-- **mods/replay** - player-action recorder writing the SQLite event log the replay browser reads.
+- **mods/replay** - player-action recorder writing the SQLite event log the replay browser reads. Action bodies are serialized with a structurally-bounded snapshot (allow-listed scalar props, wide references collapsed to `<name>`/`<n items>` summaries, 16 KB hard cap) and SQLite writes run on a background bounded-channel batched writer, never the game thread. Serializer unit tests: `ward exec test-mod-replay`.
 - **mods/telemetry** - logs, exception capture, Eco game + runtime metrics, and OTLP traces (plugin-init spans plus a slow-handler detector) inside the game server. Detail: [mods/telemetry/docs/FEATURES.md](../mods/telemetry/docs/FEATURES.md).
 - **mods/stores** - live store-offer exporter (`/api/v1/stores`): walks every live `StoreComponent` and emits each shelf's current offers (item, buy/sell, price, stock, currency, owner, location) so the store-directory, logistics-engine, and watcher siblings move from history-derived to shelf-accurate `Trades <item>` parity. Reflection-based, null-tolerant walk (survives orphaned stores and removed items), plus a C# shell harness mirroring the API shape for local dev. DTO contract: [mods/stores/docs/dto.md](../mods/stores/docs/dto.md).
 
