@@ -53,6 +53,11 @@ export default function Home() {
           <p>Trades per day, contracts, loans, wages, and the treasury.</p>
         </Link>
 
+        <Link className="dir-card" to="/trades" data-testid="dir-trades">
+          <h3>Trades ledger</h3>
+          <p>Every individual trade — who sold what to whom, and price over time.</p>
+        </Link>
+
         <Link className="dir-card" to="/crafting" data-testid="dir-crafting">
           <h3>Crafting atlas</h3>
           <p>What the world is making — top items and stations, deep-linkable.</p>

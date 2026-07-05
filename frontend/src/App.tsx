@@ -6,6 +6,7 @@ import Economy from "./pages/Economy"
 import Home from "./pages/Home"
 import Jobs from "./pages/Jobs"
 import Server from "./pages/Server"
+import Trades from "./pages/Trades"
 
 // Route table for the SPA. The homepage is a thin directory of surfaces;
 // per-feature pages (economy, map, species, milestones) join /server and
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="/server" element={<Server />} />
         <Route path="/jobs/*" element={<Jobs />} />
         <Route path="/economy" element={<Economy />} />
+        <Route path="/trades" element={<Trades />} />
         <Route path="/crafting" element={<Crafting />} />
         <Route path="/climate" element={<Climate />} />
         <Route path="/calculator" element={<Calculator />} />
