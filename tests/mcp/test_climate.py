@@ -35,6 +35,7 @@ from eco_mcp_app.climate import (
     _parse_dataset_point,
     _parse_layer_pct,
     _percent_change,
+    _resolve_rules,
     compute_climate_payload,
     fetch_climate,
 )
@@ -130,6 +131,19 @@ def _route_actions_empty() -> None:
         respx.get(url).mock(return_value=httpx.Response(200, text="Time,Citizen,Count\n"))
 
 
+def _route_climate_settings(settings: dict[str, object] | None = None) -> None:
+    """Stub the telemetry mod's ``/api/v1/climate-settings`` endpoint.
+
+    ``None`` → 404 (endpoint absent, un-modded server → defaults fallback).
+    A dict → 200 with the live per-server ruleset.
+    """
+    url = f"{_DEFAULT_BASE}/api/v1/climate-settings"
+    if settings is None:
+        respx.get(url).mock(return_value=httpx.Response(404))
+    else:
+        respx.get(url).mock(return_value=httpx.Response(200, json=settings))
+
+
 def _route_flatlist(names: list[str]) -> None:
     """Stub flatlist with a plain list-of-strings (old Eco shape)."""
     respx.get(f"{_DEFAULT_BASE}/datasets/flatlist").mock(
@@ -183,6 +197,7 @@ async def test_fetch_climate_parses_parallel_arrays_shape() -> None:
     )
     _route_flatlist([])
     _route_worldlayers_empty()
+    _route_climate_settings()
     _route_actions_empty()
 
     snap = await fetch_climate(
@@ -208,6 +223,7 @@ async def test_fetch_climate_picks_first_nonempty_candidate() -> None:
     _route_datasets({"AverageCO2PPM": [400, 410, 420]})
     _route_flatlist([])
     _route_worldlayers_empty()
+    _route_climate_settings()
     _route_actions_empty()
 
     snap = await fetch_climate(
@@ -223,6 +239,80 @@ async def test_fetch_climate_picks_first_nonempty_candidate() -> None:
     # Sea level + ground pollution are not in the values map → series stay empty.
     assert snap.sea_level_series == []
     assert snap.pollution_series == []
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_climate_reads_live_climate_settings() -> None:
+    """The telemetry mod's climate-settings endpoint populates the snapshot,
+    and the computed effects use the live per-server thresholds — the retuned
+    340 / 420 / 20 the in-game pollution machine reported, not Eco defaults."""
+    _route_datasets({"TotalCO2": [430, 435]})
+    _route_flatlist([])
+    _route_worldlayers_empty()
+    _route_climate_settings(
+        {
+            "minCo2Ppm": 340.0,
+            "temperatureThresholdPpm": 420.0,
+            "co2PpmPerDegree": 20.0,
+            "seaLevelThresholdPpm": 420.0,
+            "co2PpmPerMeter": 20.0,
+            "pollutionMultiplier": 1.5,
+        }
+    )
+    _route_actions_empty()
+
+    snap = await fetch_climate(
+        None,
+        info=_info(),
+        days_elapsed=4,
+        admin_token="test-token",
+        default_admin_base=_DEFAULT_BASE,
+    )
+    assert snap.climate_settings == {
+        "minCo2Ppm": 340.0,
+        "temperatureThresholdPpm": 420.0,
+        "co2PpmPerDegree": 20.0,
+        "seaLevelThresholdPpm": 420.0,
+        "co2PpmPerMeter": 20.0,
+        "pollutionMultiplier": 1.5,
+    }
+
+    eff = compute_climate_payload(snap)["effects"]
+    assert eff["source"] == "live"
+    assert eff["min_floor_ppm"] == 340.0
+    assert eff["temperature"]["threshold_ppm"] == 420.0
+    assert eff["temperature"]["ppm_per_degree"] == 20.0
+    assert eff["sea_level"]["threshold_ppm"] == 420.0
+    assert eff["pollution_multiplier"] == 1.5
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_climate_defaults_when_settings_endpoint_absent() -> None:
+    """A server without the telemetry mod 404s the endpoint; the card falls
+    back to the documented Eco defaults and flags the source as ``default``."""
+    _route_datasets({"TotalCO2": [400, 410]})
+    _route_flatlist([])
+    _route_worldlayers_empty()
+    _route_climate_settings(None)  # 404 — endpoint absent
+    _route_actions_empty()
+
+    snap = await fetch_climate(
+        None,
+        info=_info(),
+        days_elapsed=4,
+        admin_token="test-token",
+        default_admin_base=_DEFAULT_BASE,
+    )
+    assert snap.climate_settings is None
+
+    eff = compute_climate_payload(snap)["effects"]
+    assert eff["source"] == "default"
+    assert eff["temperature"]["threshold_ppm"] == 400.0
+    assert eff["temperature"]["ppm_per_degree"] == 25.0
+    # No live extras when the endpoint is absent.
+    assert "pollution_multiplier" not in eff
 
 
 @pytest.mark.asyncio
@@ -258,6 +348,7 @@ async def test_fetch_climate_aggregates_polluter_attribution() -> None:
     _route_datasets({"CO2PPM": [400, 405]})
     _route_flatlist([])
     _route_worldlayers_empty()
+    _route_climate_settings()
     # `PollutionAction` returns two rows; the rest 404.
     csv_body = (
         "Time,Citizen,Count,WorldObjectItem\n"
@@ -300,6 +391,7 @@ async def test_fetch_climate_caches_within_ttl() -> None:
     _route_datasets({"CO2PPM": [400]})
     _route_flatlist([])
     wl = respx.get(_WORLDLAYERS_URL).mock(return_value=httpx.Response(200, json=[]))
+    _route_climate_settings()
     _route_actions_empty()
 
     await fetch_climate(
@@ -336,6 +428,7 @@ async def test_fetch_climate_falls_back_to_flatlist_discovery() -> None:
         ]
     )
     _route_worldlayers_empty()
+    _route_climate_settings()
     _route_actions_empty()
 
     snap = await fetch_climate(
@@ -376,6 +469,7 @@ async def test_fetch_climate_parses_dict_shape_flatlist() -> None:
         ]
     )
     _route_worldlayers_empty()
+    _route_climate_settings()
     _route_actions_empty()
 
     snap = await fetch_climate(
@@ -405,6 +499,7 @@ async def test_fetch_climate_surfaces_catalog_when_all_series_empty() -> None:
     respx.get(_DATASET_URL).mock(return_value=httpx.Response(200, json=[]))
     _route_flatlist(["CO2 PPM", "Pollution"])
     _route_worldlayers_empty()
+    _route_climate_settings()
     _route_actions_empty()
 
     snap = await fetch_climate(
@@ -582,6 +677,63 @@ def test_payload_effects_thresholds_and_headroom() -> None:
     assert eff["sea_level"]["risen_m"] == 1.83
 
 
+def test_resolve_rules_defaults_when_no_settings() -> None:
+    rules = _resolve_rules(None)
+    assert rules["source"] == "default"
+    assert rules["temp_threshold_ppm"] == 400.0
+    assert rules["ppm_per_degree"] == 25.0
+    assert rules["min_co2_ppm"] == 325.0
+    # Optional extras have no default — absent means None.
+    assert rules["pollution_multiplier"] is None
+
+
+def test_resolve_rules_partial_settings_fall_back_per_field() -> None:
+    """A server that emits only some of the block gets live values for those
+    fields and Eco defaults for the rest — the merge is per-field, not
+    all-or-nothing."""
+    rules = _resolve_rules({"temperatureThresholdPpm": 420.0, "co2PpmPerDegree": 20.0})
+    assert rules["source"] == "live"  # at least one core field was live
+    assert rules["temp_threshold_ppm"] == 420.0
+    assert rules["ppm_per_degree"] == 20.0
+    # Sea-level fields weren't emitted → Eco defaults.
+    assert rules["sea_threshold_ppm"] == 400.0
+    assert rules["ppm_per_meter"] == 25.0
+    assert rules["min_co2_ppm"] == 325.0
+
+
+def test_resolve_rules_ignores_non_numeric_and_bool() -> None:
+    """Bogus/None/bool values are ignored so they can't poison a threshold."""
+    rules = _resolve_rules(
+        {"temperatureThresholdPpm": None, "co2PpmPerDegree": True, "minCo2Ppm": "nope"}
+    )
+    assert rules["source"] == "default"
+    assert rules["temp_threshold_ppm"] == 400.0
+    assert rules["ppm_per_degree"] == 25.0
+    assert rules["min_co2_ppm"] == 325.0
+
+
+def test_payload_effects_use_live_settings_thresholds() -> None:
+    snap = _snap(
+        co2_series=[(0.0, 340.0), (1.0, 460.0), (2.0, 340.0)],
+        sea_level_series=[(0.0, 60.0), (1.0, 62.0)],
+        temperature_series=[(0.0, 14.0), (1.0, 14.9)],
+        climate_settings={
+            "minCo2Ppm": 340.0,
+            "temperatureThresholdPpm": 420.0,
+            "co2PpmPerDegree": 20.0,
+            "seaLevelThresholdPpm": 420.0,
+            "co2PpmPerMeter": 20.0,
+        },
+    )
+    eff = compute_climate_payload(snap)["effects"]
+    assert eff["source"] == "live"
+    assert eff["at_floor"] is True  # 340 == live floor
+    # headroom = 420 - 340 = 80 (live threshold), not 75 (default).
+    assert eff["temperature"]["headroom_ppm"] == 80.0
+    # peak_drives_c = (460 - 420) / 20 = 2.0 using live rate.
+    assert eff["temperature"]["peak_drives_c"] == 2.0
+
+
 def test_explainer_tells_at_floor_recovery_story() -> None:
     snap = _snap(
         co2_series=[(0.0, 325.0), (1.0, 520.0), (2.0, 325.0)],
@@ -708,6 +860,7 @@ async def test_call_get_eco_climate_returns_iframe_fragment() -> None:
     )
     _route_flatlist([])
     _route_worldlayers_empty()
+    _route_climate_settings()
     _route_actions_empty()
 
     mcp = build_server()

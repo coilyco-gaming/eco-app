@@ -61,8 +61,16 @@ export interface Effects {
   co2_peak: number | null
   min_floor_ppm: number
   at_floor: boolean
+  // "live" when the telemetry mod's /api/v1/climate-settings endpoint supplied
+  // the thresholds (real per-server values), "default" when it was absent and
+  // we fell back to Eco's documented defaults. Drives the ruleset disclaimer.
+  source: "live" | "default"
   temperature: EffectAxis
   sea_level: EffectAxis
+  // Extra Eco climate knobs, present only when the server emits them.
+  pollution_multiplier?: number
+  max_co2_per_day_from_animals?: number
+  min_co2_per_day_from_plants?: number
 }
 
 export interface EarthMatch {

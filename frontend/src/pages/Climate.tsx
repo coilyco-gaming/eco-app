@@ -182,7 +182,11 @@ export default function Climate() {
             <section>
               <h2 className="section-title">CO₂ effects</h2>
               <p className="intro">
-                <span>Eco's default climate ruleset — a server admin can retune these.</span>
+                <span data-testid="climate-ruleset-source">
+                  {eff.source === "live"
+                    ? "Live from this server's climate config."
+                    : "Eco's default climate ruleset — a server admin can retune these."}
+                </span>
               </p>
               <p className="intro">
                 <span>
