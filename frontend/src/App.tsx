@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom"
 import Calculator from "./pages/Calculator"
+import Civics from "./pages/Civics"
 import Climate from "./pages/Climate"
 import Crafting from "./pages/Crafting"
 import Ecoregion from "./pages/Ecoregion"
@@ -27,6 +28,7 @@ export default function App() {
         <Route path="/trade" element={<Trade />} />
         <Route path="/trades" element={<Trades />} />
         <Route path="/crafting" element={<Crafting />} />
+        <Route path="/civics" element={<Civics />} />
         <Route path="/social" element={<Social />} />
         <Route path="/climate" element={<Climate />} />
         <Route path="/ecoregion" element={<Ecoregion />} />

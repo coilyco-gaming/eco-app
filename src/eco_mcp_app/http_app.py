@@ -331,6 +331,28 @@ def create_app() -> Starlette:
             return JSONResponse({"error": "no JSON block from find_eco_trade"}, status_code=502)
         return JSONResponse(payload)
 
+    async def preview_civics_json(request: Request) -> JSONResponse:
+        """`/preview/civics.json` — the SPA's `/civics` route data plane.
+
+        Dispatches `get_eco_civics` and returns its JSON block. A dedicated
+        route (rather than the generic `/preview/<tool>.json`) so the SPA hits
+        the short, stable `/preview/civics.json` path the epic asked for, with
+        `?server=` passing straight through as the tool arg (eco-app#61).
+        """
+        args = {k: v for k, v in request.query_params.items() if k in ("server",)}
+        req = mt.CallToolRequest(
+            method="tools/call",
+            params=mt.CallToolRequestParams(name="get_eco_civics", arguments=args),
+        )
+        try:
+            result = await call_tool_handler(req)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+        payload = _extract_json_block(cast(mt.CallToolResult, result.root))
+        if payload is None:
+            return JSONResponse({"error": "no JSON block from get_eco_civics"}, status_code=502)
+        return JSONResponse(payload)
+
     async def preview_social_json(request: Request) -> JSONResponse:
         """`/preview/social.json` — the SPA's `/social` route data plane.
 
@@ -456,6 +478,7 @@ def create_app() -> Starlette:
         Route("/preview/market.json", preview_market_json, methods=["GET"]),
         Route("/preview/stores.json", preview_stores_json, methods=["GET"]),
         Route("/preview/logistics.json", preview_logistics_json, methods=["GET"]),
+        Route("/preview/civics.json", preview_civics_json, methods=["GET"]),
         Route("/preview/social.json", preview_social_json, methods=["GET"]),
         Route("/preview/watchers.json", preview_watchers_json, methods=["GET"]),
         Route("/preview/{tool}", preview_tool, methods=["GET"]),

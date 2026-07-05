@@ -42,6 +42,7 @@ from . import ecoregion as ecoregion_mod
 from . import fair_price as fair_price_mod
 from . import market as market_mod
 from . import species as species_mod
+from .civics import civics_markdown, civics_template_context, fetch_civics
 from .crafting import atlas_template_context, fetch_atlas
 from .logistics import fetch_logistics, logistics_markdown, logistics_template_context
 from .map import build_map_payload, fetch_map_bundle
@@ -1025,6 +1026,10 @@ def _render_trades_ledger(ctx: dict[str, Any]) -> str:
 
 def _render_stores_directory(ctx: dict[str, Any]) -> str:
     return _JINJA.get_template("partials/stores.html").render(**ctx)
+
+
+def _render_civics_card(ctx: dict[str, Any]) -> str:
+    return _JINJA.get_template("partials/civics.html").render(**ctx)
 
 
 def _render_social(ctx: dict[str, Any]) -> str:
@@ -2566,6 +2571,46 @@ def build_server() -> Server:
                 **{"_meta": UI_META},
             ),
             Tool(
+                name="get_eco_civics",
+                title="Eco — civics & governance",
+                description=(
+                    "Civics and governance history + trend from an Eco server's "
+                    "action-log exporter and daily civic series: elections "
+                    "started and their outcomes, voter turnout (Vote vs "
+                    "DidntVote, with a participation rate and most-active-voter "
+                    "leaderboard), demographic movement (citizens gained / lost, "
+                    "residency moves) and settlements founded / homesteads "
+                    "started — each with the acting citizen resolved to a name "
+                    "via the jobs mod's citizens surface (`Citizen #<id>` "
+                    "fallback). The website-and-MCP answer to DiscordLink's "
+                    "elections / votes / demographics displays, exceeding them "
+                    "with turnout and demographic trend over time. Complements "
+                    "get_eco_government, which carries the current-state title / "
+                    "law snapshot (laws-in-effect are not derivable from the "
+                    "action stream). Requires an admin API key server-side "
+                    "(ECO_ADMIN_API_KEY, populated from SSM in the homelab "
+                    "deploy). Stream-parses the CSV so it stays bounded on "
+                    "late-cycle logs; thin / zero-data servers degrade to an "
+                    "empty report. Renders as an inline widget via the MCP Apps "
+                    "spec; falls back to a markdown summary otherwise."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "server": {
+                            "type": "string",
+                            "description": (
+                                "Eco admin base URL (`host`, `host:port`, or "
+                                "full URL). Omit to use the configured "
+                                "default (`eco.coilysiren.me:3001`)."
+                            ),
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+                **{"_meta": UI_META},
+            ),
+            Tool(
                 name="eco_trade_watchers",
                 title="Eco — trade watchers",
                 description=(
@@ -2794,6 +2839,33 @@ def build_server() -> Server:
                     TextContent(type="text", text=json.dumps(ledger.to_dict())),
                 ],
                 **{"_meta": _ui_meta(_render_trades_ledger(ctx))},
+            )
+
+        if name == "get_eco_civics":
+            server_arg = arguments.get("server") if arguments else None
+            api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
+            try:
+                civics_report = await fetch_civics(base_url=server_arg, api_key=api_key)
+            except httpx.HTTPError as e:
+                err_payload = {
+                    "view": "error",
+                    "message": f"Could not reach Eco exporter: {e}",
+                }
+                return CallToolResult(
+                    content=[
+                        TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
+                        TextContent(type="text", text=json.dumps(err_payload)),
+                    ],
+                    isError=True,
+                    **{"_meta": _ui_meta(_render_error(str(e)))},
+                )
+            ctx = civics_template_context(civics_report)
+            return CallToolResult(
+                content=[
+                    TextContent(type="text", text=civics_markdown(civics_report)),
+                    TextContent(type="text", text=json.dumps(civics_report.to_dict())),
+                ],
+                **{"_meta": _ui_meta(_render_civics_card(ctx))},
             )
 
         if name == "eco_trade_watchers":
