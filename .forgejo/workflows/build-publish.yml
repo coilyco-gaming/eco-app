@@ -53,43 +53,40 @@ jobs:
 
   mods:
     runs-on: docker
+    # Compile the four C# Eco mods (mods/{jobs,replay,telemetry,stores}) as a
+    # standalone gate. The mods are built by the build-mod-* ward verbs and
+    # shipped to the game server OUT OF BAND - they are NOT in the eco-app image
+    # (SPA + MCP + jobs) - so a compile error otherwise reaches the live server
+    # caught by no gate. This job is that gate/signal for the out-of-band mod
+    # shipping step. It is deliberately DECOUPLED from `publish`'s needs
+    # (eco-app#68): a mod that fails to compile has zero bearing on whether the
+    # mod-less app image is publishable, so it must never block the publish.
+    # #60 wired this gate into publish's needs by mistake and, being red on
+    # every run, froze prod from #60 until #68 dropped it here.
+    #
+    # Runs inside the SAME pinned aos dev-base image as the `test` job, through
+    # the same `ward exec` verb an agent runs (CI parity, agentic-os#328).
+    # dev-base ships the pinned .NET 10 SDK + full ICU (agentic-os#329), so the
+    # image provides `dotnet` on PATH and `ward exec build-mods` (make -> dotnet
+    # build) just works - no self-installed SDK, and no
+    # DOTNET_SYSTEM_GLOBALIZATION_INVARIANT (the image runs full ICU, not
+    # invariant mode). This replaced the old node:20-bookworm self-install path,
+    # which failed on every run since #60 (eco-app#68). Bump this pin in lockstep
+    # with the `test` job's.
+    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.195.0
     steps:
       - uses: actions/checkout@v4
-      # The C# Eco mods (mods/{jobs,replay,telemetry,stores}) are built by the
-      # build-mod-* ward verbs and shipped to the game server out of band, so a
-      # compile error in a mod otherwise reaches the live server caught by no
-      # gate. This job is that gate: `make build-mods` compiles all four, and a
-      # broken mod fails the build before deploy. See eco-app#60.
-      #
-      # The `docker` runner label resolves to node:20-bookworm, which ships no
-      # .NET SDK. Self-install the .NET 10 SDK as a static tarball (apt-free,
-      # like the publish job's docker CLI) so this lands independent of the
-      # image. The mods target net10.0 and pull Eco.ReferenceAssemblies from
-      # NuGet at build time.
-      #
-      # TODO(eco-app#60): drop this self-install once dev-base ships the .NET
-      # SDK and switch to the image-provided dotnet - the direction
-      # coilyco-flight-deck/agentic-os#328 (CI-in-dev-base parity) points.
-      - name: Install .NET 10 SDK
-        run: |
-          set -euo pipefail
-          curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
-          bash /tmp/dotnet-install.sh --channel 10.0 --install-dir "$HOME/.dotnet"
-          echo "$HOME/.dotnet" >> "$GITHUB_PATH"
-      # DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1: the runner image ships no ICU,
-      # so the CLR's globalization init would throw on startup. The mods do no
-      # culture-sensitive work, so invariant mode is safe. This is the recipe
-      # the eco-app#8 engineer proved by hand before this gate existed.
-      - name: Build all mods
-        env:
-          DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "1"
-          DOTNET_CLI_TELEMETRY_OPTOUT: "1"
-          DOTNET_NOLOGO: "1"
-        run: make build-mods
+      - run: ward exec build-mods
 
   publish:
     runs-on: docker
-    needs: [test, frontend, mods]
+    # NOT `needs: mods`: the app image is SPA + MCP + jobs (Python/Node) and
+    # contains no C# mods, so mod compilation has no bearing on whether it is
+    # publishable. The image is fully validated by `test` (pytest/ruff/mypy/
+    # smoke) and `frontend` (lint/test/build). The `mods` job stays a separate
+    # required signal for the out-of-band mod-shipping step, never a publish
+    # gate. See eco-app#68 (which unfroze prod by dropping mods from here).
+    needs: [test, frontend]
     steps:
       - uses: actions/checkout@v4
       # The `docker` runner label resolves to node:20-bookworm, which ships
