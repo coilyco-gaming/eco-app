@@ -21,6 +21,7 @@ Defined in [src/eco_mcp_app/server.py](../../src/eco_mcp_app/server.py). All acc
 - **get_eco_ecoregion** - WWF ecoregion classification. Donut, top-3 matches, boom/bust lists.
 - **get_eco_government** - Civic org chart. Elected titles, active elections, active laws.
 - **get_eco_climate** - CO2 ppm, sea-level + drift, ground pollution, avg temperature, NOAA Mauna Loa anchor, top polluters. Plus a pollution-machine-style explainer: CO2 sources & sinks breakdown (pollution/animals/plants, lifetime + per-day), the CO2-effects mechanic (warming + sea-level thresholds), and a plain-language "what to expect" narration. Tolerant to dataset-name drift.
+- **get_eco_currency** - Currency & money-supply surface, meets DiscordLink `Currencies` / `Currency <name>`. Roster split minted/backed vs personal/credit (each with issuance + trade activity), money-supply totals (player wealth + gov holdings) and 7d trade value. Optional `currency` arg gives the per-currency report. Roster + issuance from the `CreateCurrency` / `MintCurrency` / `CurrencyTrade` action exporters, supply from `/datasets/get`; degrades to the public `/info` headline without an admin key. Top holders are deferred (no per-account-balance export surface) and flagged, not faked. Probe: [docs/datasets/currency.md](../datasets/currency.md).
 - **list_public_eco_servers** - 6 known public servers with labels + notes.
 
 ## MCP resources
@@ -28,13 +29,14 @@ Defined in [src/eco_mcp_app/server.py](../../src/eco_mcp_app/server.py). All acc
 - **ui://eco/status.html** - Main MCP Apps shell document hosts load in their sandboxed iframe; per-tool Jinja cards swap into it via `_meta.ui.fragment`.
 - **ui://eco/economy.html** - Economy dashboard shell.
 - **ui://eco/climate.html** - Climate dashboard shell.
+- **ui://eco/currency.html** - Currency & money-supply dashboard shell.
 
 ## Runtime surfaces
 
 - **Stdio** - `python -m eco_mcp_app.__main__` for Claude Desktop.
 - **HTTP** - MCP over Streamable-HTTP at `POST /mcp/`. Stateless.
 - **Health probe** - `GET /healthz`.
-- **Data plane** - `GET /preview.json`, `/preview-map.json`, `/preview/<tool>.json` return tool payloads as JSON for the SPA to consume. No HTML variant - the dev `/preview` card pages were removed.
+- **Data plane** - `GET /preview.json`, `/preview-map.json`, `/preview/currency.json`, `/preview/<tool>.json` return tool payloads as JSON for the SPA to consume. `/preview/currency.json` is a dedicated short path (passing `?server=` / `?currency=` through) for the `/trade` SPA route; the rest dispatch any tool by name. No HTML variant - the dev `/preview` card pages were removed.
 - **Livereload WS** - Debug-mode hot reload.
 
 ## UI rendering

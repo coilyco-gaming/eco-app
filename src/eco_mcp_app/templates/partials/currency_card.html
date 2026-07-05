@@ -1,0 +1,176 @@
+{# Currency & money-supply card - meets DiscordLink's Currency / Currencies.
+
+   Two modes off one payload:
+     * list   - the roster split minted/backed vs personal/credit (Currencies).
+     * report - one currency's issuance + trade + holder note (Currency <name>).
+
+   Day-1 reality: every series and the whole roster can be empty. Each block
+   guards its data and falls back to "—" / an empty-state line rather than
+   crashing on zero, same as the economy card. #}
+<style>
+.cur-section-label {
+  font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--fg-faint); margin: 14px 0 6px;
+}
+.cur-rows { display: flex; flex-direction: column; gap: 4px; }
+.cur-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 6px 10px; border-radius: 6px;
+  background: rgba(90, 138, 58, 0.08);
+  border: 1px solid var(--panel-border);
+}
+.cur-row-name { font-weight: 600; color: var(--fg); }
+.cur-row-meta { font-size: 12px; color: var(--fg-muted); text-align: right; }
+</style>
+<div class="banner-wrap">
+  <a href="{{ steam_url }}" target="_blank" rel="noopener">
+    <img src="{{ banner_src }}" alt="Eco">
+    <div class="banner-overlay">
+      <div class="banner-title">
+        {% if mode == "report" and selected %}Currency · {{ selected.name }}{% else %}Currency market{% endif %}
+      </div>
+      <div class="banner-sub">
+        {{ server.description or server.category or "Eco server" }}
+        · cycle day {{ days_elapsed }}
+      </div>
+    </div>
+    <span class="banner-badge">
+      <span class="dot"></span>{{ counts.total }} active
+    </span>
+  </a>
+</div>
+
+<div class="about narrative">
+  {{ narrative }}
+  {%- if economy_desc %} · <b>{{ economy_desc }}</b>{% endif %}
+  {%- if not admin_ok %}
+  <div class="hint" style="margin-top:6px">
+    Admin token unavailable — showing the public <code>/info</code> headline only.
+    Set <code>ECO_ADMIN_TOKEN</code> or SSM <code>/eco-mcp-app/api-admin-token</code>
+    for the roster and money-supply series.
+  </div>
+  {%- endif %}
+</div>
+
+{# Money-supply header — shared by both modes. #}
+<div class="grid">
+  <div class="card">
+    <div class="card-label">Active currencies</div>
+    <div class="card-val">{{ money.activeCurrencies }}</div>
+    <div class="card-sub">{{ counts.minted }} minted · {{ counts.personal }} personal</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Money supply</div>
+    <div class="card-val">{% if money.hasSupplyData %}{{ fmt(money.totalSupply) }}{% else %}—{% endif %}</div>
+    <div class="card-sub">
+      {% if money.hasSupplyData %}
+        players {{ fmt(money.personalWealth) }} · gov {{ fmt(money.governmentHoldings) }}
+      {% else %}default-currency series not exposed yet{% endif %}
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-label">Trade value (7d)</div>
+    <div class="card-val">{% if money.tradeValue7d %}{{ fmt(money.tradeValue7d) }}{% else %}—{% endif %}</div>
+    <div class="card-sub">rolling currency traded, last 7 days</div>
+  </div>
+</div>
+
+{% if mode == "report" %}
+  {% if not_found or not selected %}
+    <div class="about" style="margin-top:10px">
+      No currency matching <b>{{ query }}</b> was found in the roster.
+      {% if currencies %}Known currencies: {% for c in currencies[:12] %}<code>{{ c.name }}</code>{{ ", " if not loop.last else "" }}{% endfor %}.{% endif %}
+    </div>
+  {% else %}
+    <div class="grid" style="margin-top:10px">
+      <div class="card">
+        <div class="card-label">Type</div>
+        <div class="card-val">{{ "Minted / backed" if selected.isMinted else "Personal / credit" }}</div>
+        <div class="card-sub">
+          {% if selected.isMinted %}reserve-backed, minted currency{% else %}player credit currency, no reserve{% endif %}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">Issuance (minted)</div>
+        <div class="card-val">{% if selected.mintEvents %}{{ fmt(selected.mintedAmount) }}{% else %}—{% endif %}</div>
+        <div class="card-sub">{{ selected.mintEvents }} mint event{{ "" if selected.mintEvents == 1 else "s" }}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Trades</div>
+        <div class="card-val">{{ selected.tradeCount }}</div>
+        <div class="card-sub">
+          {% if selected.tradeVolume %}volume {{ fmt(selected.tradeVolume) }}{% else %}no traded volume recorded{% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="about" style="margin-top:10px">
+      <b>Top holders:</b> unavailable. {{ selected.holders.note }}
+    </div>
+  {% endif %}
+{% else %}
+  {# List mode — minted then personal, each ranked by trade activity. #}
+  {% if currencies %}
+    {% if minted %}
+    <div class="cur-section-label">Minted / backed currencies</div>
+    <div class="cur-rows">
+      {% for c in minted %}
+      <div class="cur-row">
+        <span class="cur-row-name">{{ c.name }}</span>
+        <span class="cur-row-meta">
+          {% if c.mintedAmount %}minted {{ fmt(c.mintedAmount) }} · {% endif %}{{ c.tradeCount }} trade{{ "" if c.tradeCount == 1 else "s" }}{% if c.tradeVolume %} · vol {{ fmt(c.tradeVolume) }}{% endif %}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if personal %}
+    <div class="cur-section-label">Personal / credit currencies</div>
+    <div class="cur-rows">
+      {% for c in personal %}
+      <div class="cur-row">
+        <span class="cur-row-name">{{ c.name }}</span>
+        <span class="cur-row-meta">
+          {{ c.tradeCount }} trade{{ "" if c.tradeCount == 1 else "s" }}{% if c.tradeVolume %} · vol {{ fmt(c.tradeVolume) }}{% endif %}{% if c.createdBy %} · by {{ c.createdBy }}{% endif %}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <div class="hint" style="margin-top:10px">
+      Top holders per currency are not in Eco's export surface yet — {{ holders_deferred_note }}
+    </div>
+  {% else %}
+    <div class="about" style="margin-top:10px">
+      No currencies have been created or traded yet.
+      {% if available_currency_datasets %}
+        Currency datasets exposed: {% for n in available_currency_datasets[:6] %}<code>{{ n }}</code>{{ ", " if not loop.last else "" }}{% endfor %}.
+      {% endif %}
+    </div>
+  {% endif %}
+{% endif %}
+
+{% if warnings %}
+<div class="hint" style="margin-top:8px">
+  Non-fatal fetch warnings:
+  {% for w in warnings %}<code>{{ w }}</code>{{ "; " if not loop.last else "" }}{% endfor %}
+</div>
+{% endif %}
+
+<div class="footer">
+  <div class="footer-meta">
+    <span>
+      Fetched {{ fetched_at }}
+      {%- if server.sourceUrl %} · <code>{{ server.sourceUrl }}</code>{% endif %}
+    </span>
+    <div class="footer-actions">
+      <a class="cta steam" href="{{ steam_url }}" target="_blank" rel="noopener">Eco on Steam ↗</a>
+    </div>
+  </div>
+  <div class="credits-line">
+    <span>Built by <a href="https://www.coilysiren.me/" target="_blank" rel="noopener">Kai Siren</a></span>
+    <span class="sep">·</span>
+    <a href="https://github.com/coilyco-flight-deck/eco-mcp-app" target="_blank" rel="noopener">source on GitHub ↗</a>
+    <span class="sep">·</span>
+    <span>Eco is &copy; <a href="https://www.strangeloopgames.com/" target="_blank" rel="noopener">StrangeLoopGames</a> — unofficial fan tool</span>
+  </div>
+</div>

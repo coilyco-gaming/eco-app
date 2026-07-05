@@ -37,6 +37,7 @@ from mcp.types import (
 from pydantic import AnyUrl
 
 from . import climate as climate_mod
+from . import currency as currency_mod
 from . import ecoregion as ecoregion_mod
 from . import fair_price as fair_price_mod
 from . import species as species_mod
@@ -1746,6 +1747,103 @@ def _format_economy_markdown(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# Currency & money-supply card (meets DiscordLink Currency / Currencies)
+# ---------------------------------------------------------------------------
+
+
+CURRENCY_RESOURCE_URI = "ui://eco/currency.html"
+
+
+def _render_currency_card(payload: dict[str, Any]) -> str:
+    fetched_at = datetime.now(UTC).astimezone().strftime("%H:%M:%S")
+    return _JINJA.get_template("partials/currency_card.html").render(
+        mode=payload["mode"],
+        query=payload.get("query"),
+        not_found=payload.get("notFound"),
+        selected=payload.get("selected"),
+        server=payload["server"],
+        days_elapsed=payload["days_elapsed"],
+        admin_ok=payload["admin_ok"],
+        economy_desc=payload["economy_desc"],
+        money=payload["money"],
+        narrative=payload["narrative"],
+        currencies=payload["currencies"],
+        minted=payload["minted"],
+        personal=payload["personal"],
+        counts=payload["counts"],
+        holders_deferred_note=payload["holders_deferred_note"],
+        available_currency_datasets=payload.get("available_currency_datasets") or [],
+        warnings=payload.get("warnings") or [],
+        fetched_at=fetched_at,
+        steam_url=STEAM_URL,
+        banner_src=_BANNER_SRC,
+    )
+
+
+def _format_currency_markdown(payload: dict[str, Any]) -> str:
+    """Plain-text fallback for hosts without the MCP Apps iframe."""
+    server = payload["server"].get("description") or payload["server"].get("category") or "Eco"
+    money = payload["money"]
+    if payload["mode"] == "report":
+        selected = payload.get("selected")
+        if not selected:
+            lines = [f"**{server} — currency `{payload.get('query')}`**", ""]
+            lines.append("No currency by that name was found in the roster.")
+            if payload["currencies"]:
+                known = ", ".join(c["name"] for c in payload["currencies"][:12])
+                lines.append(f"Known currencies: {known}.")
+            return "\n".join(lines)
+        kind = "minted / backed" if selected["isMinted"] else "personal / credit"
+        lines = [
+            f"**{selected['name']}** — {kind} currency ({server})",
+            "",
+            f"- Trades: **{selected['tradeCount']}**"
+            + (f" · volume {selected['tradeVolume']:,.0f}" if selected["tradeVolume"] else ""),
+        ]
+        if selected["mintEvents"]:
+            lines.append(
+                f"- Minted issuance: **{selected['mintedAmount']:,.0f}**"
+                f" across {selected['mintEvents']} mint event"
+                f"{'' if selected['mintEvents'] == 1 else 's'}"
+            )
+        if selected.get("createdBy"):
+            lines.append(f"- Created by: {selected['createdBy']}")
+        lines.append(f"- Top holders: _{selected['holders']['note']}_")
+        return "\n".join(lines)
+
+    lines = [f"**{server} — currency market**", "", payload["narrative"], ""]
+    lines.append(f"- Active currencies: **{money['activeCurrencies']}**")
+    if money["hasSupplyData"]:
+        lines.append(
+            f"- Money supply: **{money['totalSupply']:,.0f}**"
+            f" (players {money['personalWealth']:,.0f} · gov {money['governmentHoldings']:,.0f})"
+        )
+    if money["tradeValue7d"]:
+        lines.append(f"- Trade value (7d): **{money['tradeValue7d']:,.0f}**")
+    if payload["minted"]:
+        lines.append("")
+        lines.append("**Minted / backed:**")
+        for c in payload["minted"][:10]:
+            vol = f" · vol {c['tradeVolume']:,.0f}" if c["tradeVolume"] else ""
+            mint = f"minted {c['mintedAmount']:,.0f} · " if c["mintedAmount"] else ""
+            lines.append(f"- {c['name']} — {mint}{c['tradeCount']} trades{vol}")
+    if payload["personal"]:
+        lines.append("")
+        lines.append("**Personal / credit:**")
+        for c in payload["personal"][:10]:
+            vol = f" · vol {c['tradeVolume']:,.0f}" if c["tradeVolume"] else ""
+            lines.append(f"- {c['name']} — {c['tradeCount']} trades{vol}")
+    if not payload["currencies"]:
+        lines.append("_No currencies created or traded yet._")
+    lines.append("")
+    lines.append(f"_Top holders: {payload['holders_deferred_note']}_")
+    if not payload["admin_ok"]:
+        lines.append("")
+        lines.append("_Admin token unavailable — roster + money-supply series are empty._")
+    return "\n".join(lines)
+
+
 def build_server() -> Server:
     """Construct the MCP Server with all handlers registered.
 
@@ -2076,6 +2174,54 @@ def build_server() -> Server:
                 },
             ),
             Tool(
+                name="get_eco_currency",
+                title="Eco — currency & money supply",
+                description=(
+                    "Surface the currency market of an Eco server: the roster of "
+                    "live currencies split into minted/backed vs personal/credit, "
+                    "each with its issuance and trade activity, plus money-supply "
+                    "totals (player wealth + government holdings) and rolling trade "
+                    "value. Meets DiscordLink's `Currencies` command. Pass "
+                    "`currency` (a currency name) for the per-currency report "
+                    "matching `Currency <name>` — trade count, minted issuance, and "
+                    "type. Top-holder lists are not in Eco's export surface yet and "
+                    "are flagged as deferred rather than faked. Pulls "
+                    "/datasets/get + the action exporter (admin key); degrades to "
+                    "the public /info headline when the key is absent. Defaults to "
+                    "ECO_INFO_URL; pass `server` to target a different one."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "server": {
+                            "type": "string",
+                            "description": (
+                                "Eco server to query. Accepts a bare host or IP, "
+                                "host:port, or a full `/info` URL. Omit to use the "
+                                "configured default."
+                            ),
+                        },
+                        "currency": {
+                            "type": "string",
+                            "description": (
+                                "Optional currency name for the per-currency "
+                                "report (e.g. a minted currency or a player's "
+                                "personal currency). Case-insensitive, matches on "
+                                "exact name then substring. Omit for the full "
+                                "roster."
+                            ),
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+                **{
+                    "_meta": {
+                        "ui": {"resourceUri": CURRENCY_RESOURCE_URI},
+                        "ui/resourceUri": CURRENCY_RESOURCE_URI,
+                    }
+                },
+            ),
+            Tool(
                 name="get_eco_government",
                 title="Eco — government org-chart",
                 description=(
@@ -2138,11 +2284,21 @@ def build_server() -> Server:
                 name=CLIMATE_RESOURCE_URI,
                 mimeType=RESOURCE_MIME,
             ),
+            Resource(
+                uri=AnyUrl(CURRENCY_RESOURCE_URI),
+                name=CURRENCY_RESOURCE_URI,
+                mimeType=RESOURCE_MIME,
+            ),
         ]
 
     @server.read_resource()
     async def read_resource(uri: AnyUrl) -> list[ReadResourceContents]:
-        if str(uri) in (RESOURCE_URI, ECONOMY_RESOURCE_URI, CLIMATE_RESOURCE_URI):
+        if str(uri) in (
+            RESOURCE_URI,
+            ECONOMY_RESOURCE_URI,
+            CLIMATE_RESOURCE_URI,
+            CURRENCY_RESOURCE_URI,
+        ):
             return [ReadResourceContents(content=_render_shell(), mime_type=RESOURCE_MIME)]
         raise ValueError(f"Unknown resource: {uri}")
 
@@ -2397,6 +2553,48 @@ def build_server() -> Server:
                     TextContent(type="text", text=climate_json_text),
                 ],
                 **{"_meta": _ui_meta(_render_climate_card(payload))},
+            )
+
+        if name == "get_eco_currency":
+            server_arg = arguments.get("server") if arguments else None
+            currency_arg = (arguments.get("currency") if arguments else None) or None
+            try:
+                info = await fetch_eco_info(server_arg)
+            except httpx.HTTPError as e:
+                err_payload = {"view": "error", "message": f"Could not reach Eco server: {e}"}
+                return CallToolResult(
+                    content=[
+                        TextContent(type="text", text=f"**Eco server unreachable:** {e}"),
+                        TextContent(type="text", text=json.dumps(err_payload)),
+                    ],
+                    isError=True,
+                    **{"_meta": _ui_meta(_render_error(str(e)))},
+                )
+            days_elapsed = int(info.get("DaysRunning") or 0)
+            if days_elapsed <= 0:
+                tss = info.get("TimeSinceStart")
+                try:
+                    days_elapsed = max(1, int(float(tss) / 3600.0))
+                except (TypeError, ValueError):
+                    days_elapsed = 1
+            admin_token = os.environ.get("ECO_ADMIN_TOKEN") or _get_admin_token()
+            default_admin_base = DEFAULT_ECO_INFO_URL.rsplit("/info", 1)[0]
+            currency_snapshot = await currency_mod.fetch_currency(
+                server_arg,
+                info=info,
+                days_elapsed=days_elapsed,
+                admin_token=admin_token,
+                default_admin_base=default_admin_base,
+            )
+            payload = currency_mod.compute_currency_payload(
+                currency_snapshot, currency=currency_arg
+            )
+            return CallToolResult(
+                content=[
+                    TextContent(type="text", text=_format_currency_markdown(payload)),
+                    TextContent(type="text", text=json.dumps(payload, default=str)),
+                ],
+                **{"_meta": _ui_meta(_render_currency_card(payload))},
             )
 
         if name == "fair_price":
