@@ -44,6 +44,16 @@ from . import species as species_mod
 from .crafting import atlas_template_context, fetch_atlas
 from .map import build_map_payload, fetch_map_bundle
 from .trades import fetch_ledger, ledger_markdown, ledger_template_context
+from .watchers import (
+    WatcherError,
+    build_query,
+    create_watcher,
+    evaluate_all,
+    evaluate_markdown,
+    list_watchers,
+    remove_watcher,
+    watchers_list_markdown,
+)
 
 DEFAULT_ECO_INFO_URL = os.environ.get("ECO_INFO_URL", "http://eco.coilysiren.me:3001/info")
 DEFAULT_ECO_PORT = int(os.environ.get("ECO_INFO_PORT", "3001"))
@@ -2289,6 +2299,92 @@ def build_server() -> Server:
                 **{"_meta": UI_META},
             ),
             Tool(
+                name="eco_trade_watchers",
+                title="Eco — trade watchers",
+                description=(
+                    "Host-agnostic trade watchers — the website-and-MCP answer to "
+                    "DiscordLink's WatchTradeFeed / WatchTradeDisplay / "
+                    "UnwatchTradeFeed / ListTradeWatchers, with no Discord "
+                    "dependency. Watch an item, a store, a trader, or a price "
+                    "threshold (e.g. 'iron ingot under 2.5'), then evaluate against "
+                    "the trades the server already exports. `evaluate` returns both "
+                    "the feed (matching trades new since the watcher last checked) "
+                    "and the display (the current matching state). Watchers persist "
+                    "in SQLite and survive restarts; they also show on the SPA "
+                    "`/trades` route. Use `action` to pick the verb:\n"
+                    "- `create` — new watcher. `kind` + `value`; for `kind=price` "
+                    "also `op` (under/over) + `threshold`.\n"
+                    "- `list` — every stored watcher.\n"
+                    "- `remove` — delete by `id`.\n"
+                    "- `evaluate` — run all watchers against the live ledger."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "enum": ["create", "list", "remove", "evaluate"],
+                            "description": "Which watcher verb to run.",
+                        },
+                        "kind": {
+                            "type": "string",
+                            "enum": ["item", "store", "trader", "price"],
+                            "description": (
+                                "For `create`: what to watch. `item` / `store` / "
+                                "`trader` are case-insensitive name matches; `price` "
+                                "pairs an item with a threshold predicate."
+                            ),
+                        },
+                        "value": {
+                            "type": "string",
+                            "description": (
+                                "For `create`: the item / store / trader name to "
+                                "match (the item name, for `kind=price`)."
+                            ),
+                        },
+                        "op": {
+                            "type": "string",
+                            "enum": ["under", "over"],
+                            "description": "For `kind=price`: threshold direction.",
+                        },
+                        "threshold": {
+                            "type": "number",
+                            "description": "For `kind=price`: the unit-price cutoff.",
+                        },
+                        "label": {
+                            "type": "string",
+                            "description": (
+                                "Optional friendly label for the watcher; defaults "
+                                "to a description of the query."
+                            ),
+                        },
+                        "id": {
+                            "type": "string",
+                            "description": "For `remove`: the watcher id to delete.",
+                        },
+                        "server": {
+                            "type": "string",
+                            "description": (
+                                "For `evaluate` (and stored on `create`): the Eco "
+                                "admin base URL to pull the ledger from. Omit to use "
+                                "the configured default."
+                            ),
+                        },
+                        "advance": {
+                            "type": "boolean",
+                            "description": (
+                                "For `evaluate`: whether to advance each watcher's "
+                                "last-seen mark past its feed hits (default true — "
+                                "the feed semantic). Pass false to peek without "
+                                "consuming."
+                            ),
+                        },
+                    },
+                    "required": ["action"],
+                    "additionalProperties": False,
+                },
+            ),
+            Tool(
                 name="list_public_eco_servers",
                 title="Eco — list public servers",
                 description=(
@@ -2431,6 +2527,110 @@ def build_server() -> Server:
                     TextContent(type="text", text=json.dumps(ledger.to_dict())),
                 ],
                 **{"_meta": _ui_meta(_render_trades_ledger(ctx))},
+            )
+
+        if name == "eco_trade_watchers":
+            args = arguments or {}
+            action = (args.get("action") or "").strip().lower()
+
+            def _watchers_result(md: str, payload: dict[str, Any]) -> CallToolResult:
+                return CallToolResult(
+                    content=[
+                        TextContent(type="text", text=md),
+                        TextContent(type="text", text=json.dumps(payload)),
+                    ],
+                )
+
+            if action == "create":
+                try:
+                    query = build_query(
+                        kind=args.get("kind", ""),
+                        value=args.get("value", ""),
+                        op=args.get("op"),
+                        threshold=args.get("threshold"),
+                    )
+                except WatcherError as e:
+                    return CallToolResult(
+                        content=[
+                            TextContent(type="text", text=f"**Could not create watcher:** {e}"),
+                            TextContent(type="text", text=json.dumps({"error": str(e)})),
+                        ],
+                        isError=True,
+                    )
+                watcher = create_watcher(query, label=args.get("label"), server=args.get("server"))
+                md = f"**Watcher created** — `{watcher.id}` watching {query.describe()}."
+                return _watchers_result(
+                    md, {"view": "watcher_created", "watcher": watcher.to_dict()}
+                )
+
+            if action == "list":
+                watchers = list_watchers()
+                return _watchers_result(
+                    watchers_list_markdown(watchers),
+                    {"view": "watchers", "watchers": [w.to_dict() for w in watchers]},
+                )
+
+            if action == "remove":
+                watcher_id = (args.get("id") or "").strip()
+                if not watcher_id:
+                    return CallToolResult(
+                        content=[
+                            TextContent(
+                                type="text", text="**`id` is required to remove a watcher.**"
+                            ),
+                            TextContent(type="text", text=json.dumps({"error": "missing id"})),
+                        ],
+                        isError=True,
+                    )
+                removed = remove_watcher(watcher_id)
+                md = (
+                    f"**Watcher `{watcher_id}` removed.**"
+                    if removed
+                    else f"**No watcher `{watcher_id}` found.**"
+                )
+                return _watchers_result(
+                    md, {"view": "watcher_removed", "id": watcher_id, "removed": removed}
+                )
+
+            if action == "evaluate":
+                server_arg = args.get("server")
+                advance = bool(args.get("advance", True))
+                api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
+                try:
+                    ledger = await fetch_ledger(base_url=server_arg, api_key=api_key)
+                except httpx.HTTPError as e:
+                    return CallToolResult(
+                        content=[
+                            TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
+                            TextContent(
+                                type="text",
+                                text=json.dumps({"view": "error", "message": str(e)}),
+                            ),
+                        ],
+                        isError=True,
+                    )
+                hits = evaluate_all(ledger.trades, advance=advance)
+                payload = {
+                    "view": "watcher_hits",
+                    "fetchedAtISO": ledger.fetched_at_iso,
+                    "sourceBaseUrl": ledger.source_base_url,
+                    "advanced": advance,
+                    "hits": [h.to_dict() for h in hits],
+                }
+                return _watchers_result(evaluate_markdown(hits), payload)
+
+            return CallToolResult(
+                content=[
+                    TextContent(
+                        type="text",
+                        text=(
+                            f"**Unknown watcher action '{action}'** — "
+                            "expected create / list / remove / evaluate."
+                        ),
+                    ),
+                    TextContent(type="text", text=json.dumps({"error": "unknown action"})),
+                ],
+                isError=True,
             )
 
         if name == "list_public_eco_servers":

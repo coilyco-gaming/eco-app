@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import Layout from "../components/Layout"
 import { fetchTradesLedger, type Trade, type TradesLedger } from "../lib/tradesApi"
+import { fetchWatchers, type WatcherHit } from "../lib/watchersApi"
 import { formatCount, prettifyEcoName } from "../lib/format"
 
 const TOP_N = 15
@@ -90,6 +91,39 @@ function TraderList({ rows }: TraderListProps) {
   )
 }
 
+// Read-only sidebar of the stored trade watchers and what they currently catch.
+// Watchers are created / removed over MCP (`eco_trade_watchers`); this surface
+// just shows the list and each watcher's live matching state (the display
+// semantic), plus a "new since last check" badge (the feed count). Rendered only
+// when at least one watcher exists — an empty store shows nothing here.
+function WatcherList({ hits }: { hits: WatcherHit[] }) {
+  return (
+    <ul className="rank-rows" data-testid="watcher-list">
+      {hits.map((h) => (
+        <li key={h.id}>
+          <div className="rank-row" data-testid="watcher-row">
+            <span className="rank-name">
+              {h.label}
+              {h.feedCount > 0 && (
+                <span className="watcher-badge" data-testid="watcher-badge">
+                  {" "}
+                  +{formatCount(h.feedCount)} new
+                </span>
+              )}
+            </span>
+            <span className="rank-count">
+              {formatCount(h.display.matchCount)} match
+              {h.display.bestUnitPrice !== null
+                ? ` · cheapest ${formatCount(h.display.bestUnitPrice)}`
+                : ""}
+            </span>
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function matchesTrade(t: Trade, needle: string): boolean {
   if (!needle) return true
   const hay = [t.seller, t.buyer, prettifyEcoName(t.item), t.currency]
@@ -100,6 +134,7 @@ function matchesTrade(t: Trade, needle: string): boolean {
 
 export default function Trades() {
   const [ledger, setLedger] = useState<TradesLedger | null>(null)
+  const [watchers, setWatchers] = useState<WatcherHit[]>([])
   const [error, setError] = useState<string | null>(null)
   const [params, setParams] = useSearchParams()
   const q = params.get("q") ?? ""
@@ -111,6 +146,13 @@ export default function Trades() {
       .then(setLedger)
       .catch((err) => {
         if (!controller.signal.aborted) setError(err instanceof Error ? err.message : String(err))
+      })
+    // Watchers are a best-effort sidebar — fetchWatchers already swallows a
+    // failing / empty store into [], so this never surfaces an error state.
+    fetchWatchers(controller.signal)
+      .then(setWatchers)
+      .catch(() => {
+        /* non-fatal: leave the watcher sidebar empty */
       })
     return () => controller.abort()
   }, [])
@@ -268,6 +310,18 @@ export default function Trades() {
               </table>
             )}
           </section>
+
+          {watchers.length > 0 && (
+            <section data-testid="watchers-section">
+              <h2 className="section-title">
+                Trade watchers{" "}
+                <span className="section-sub">
+                  ({watchers.length} watching — manage over MCP)
+                </span>
+              </h2>
+              <WatcherList hits={watchers} />
+            </section>
+          )}
 
           <div className="atlas-columns">
             <section>

@@ -31,6 +31,7 @@ async def test_list_tools_advertises_all_tools() -> None:
         "get_eco_ecoregion",
         "get_eco_climate",
         "get_eco_currency",
+        "eco_trade_watchers",
     }
 
 
