@@ -5,6 +5,7 @@ import Crafting from "./pages/Crafting"
 import Economy from "./pages/Economy"
 import Home from "./pages/Home"
 import Jobs from "./pages/Jobs"
+import Replay from "./pages/Replay"
 import Server from "./pages/Server"
 import Trade from "./pages/Trade"
 import Trades from "./pages/Trades"
@@ -26,6 +27,7 @@ export default function App() {
         <Route path="/crafting" element={<Crafting />} />
         <Route path="/climate" element={<Climate />} />
         <Route path="/calculator" element={<Calculator />} />
+        <Route path="/replay" element={<Replay />} />
       </Routes>
     </BrowserRouter>
   )

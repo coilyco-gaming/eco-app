@@ -27,6 +27,7 @@ export default function Layout({ children, fetchedAtISO }: LayoutProps) {
           <Link to="/crafting">Crafting</Link>
           <Link to="/climate">Climate</Link>
           <Link to="/calculator">Calculator</Link>
+          <Link to="/replay">Replay</Link>
         </nav>
       </header>
 

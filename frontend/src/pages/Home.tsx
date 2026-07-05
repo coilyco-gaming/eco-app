@@ -86,6 +86,11 @@ export default function Home() {
           <p>Price your craft with Eco Gnome — optimal buy and sell prices from your recipes.</p>
         </Link>
 
+        <Link className="dir-card" to="/replay" data-testid="dir-replay">
+          <h3>Replay</h3>
+          <p>The server chronicle — every recorded player action, logins to blocks, newest first.</p>
+        </Link>
+
         <div className="dir-card dir-card-static">
           <h3>Community</h3>
           <p>

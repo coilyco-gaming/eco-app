@@ -1,29 +1,32 @@
-# eco-replay
+# eco-replay ("Kaihronicler")
 
-Player-action recorder for an [Eco](https://play.eco/) server, plus a small browser UI.
+Player-action recorder for an [Eco](https://play.eco/) server, surfaced read-only on the website.
 
 Built as a clean-room alternative to the closed-source `Chronicler` mod (mod.io), which ships Windows-only native SQLite and doesn't run on Linux servers. eco-replay is two pieces:
 
-1. **C# Eco mod** (`mod/src/`) — implements `IGameActionAware`, receives every `GameAction` Eco produces, and appends a row to SQLite (`Storage/EcoReplay.db`). Uses `Microsoft.Data.Sqlite` which bundles a Linux-native `libe_sqlite3.so` via `SQLitePCLRaw`, so it Just Works on Linux without a Windows interop dance.
-2. **FastAPI web app** (`src/eco_replay/`) — reads the mod's `GET /api/v1/events?citizen=&type=&limit=` JSON endpoint and renders a filterable HTMX/Tailwind UI.
+1. **C# Eco mod** (`mods/replay/src/`) — implements `IGameActionAware`, receives every `GameAction` Eco produces, and appends a row to SQLite (`Storage/EcoReplay.db`). Uses `Microsoft.Data.Sqlite` which bundles a Linux-native `libe_sqlite3.so` via `SQLitePCLRaw`, so it Just Works on Linux without a Windows interop dance.
+2. **FastAPI JSON API** (`src/eco_replay/`) — reads the mod's `GET /api/v1/events?citizen=&type=&limit=` HTTP endpoint (or the SQLite file directly via `ECO_REPLAY_DB`, or a mock fallback) and re-serves it as `/v1/events`, `/v1/events/stats`, and `/v1/meta`. Mounted at `/replay/api` inside the fused service; the browser UI is the SPA's `/replay` route (`frontend/src/pages/Replay.tsx`). The old Jinja/HTMX HTML surface was removed in [#38](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/38) — product UX is the SPA, per the repo's SPA-only rule (DLT epic [#37](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/37)).
 
-Same pattern as the sibling [`eco_spec_tracker`](../../src/eco_spec_tracker): mod is source of truth, web app is the view.
+Same pattern as the sibling [`eco_spec_tracker`](../../src/eco_spec_tracker): mod is source of truth, the JSON API is a thin re-server, the SPA is the view.
 
 ## Quick start
 
-```sh
-# Compile and stage the mod into the live EcoServer:
-make install-mod
-make restart-eco
-make tail-eco          # watch logs for "Initializing EcoReplay..."
+The replay API rides the fused service — no separate process. Point it at a data
+source via env vars and run the SPA + service:
 
-# Browse events:
-make build-native
-UPSTREAM_URL=http://localhost/api/v1/events make run-native
-# http://localhost:4200/
+```sh
+# Build the replay mod DLL (staged into the live EcoServer separately):
+ward exec build-mod-replay
+
+# Serve the whole site (SPA + all APIs, replay included) and browse /replay:
+ward exec http                 # the fused service on :4000
+ward exec frontend-dev         # Vite dev server against it, open /replay
 ```
 
-Mock mode (no UPSTREAM_URL) returns canned events so the UI can be developed without an Eco server.
+Set `ECO_REPLAY_DB` (SQLite path) or `UPSTREAM_URL` (the mod's `/api/v1/events`
+endpoint) on the service to pull the real Chronicle. With neither set the API
+returns canned mock events so the `/replay` page can be developed without an Eco
+server (the SPA shows a mock-data banner).
 
 ## What gets recorded
 
@@ -40,10 +43,20 @@ Every `GameAction` Eco fires through `ActionUtil.ActionPerformed`. The recorder 
 
 ## Endpoints
 
+The C# mod serves these (consumed by the Python API as `UPSTREAM_URL`):
+
 | Path | Description |
 |---|---|
 | `GET /api/v1/events` | List events. Query: `citizen`, `type`, `limit` (≤1000), `since` (unix seconds). |
 | `GET /api/v1/events/stats` | `{ ready, total }` |
+
+The Python API re-serves them under the fused service's `/replay/api` mount (consumed by the SPA's `/replay` route):
+
+| Path | Description |
+|---|---|
+| `GET /replay/api/v1/events` | List events. Query: `citizen`, `type`, `limit` (≤1000). |
+| `GET /replay/api/v1/events/stats` | `{ ready, total }` |
+| `GET /replay/api/v1/meta` | `{ mockData }` — whether the events above are the canned mock set. |
 
 ## See also
 
