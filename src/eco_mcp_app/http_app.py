@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -41,6 +41,7 @@ from starlette.responses import (
 from starlette.routing import BaseRoute, Mount, Route
 from starlette.staticfiles import StaticFiles
 
+from .admin import build_admin_server
 from .livereload import DEBUG, livereload_route
 from .map import build_map_payload, fetch_map_bundle
 from .server import (
@@ -101,6 +102,33 @@ class NormalizeMcpPath:
         await self.app(scope, receive, send)
 
 
+class NormalizeAdminPath:
+    """ASGI middleware - rewrites bare `/admin` → `/admin/` before routing.
+
+    Same trailing-slash fix as `NormalizeMcpPath`, for the feature-flagged
+    privileged MCP mount. Only added to the stack when `ECO_ADMIN_ENABLED` is
+    set, so the public app's routing is untouched when the flag is off.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope.get("path") == "/admin":
+            scope = {**scope, "path": "/admin/", "raw_path": b"/admin/"}
+        await self.app(scope, receive, send)
+
+
+def _env_flag(name: str) -> bool:
+    """True when env var `name` is set to a truthy string (1/true/yes/on)."""
+    return (os.getenv(name) or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Feature flag: the privileged /admin MCP is off unless explicitly enabled, so
+# the public eco-mcp.coilysiren.me deploy never exposes on-disk state tools.
+ADMIN_ENABLED_ENV = "ECO_ADMIN_ENABLED"
+
+
 def create_app() -> Starlette:
     init_sentry()
     mcp_server = build_server()
@@ -108,9 +136,22 @@ def create_app() -> Starlette:
     # — each call is a one-shot /info fetch, no long-lived session state.
     session_manager = StreamableHTTPSessionManager(app=mcp_server, stateless=True)
 
+    # The privileged /admin MCP (on-disk state tools) is built and mounted only
+    # when ECO_ADMIN_ENABLED is set. Its session manager is entered in the same
+    # lifespan so both transports share one process lifetime.
+    admin_enabled = _env_flag(ADMIN_ENABLED_ENV)
+    admin_session_manager = (
+        StreamableHTTPSessionManager(app=build_admin_server(), stateless=True)
+        if admin_enabled
+        else None
+    )
+
     @asynccontextmanager
     async def lifespan(_: Starlette) -> AsyncIterator[None]:
-        async with session_manager.run():
+        async with AsyncExitStack() as stack:
+            await stack.enter_async_context(session_manager.run())
+            if admin_session_manager is not None:
+                await stack.enter_async_context(admin_session_manager.run())
             yield
 
     call_tool_handler = mcp_server.request_handlers[mt.CallToolRequest]
@@ -270,6 +311,10 @@ def create_app() -> Starlette:
     async def handle_mcp(scope: Scope, receive: Receive, send: Send) -> None:
         await session_manager.handle_request(scope, receive, send)
 
+    async def handle_admin_mcp(scope: Scope, receive: Receive, send: Send) -> None:
+        assert admin_session_manager is not None  # only mounted when enabled
+        await admin_session_manager.handle_request(scope, receive, send)
+
     # The jobs JSON API (eco_spec_tracker) is a self-contained FastAPI app
     # mounted under /jobs/api, keeping the public /jobs/api/v1/* paths from
     # the era when it also served the jobs HTML. The /jobs page itself is an
@@ -288,6 +333,8 @@ def create_app() -> Starlette:
         Mount("/mcp", app=handle_mcp),
         Mount("/jobs/api", app=jobs_app),
     ]
+    if admin_enabled:
+        routes.append(Mount("/admin", app=handle_admin_mcp))
     if (frontend_dist / "assets").is_dir():
         routes.append(Mount("/assets", app=StaticFiles(directory=frontend_dist / "assets")))
     if DEBUG:
@@ -295,6 +342,8 @@ def create_app() -> Starlette:
     routes.append(Route("/{path:path}", spa_fallback, methods=["GET"]))
     inner = Starlette(lifespan=lifespan, routes=routes)
     inner.add_middleware(NormalizeMcpPath)
+    if admin_enabled:
+        inner.add_middleware(NormalizeAdminPath)
     inner.add_middleware(FrameAncestorsCSP)
     return inner
 
