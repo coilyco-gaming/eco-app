@@ -43,6 +43,7 @@ from . import fair_price as fair_price_mod
 from . import market as market_mod
 from . import species as species_mod
 from .crafting import atlas_template_context, fetch_atlas
+from .logistics import fetch_logistics, logistics_markdown, logistics_template_context
 from .map import build_map_payload, fetch_map_bundle
 from .stores import directory_markdown, directory_template_context, fetch_directory
 from .trades import fetch_ledger, ledger_markdown, ledger_template_context
@@ -1076,6 +1077,10 @@ def _render_fair_price(result: fair_price_mod.FairPriceResult) -> str:
 
 def _render_market(ctx: dict[str, Any]) -> str:
     return _JINJA.get_template("partials/market.html").render(**ctx)
+
+
+def _render_logistics(ctx: dict[str, Any]) -> str:
+    return _JINJA.get_template("partials/logistics.html").render(**ctx)
 
 
 async def _in_game_reference_for(
@@ -2288,6 +2293,59 @@ def build_server() -> Server:
                 **{"_meta": UI_META},
             ),
             Tool(
+                name="find_eco_trade",
+                title="Eco — trade & store logistics",
+                description=(
+                    "Trade logistics engine: turns the trade ledger and live "
+                    "store shelves into buy/sell/haul decisions. Four boards — "
+                    "**cheapest source** (rank stores selling an item by price: "
+                    "'where is iron ingot cheapest'), **best resale** (rank "
+                    "stores buying it, for a player holding stock), **arbitrage "
+                    "spreads** (items a store sells below another store buys, by "
+                    "more than a threshold, ranked by spread x volume), and "
+                    "**supply gaps** (items with buy-order demand but thin or no "
+                    "supply, or priced well above their in-game median - what a "
+                    "new store should stock). Uses the reset-gated live shelf "
+                    "(mods/stores) when present and degrades to a recent-median "
+                    "history reconstruction otherwise, marking each price live vs "
+                    "history-derived. Empty / single-store markets report 'not "
+                    "enough market depth' rather than a fake spread. Requires an "
+                    "admin API key server-side (same exporter as get_eco_trades). "
+                    "Pass `item` to focus one item, `currency` to isolate a "
+                    "currency. Defaults to ECO_INFO_URL; pass `server` for another."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "server": {
+                            "type": "string",
+                            "description": (
+                                "Eco admin base URL (`host`, `host:port`, or full "
+                                "URL). Omit to use the configured default."
+                            ),
+                        },
+                        "item": {
+                            "type": "string",
+                            "description": (
+                                "Optional item filter. Case-insensitive, matches "
+                                "on the normalized id so 'Iron' finds "
+                                "'IronIngotItem'. Omit for every traded item."
+                            ),
+                        },
+                        "currency": {
+                            "type": "string",
+                            "description": (
+                                "Optional currency filter (e.g. 'Credit'). "
+                                "Case-insensitive exact match. Omit for all "
+                                "currencies."
+                            ),
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+                **{"_meta": UI_META},
+            ),
+            Tool(
                 name="get_eco_ecoregion",
                 title="Eco — biodiversity & ecoregion match",
                 description=(
@@ -3074,6 +3132,40 @@ def build_server() -> Server:
                     TextContent(type="text", text=json.dumps(intel.to_dict(), default=str)),
                 ],
                 **{"_meta": _ui_meta(_render_market(ctx))},
+            )
+
+        if name == "find_eco_trade":
+            server_arg = arguments.get("server") if arguments else None
+            item_arg = (arguments.get("item") if arguments else None) or None
+            currency_arg = (arguments.get("currency") if arguments else None) or None
+            api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
+            try:
+                report = await fetch_logistics(
+                    base_url=server_arg,
+                    api_key=api_key,
+                    item=item_arg,
+                    currency=currency_arg,
+                )
+            except httpx.HTTPError as e:
+                err_payload = {
+                    "view": "error",
+                    "message": f"Could not reach Eco exporter: {e}",
+                }
+                return CallToolResult(
+                    content=[
+                        TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
+                        TextContent(type="text", text=json.dumps(err_payload)),
+                    ],
+                    isError=True,
+                    **{"_meta": _ui_meta(_render_error(str(e)))},
+                )
+            ctx = logistics_template_context(report)
+            return CallToolResult(
+                content=[
+                    TextContent(type="text", text=logistics_markdown(report)),
+                    TextContent(type="text", text=json.dumps(report.to_dict(), default=str)),
+                ],
+                **{"_meta": _ui_meta(_render_logistics(ctx))},
             )
 
         if name not in ("get_eco_server_status", "get_eco_milestones"):
