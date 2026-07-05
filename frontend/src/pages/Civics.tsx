@@ -185,12 +185,16 @@ export default function Civics() {
           {(report.trend.Vote || report.trend.DidntVote) && (
             <section>
               <h2 className="section-title">Turnout over time</h2>
-              <p className="chart-legend" data-testid="turnout-legend">
-                <span className="legend-item">
-                  <span className="legend-swatch" style={{ background: "var(--leaf)" }} /> votes cast
+              <p className="civ-legend" data-testid="turnout-legend">
+                <span className="civ-legend-item">
+                  <span className="civ-legend-swatch" style={{ background: "var(--leaf)" }} /> votes
+                  cast
                 </span>
-                <span className="legend-item">
-                  <span className="legend-swatch legend-swatch-dashed" style={{ color: "var(--meteor)" }} />{" "}
+                <span className="civ-legend-item">
+                  <span
+                    className="civ-legend-swatch civ-legend-swatch-dashed"
+                    style={{ color: "var(--meteor)" }}
+                  />{" "}
                   abstentions
                 </span>
               </p>

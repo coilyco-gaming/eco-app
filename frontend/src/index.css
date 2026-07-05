@@ -797,8 +797,10 @@ a.dir-card:hover {
 }
 
 /* ---- civics (/civics) ---- */
-/* Two-series legend for the turnout chart — identity is never colour-alone. */
-.chart-legend {
+/* Two-series legend for the turnout chart — identity is never colour-alone.
+   Namespaced `civ-` so it never collides with the world surface's own
+   `.chart-legend` / `.legend-swatch` list-style legend below. */
+.civ-legend {
   display: flex;
   flex-wrap: wrap;
   gap: 1rem;
@@ -807,20 +809,20 @@ a.dir-card:hover {
   color: var(--ink-faint);
 }
 
-.legend-item {
+.civ-legend-item {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
 }
 
-.legend-swatch {
+.civ-legend-swatch {
   display: inline-block;
   width: 16px;
   height: 3px;
   border-radius: 2px;
 }
 
-.legend-swatch-dashed {
+.civ-legend-swatch-dashed {
   background-image: linear-gradient(
     to right,
     currentColor 0,
@@ -829,6 +831,61 @@ a.dir-card:hover {
     transparent 100%
   );
   background-size: 8px 3px;
+}
+
+/* World-mutation timeline — a stacked bar of events per in-game day. Shares the
+   price-chart's framed surface; its own recessive gridlines and legend below. */
+.mutation-timeline {
+  width: 100%;
+  max-width: 760px;
+  height: auto;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 0.5rem;
+}
+
+.mutation-timeline .axis-label {
+  fill: var(--ink-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mutation-timeline .axis-grid {
+  stroke: var(--card-border);
+  stroke-width: 1;
+}
+
+/* Legend for the stacked timeline — always present so identity is never
+   colour-alone. Swatch + label + the category's total. */
+.chart-legend {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  max-width: 760px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+}
+
+.chart-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.legend-count {
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
 }
 
 .warn-list {

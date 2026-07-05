@@ -12,6 +12,7 @@ import Server from "./pages/Server"
 import Social from "./pages/Social"
 import Trade from "./pages/Trade"
 import Trades from "./pages/Trades"
+import World from "./pages/World"
 
 // Route table for the SPA. The homepage is a thin directory of surfaces;
 // per-feature pages (economy, map, species, milestones) join /server and
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="/crafting" element={<Crafting />} />
         <Route path="/civics" element={<Civics />} />
         <Route path="/social" element={<Social />} />
+        <Route path="/world" element={<World />} />
         <Route path="/climate" element={<Climate />} />
         <Route path="/ecoregion" element={<Ecoregion />} />
         <Route path="/calculator" element={<Calculator />} />
