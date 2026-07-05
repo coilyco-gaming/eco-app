@@ -698,3 +698,84 @@ a.dir-card:hover {
 .site-footer p {
   margin: 0;
 }
+
+/* ---- trades ledger (/trades) ---- */
+.section-sub {
+  font-weight: 500;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--ink-faint);
+}
+
+.ledger-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.ledger-table th,
+.ledger-table td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.ledger-table th {
+  color: var(--ink-faint);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.ledger-table td.num,
+.ledger-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-table tbody tr:hover {
+  background: var(--leaf-wash);
+}
+
+.linklike {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: var(--leaf);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.linklike:hover {
+  color: var(--ink);
+}
+
+.price-chart {
+  width: 100%;
+  max-width: 640px;
+  height: auto;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 0.5rem;
+}
+
+.price-chart .axis-label {
+  fill: var(--ink-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.warn-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--meteor);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}

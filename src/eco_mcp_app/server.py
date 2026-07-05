@@ -43,6 +43,7 @@ from . import fair_price as fair_price_mod
 from . import species as species_mod
 from .crafting import atlas_template_context, fetch_atlas
 from .map import build_map_payload, fetch_map_bundle
+from .trades import fetch_ledger, ledger_markdown, ledger_template_context
 
 DEFAULT_ECO_INFO_URL = os.environ.get("ECO_INFO_URL", "http://eco.coilysiren.me:3001/info")
 DEFAULT_ECO_PORT = int(os.environ.get("ECO_INFO_PORT", "3001"))
@@ -1002,6 +1003,10 @@ def _render_ecopedia(card_dict: dict[str, Any]) -> str:
 
 def _render_crafting_atlas(ctx: dict[str, Any]) -> str:
     return _JINJA.get_template("partials/crafting.html").render(**ctx)
+
+
+def _render_trades_ledger(ctx: dict[str, Any]) -> str:
+    return _JINJA.get_template("partials/trades.html").render(**ctx)
 
 
 def _format_crafting_markdown(ctx: dict[str, Any]) -> str:
@@ -2076,6 +2081,40 @@ def build_server() -> Server:
                 **{"_meta": UI_META},
             ),
             Tool(
+                name="get_eco_trades",
+                title="Eco — trades ledger",
+                description=(
+                    "Pull the row-level trades ledger from an Eco server's "
+                    "action-log exporter: every individual CurrencyTrade and "
+                    "BarterTrade — who sold what to whom, for how much, where, "
+                    "and when. Aggregates top buyers / sellers by currency, "
+                    "per-currency volume, most-traded items, and a per-item "
+                    "price-over-time series (unit price by in-game day). "
+                    "Numeric party ids are joined to names via the jobs mod's "
+                    "citizens surface, falling back to `Citizen #<id>`. Requires "
+                    "an admin API key configured server-side (ECO_ADMIN_API_KEY, "
+                    "populated from SSM in the homelab deploy). Stream-parses the "
+                    "CSV so it stays bounded on late-cycle logs. Renders as an "
+                    "inline widget via the MCP Apps spec; falls back to a "
+                    "markdown summary otherwise."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "server": {
+                            "type": "string",
+                            "description": (
+                                "Eco admin base URL (`host`, `host:port`, or "
+                                "full URL). Omit to use the configured "
+                                "default (`eco.coilysiren.me:3001`)."
+                            ),
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+                **{"_meta": UI_META},
+            ),
+            Tool(
                 name="fair_price",
                 title="Eco — fair-price advisor",
                 description=(
@@ -2365,6 +2404,33 @@ def build_server() -> Server:
                     TextContent(type="text", text=json.dumps(atlas.to_dict())),
                 ],
                 **{"_meta": _ui_meta(_render_crafting_atlas(ctx))},
+            )
+
+        if name == "get_eco_trades":
+            server_arg = arguments.get("server") if arguments else None
+            api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
+            try:
+                ledger = await fetch_ledger(base_url=server_arg, api_key=api_key)
+            except httpx.HTTPError as e:
+                err_payload = {
+                    "view": "error",
+                    "message": f"Could not reach Eco exporter: {e}",
+                }
+                return CallToolResult(
+                    content=[
+                        TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
+                        TextContent(type="text", text=json.dumps(err_payload)),
+                    ],
+                    isError=True,
+                    **{"_meta": _ui_meta(_render_error(str(e)))},
+                )
+            ctx = ledger_template_context(ledger)
+            return CallToolResult(
+                content=[
+                    TextContent(type="text", text=ledger_markdown(ledger)),
+                    TextContent(type="text", text=json.dumps(ledger.to_dict())),
+                ],
+                **{"_meta": _ui_meta(_render_trades_ledger(ctx))},
             )
 
         if name == "list_public_eco_servers":

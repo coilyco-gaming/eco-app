@@ -1,0 +1,130 @@
+{# Trades ledger — rendered inside #root after a get_eco_trades tool call.
+   Product UX is the SPA (/trades); this fragment is only the in-chat MCP
+   Apps card, so it stays a compact summary: recent trades, most-traded
+   items, and top buyers/sellers. Empty-state is a distinct branch because
+   early in a cycle the exporter routinely returns zero trades. #}
+<div class="crafting-atlas">
+  <div class="crafting-head">
+    <div>
+      <div class="crafting-title">Trades ledger</div>
+      <div class="crafting-sub">
+        {% if empty %}
+          No trades recorded on this server yet.
+        {% else %}
+          {{ fmt(total_trades) }} trades · {{ '%.0f' % total_currency_volume }} currency · {{ source_base_url }}
+        {% endif %}
+      </div>
+    </div>
+    {% if per_type_counts %}
+    <div class="crafting-actions">
+      {% for name, count in per_type_counts %}
+        <span class="pill">{{ name }}: {{ fmt(count) }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if empty %}
+    <div class="empty">
+      <div style="font-size:20px;font-weight:800;color:var(--leaf-bright);">
+        Nothing traded yet
+      </div>
+      <div class="hint">
+        The action exporter returned zero trade rows. Early in the cycle this
+        is normal — check back after a few days of play.
+      </div>
+    </div>
+  {% else %}
+
+  {% if recent %}
+  <div class="crafting-section">
+    <div class="crafting-section-label">Recent trades</div>
+    <table class="trades-table">
+      <thead>
+        <tr>
+          <th>Day</th><th>Seller</th><th>Buyer</th><th>Item</th>
+          <th class="num">Qty</th><th class="num">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in recent %}
+        <tr>
+          <td>{{ t.day }}</td>
+          <td>{{ t.seller }}</td>
+          <td>{{ t.buyer }}</td>
+          <td>{{ t.item }}</td>
+          <td class="num">{{ fmt(t.quantity) }}</td>
+          <td class="num">{{ '%.1f' % t.currency_amount }} {{ t.currency }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <div class="crafting-grid">
+    <div class="crafting-panel">
+      <div class="crafting-section-label">Most-traded items</div>
+      {% if top_items %}
+      <ol class="crafting-list">
+        {% for item in top_items %}
+          <li>
+            <span class="rank">{{ loop.index }}.</span>
+            <span class="name" title="{{ item.name }}">{{ item.pretty }}</span>
+            <span class="count">{{ fmt(item.count) }}</span>
+            <span class="bar-wrap"><span class="bar" style="--w:{{ '%.1f' % item.pct }}%"></span></span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+        <div class="hint">No item trades recorded.</div>
+      {% endif %}
+    </div>
+
+    <div class="crafting-panel">
+      <div class="crafting-section-label">Top sellers (currency earned)</div>
+      {% if top_sellers %}
+      <ol class="crafting-list">
+        {% for c in top_sellers %}
+          <li>
+            <span class="rank">{{ loop.index }}.</span>
+            <span class="name">{{ c.name }}</span>
+            <span class="count">{{ '%.0f' % c.amount }}</span>
+            <span class="bar-wrap"><span class="bar" style="--w:{{ '%.1f' % c.pct }}%"></span></span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+        <div class="hint">No seller currency recorded.</div>
+      {% endif %}
+    </div>
+
+    <div class="crafting-panel">
+      <div class="crafting-section-label">Top buyers (currency spent)</div>
+      {% if top_buyers %}
+      <ol class="crafting-list">
+        {% for c in top_buyers %}
+          <li>
+            <span class="rank">{{ loop.index }}.</span>
+            <span class="name">{{ c.name }}</span>
+            <span class="count">{{ '%.0f' % c.amount }}</span>
+            <span class="bar-wrap"><span class="bar" style="--w:{{ '%.1f' % c.pct }}%"></span></span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+        <div class="hint">No buyer currency recorded.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% endif %}
+
+  {% if warnings %}
+  <div class="crafting-warnings">
+    {% for w in warnings %}
+      <div class="hint">⚠ {{ w }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>

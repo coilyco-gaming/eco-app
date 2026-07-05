@@ -107,10 +107,15 @@ _COLUMN_SHAPE: dict[str, Any] = {
     "Buyer": lambda v: bool(_INT_RE.match(v)),
     "Seller": lambda v: bool(_INT_RE.match(v)),
     "ShopOwner": lambda v: bool(_INT_RE.match(v)),
+    # Currency-trade numerics — let the trades ledger share this realign path.
+    "CurrencyAmount": _is_float,
+    "NumberOfItems": _is_float,
+    "BoughtOrSold": lambda v: bool(_INT_RE.match(v)),
     "Species": _looks_like_name,
     "WorldObjectItem": _looks_like_name,
     "ItemUsed": _looks_like_name,
     "ToolUsed": _looks_like_name,
+    "Currency": _looks_like_name,
     "BlockItemOnDestroy": _looks_like_name,
     "BlockDestroyed": _looks_like_name,
 }
@@ -426,13 +431,29 @@ async def _fetch_citizen_names(
     to a name. Best-effort: a missing / erroring endpoint is a non-fatal
     warning, and callers fall back to showing the bare ids. See eco-app#5.
     """
+    return await fetch_citizen_name_map(client, base_url, headers, atlas.warnings)
+
+
+async def fetch_citizen_name_map(
+    client: httpx.AsyncClient,
+    base_url: str,
+    headers: dict[str, str],
+    warnings: list[str],
+) -> dict[str, str]:
+    """Fetch the numeric-id -> display-name map from the jobs mod's citizens surface.
+
+    Shared by the crafting atlas and the trades ledger (both key exporter rows
+    by numeric in-game ids). Best-effort: a missing / erroring endpoint appends
+    a non-fatal warning and returns an empty map so callers fall back to bare
+    ids. See eco-app#5.
+    """
     url = f"{base_url}/api/v1/citizens"
     try:
         resp = await client.get(url, headers=headers)
         resp.raise_for_status()
         payload = resp.json()
     except (httpx.HTTPError, ValueError) as e:
-        atlas.warnings.append(f"citizens: {type(e).__name__}: {e}")
+        warnings.append(f"citizens: {type(e).__name__}: {e}")
         return {}
     mapping: dict[str, str] = {}
     for entry in payload or []:

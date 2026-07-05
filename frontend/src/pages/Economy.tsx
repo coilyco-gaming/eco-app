@@ -112,6 +112,13 @@ export default function Economy() {
           </section>
 
           <section className="dir-cards">
+            <Link className="dir-card" to="/trades" data-testid="link-trades">
+              <h3>Trades ledger →</h3>
+              <p>
+                The row-level view behind those {formatCount(snapshot.kpis.trades_total)} trades —
+                who sold what to whom, and price over time.
+              </p>
+            </Link>
             <Link className="dir-card" to="/crafting" data-testid="link-crafting">
               <h3>Crafting atlas →</h3>
               <p>

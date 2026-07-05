@@ -663,6 +663,15 @@
     font-size: 11px; color: var(--warn); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   }
 
+  /* ---- trades ledger card (get_eco_trades tool) ---- */
+  .trades-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .trades-table th, .trades-table td {
+    text-align: left; padding: 4px 8px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .trades-table th { color: var(--fg-muted); font-weight: 700; }
+  .trades-table td.num, .trades-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
   /* ---- ecoregion card (get_eco_ecoregion tool) ---- */
   .ecoregion {
     background: var(--panel);
