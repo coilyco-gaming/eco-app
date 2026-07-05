@@ -3,6 +3,7 @@ import Layout from "../components/Layout"
 import { useEcoStatus } from "../hooks/useEcoStatus"
 import { useSocialPulse } from "../hooks/useSocialPulse"
 import { useTradePulse } from "../hooks/useTradePulse"
+import { useWorldPulse } from "../hooks/useWorldPulse"
 import { formatCount, safeHttpUrl } from "../lib/format"
 
 const STEAM_URL = "https://store.steampowered.com/app/382310/Eco/"
@@ -13,6 +14,7 @@ export default function Home() {
   const { status } = useEcoStatus()
   const tradePulse = useTradePulse()
   const socialPulse = useSocialPulse()
+  const worldPulse = useWorldPulse()
   const discordUrl = safeHttpUrl(status?.server.discord)
 
   return (
@@ -85,6 +87,19 @@ export default function Home() {
             <p className="dir-badges" data-testid="social-badges">
               <span className="mini-pill">{formatCount(socialPulse.chat)} messages</span>
               <span className="mini-pill">{formatCount(socialPulse.arrivals)} new</span>
+            </p>
+          )}
+        </Link>
+
+        <Link className="dir-card" to="/world" data-testid="dir-world">
+          <h3>World &amp; industry</h3>
+          <p>Construction, roads, terraforming, explosions, and pollution — the mutation timeline.</p>
+          {worldPulse && (
+            <p className="dir-badges" data-testid="world-badges">
+              <span className="mini-pill">{formatCount(worldPulse.events)} events</span>
+              {worldPulse.topCategory && (
+                <span className="mini-pill">{worldPulse.topCategory}</span>
+              )}
             </p>
           )}
         </Link>

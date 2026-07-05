@@ -1,0 +1,117 @@
+{# World / Industry activity — rendered inside #root after a tool call.
+   Every datum is precomputed server-side; the bars are plain CSS so CSP needs
+   no external JS. Empty-state is a distinct branch because early in a cycle the
+   world-mutation exporters routinely return zero rows (eco-app#62). #}
+<div class="crafting-atlas">
+  <div class="crafting-head">
+    <div>
+      <div class="crafting-title">World &amp; industry activity</div>
+      <div class="crafting-sub">
+        {% if empty %}
+          No world-mutation events recorded on this server yet.
+        {% else %}
+          {{ fmt(total_events) }} events · {{ source_base_url }}
+        {% endif %}
+      </div>
+    </div>
+    {% if categories %}
+    <div class="crafting-actions">
+      {% for c in categories %}
+        <span class="pill">{{ c.label }}: {{ fmt(c.events) }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if empty %}
+    <div class="empty">
+      <div style="font-size:20px;font-weight:800;color:var(--leaf-bright);">
+        The world is untouched
+      </div>
+      <div class="hint">
+        The world-action exporters returned zero rows. Early in the cycle this is
+        normal — check back after a few days of construction and mining.
+      </div>
+    </div>
+  {% else %}
+
+  <div class="crafting-grid">
+    <div class="crafting-panel">
+      <div class="crafting-section-label">Mutation by category</div>
+      <ol class="crafting-list">
+        {% for c in categories %}
+          <li>
+            <span class="rank">{{ loop.index }}.</span>
+            <span class="name">{{ c.label }}</span>
+            <span class="count">{{ fmt(c.events) }}</span>
+            <span class="bar-wrap"><span class="bar" style="--w:{{ '%.1f' % c.pct }}%"></span></span>
+          </li>
+        {% endfor %}
+      </ol>
+    </div>
+
+    <div class="crafting-panel">
+      <div class="crafting-section-label">Top world-shapers</div>
+      {% if top_builders %}
+      <ol class="crafting-list">
+        {% for b in top_builders %}
+          <li>
+            <span class="rank">{{ loop.index }}.</span>
+            <span class="name">{{ b.name }}</span>
+            <span class="count">{{ fmt(b.events) }}</span>
+            <span class="bar-wrap"><span class="bar" style="--w:{{ '%.1f' % b.pct }}%"></span></span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+        <div class="hint">No citizen activity recorded.</div>
+      {% endif %}
+    </div>
+
+    <div class="crafting-panel">
+      <div class="crafting-section-label">Most-touched objects</div>
+      {% if top_objects %}
+      <ol class="crafting-list">
+        {% for o in top_objects %}
+          <li>
+            <span class="rank">{{ loop.index }}.</span>
+            <span class="name" title="{{ o.name }}">{{ o.pretty }}</span>
+            <span class="count">{{ fmt(o.volume) }}</span>
+            <span class="bar-wrap"><span class="bar" style="--w:{{ '%.1f' % o.pct }}%"></span></span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+        <div class="hint">No object activity recorded.</div>
+      {% endif %}
+    </div>
+
+    <div class="crafting-panel">
+      <div class="crafting-section-label">Activity hotspots (x, z)</div>
+      {% if hotspots %}
+      <ol class="crafting-list">
+        {% for h in hotspots %}
+          <li>
+            <span class="rank">{{ loop.index }}.</span>
+            <span class="name">({{ h.x }}, {{ h.z }})</span>
+            <span class="count">{{ fmt(h.events) }}</span>
+            <span class="bar-wrap"><span class="bar" style="--w:{{ '%.1f' % h.pct }}%"></span></span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+        <div class="hint">No positioned events recorded.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% endif %}
+
+  {% if warnings %}
+  <div class="crafting-warnings">
+    {% for w in warnings %}
+      <div class="hint">⚠ {{ w }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>

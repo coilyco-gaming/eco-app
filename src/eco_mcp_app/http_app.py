@@ -356,6 +356,28 @@ def create_app() -> Starlette:
             return JSONResponse({"error": "no JSON block from get_eco_social"}, status_code=502)
         return JSONResponse(payload)
 
+    async def preview_world_json(request: Request) -> JSONResponse:
+        """`/preview/world.json` — the SPA's `/world` route data plane.
+
+        Dispatches `get_eco_world` and returns its JSON block. A dedicated route
+        (rather than the generic `/preview/<tool>.json`) so the SPA hits the
+        short, stable path the issue asked for, with `?server=` passing straight
+        through as the tool arg (eco-app#62).
+        """
+        args = {k: v for k, v in request.query_params.items() if k in ("server",)}
+        req = mt.CallToolRequest(
+            method="tools/call",
+            params=mt.CallToolRequestParams(name="get_eco_world", arguments=args),
+        )
+        try:
+            result = await call_tool_handler(req)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+        payload = _extract_json_block(cast(mt.CallToolResult, result.root))
+        if payload is None:
+            return JSONResponse({"error": "no JSON block from get_eco_world"}, status_code=502)
+        return JSONResponse(payload)
+
     async def preview_watchers_json(request: Request) -> JSONResponse:
         """`/preview/watchers.json` — the SPA's trade-watcher data plane.
 
@@ -457,6 +479,7 @@ def create_app() -> Starlette:
         Route("/preview/stores.json", preview_stores_json, methods=["GET"]),
         Route("/preview/logistics.json", preview_logistics_json, methods=["GET"]),
         Route("/preview/social.json", preview_social_json, methods=["GET"]),
+        Route("/preview/world.json", preview_world_json, methods=["GET"]),
         Route("/preview/watchers.json", preview_watchers_json, methods=["GET"]),
         Route("/preview/{tool}", preview_tool, methods=["GET"]),
         Mount("/mcp", app=handle_mcp),
