@@ -43,7 +43,7 @@
       {% if kpis.trades_total %}
         {{ '{:,}'.format(kpis.trades_total) }} total
       {%- if kpis.trades_wow_pct is not none %}
-        · {{ '%+.1f' % kpis.trades_wow_pct }}% vs avg
+        · activity {{ '%+.1f' % kpis.trades_wow_pct }}% vs prev wk
       {%- endif %}
       {% else %}no trades recorded yet{% endif %}
     </div>

@@ -768,6 +768,18 @@ a.dir-card:hover {
   color: var(--ink);
 }
 
+/* Replay event bodies are JSON blobs — wrap them tight and monospace so a long
+   payload doesn't blow out the timeline row width. */
+.replay-body {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 32rem;
+}
+
 .price-chart {
   width: 100%;
   max-width: 640px;
