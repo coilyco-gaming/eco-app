@@ -6,6 +6,7 @@ import Economy from "./pages/Economy"
 import Home from "./pages/Home"
 import Jobs from "./pages/Jobs"
 import Server from "./pages/Server"
+import Social from "./pages/Social"
 import Trade from "./pages/Trade"
 import Trades from "./pages/Trades"
 
@@ -24,6 +25,7 @@ export default function App() {
         <Route path="/trade" element={<Trade />} />
         <Route path="/trades" element={<Trades />} />
         <Route path="/crafting" element={<Crafting />} />
+        <Route path="/social" element={<Social />} />
         <Route path="/climate" element={<Climate />} />
         <Route path="/calculator" element={<Calculator />} />
       </Routes>

@@ -795,3 +795,53 @@ a.dir-card:hover {
   color: var(--meteor);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+/* Social / chat surface (eco-app#63) */
+.redaction-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.82rem;
+  color: var(--ink-faint);
+  max-width: 60ch;
+}
+
+.rep-layout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+
+.rep-graph {
+  width: 100%;
+  max-width: 460px;
+  height: auto;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 0.5rem;
+}
+
+.rep-graph .rep-label {
+  fill: var(--ink-soft);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rep-lists {
+  flex: 1 1 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.section-title-sm {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+}
+
+.chat-msg {
+  color: var(--ink-soft);
+  max-width: 40ch;
+  overflow-wrap: anywhere;
+}

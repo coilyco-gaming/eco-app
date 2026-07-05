@@ -1,0 +1,153 @@
+{# Social / chat surface — rendered inside #root after a get_eco_social call.
+   Product UX is the SPA (/social); this fragment is only the in-chat MCP Apps
+   card, so it stays a compact, redaction-aware summary: chat volume by channel,
+   top chatters, the reputation flow, new arrivals, and a few redacted chat
+   samples. Chat is player-authored, so unless an operator lifted the gate the
+   names here are handles and the message bodies are name-scrubbed. #}
+<div class="crafting-atlas">
+  <div class="crafting-head">
+    <div>
+      <div class="crafting-title">Social &amp; chat</div>
+      <div class="crafting-sub">
+        {% if empty %}
+          No social activity recorded on this server yet.
+        {% else %}
+          {{ fmt(total_chat) }} chat · {{ fmt(total_reputation_transfers) }} rep transfers ·
+          {{ fmt(total_first_logins) }} new arrivals · {{ source_base_url }}
+        {% endif %}
+      </div>
+    </div>
+    <div class="crafting-actions">
+      <span class="pill">{% if redacted %}🔒 names redacted{% else %}names shown (operator){% endif %}</span>
+      {% for name, count in per_type_counts %}
+        <span class="pill">{{ name }}: {{ fmt(count) }}</span>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if empty %}
+    <div class="empty">
+      <div style="font-size:20px;font-weight:800;color:var(--leaf-bright);">
+        Quiet so far
+      </div>
+      <div class="hint">
+        The action exporter returned no chat, reputation, or arrival rows. Early
+        in the cycle this is normal — check back after a few days of play.
+      </div>
+    </div>
+  {% else %}
+
+  {% if recent_chat %}
+  <div class="crafting-section">
+    <div class="crafting-section-label">
+      Recent chat {% if redacted %}<span class="hint">(redacted samples)</span>{% endif %}
+    </div>
+    <table class="trades-table">
+      <thead>
+        <tr><th>Day</th><th>Author</th><th>Channel</th><th>Message</th></tr>
+      </thead>
+      <tbody>
+        {% for m in recent_chat %}
+        <tr>
+          <td>{{ m.day }}</td>
+          <td>{{ m.author }}</td>
+          <td>{{ m.channel }}</td>
+          <td>{{ m.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <div class="crafting-grid">
+    <div class="crafting-panel">
+      <div class="crafting-section-label">Busiest channels</div>
+      {% if channels %}
+      <ol class="crafting-list">
+        {% for c in channels %}
+          <li>
+            <span class="rank">{{ loop.index }}.</span>
+            <span class="name">{{ c.name }}</span>
+            <span class="count">{{ fmt(c.count) }}</span>
+            <span class="bar-wrap"><span class="bar" style="--w:{{ '%.1f' % c.pct }}%"></span></span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+        <div class="hint">No chat recorded.</div>
+      {% endif %}
+    </div>
+
+    <div class="crafting-panel">
+      <div class="crafting-section-label">Top chatters</div>
+      {% if chatters %}
+      <ol class="crafting-list">
+        {% for c in chatters %}
+          <li>
+            <span class="rank">{{ loop.index }}.</span>
+            <span class="name">{{ c.name }}</span>
+            <span class="count">{{ fmt(c.count) }}</span>
+            <span class="bar-wrap"><span class="bar" style="--w:{{ '%.1f' % c.pct }}%"></span></span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+        <div class="hint">No chat authors recorded.</div>
+      {% endif %}
+    </div>
+
+    <div class="crafting-panel">
+      <div class="crafting-section-label">Most-repped</div>
+      {% if rep_receivers %}
+      <ol class="crafting-list">
+        {% for c in rep_receivers %}
+          <li>
+            <span class="rank">{{ loop.index }}.</span>
+            <span class="name">{{ c.name }}</span>
+            <span class="count">{{ '%.0f' % c.amount }}</span>
+            <span class="bar-wrap"><span class="bar" style="--w:{{ '%.1f' % c.pct }}%"></span></span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+        <div class="hint">No reputation transfers recorded.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if rep_edges %}
+  <div class="crafting-section">
+    <div class="crafting-section-label">Reputation flow (who reps whom)</div>
+    <ul class="crafting-list">
+      {% for e in rep_edges %}
+        <li>
+          <span class="name">{{ e.source }} → {{ e.target }}</span>
+          <span class="count">{{ '%+.0f' % e.amount }} ({{ fmt(e.count) }}×)</span>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if new_arrivals %}
+  <div class="crafting-section">
+    <div class="crafting-section-label">New arrivals</div>
+    <div class="crafting-actions">
+      {% for a in new_arrivals %}
+        <span class="pill">{{ a.label }} · day {{ a.day }}</span>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% endif %}
+
+  {% if warnings %}
+  <div class="crafting-warnings">
+    {% for w in warnings %}
+      <div class="hint">⚠ {{ w }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
