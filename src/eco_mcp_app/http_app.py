@@ -353,6 +353,30 @@ def create_app() -> Starlette:
             return JSONResponse({"error": "no JSON block from get_eco_civics"}, status_code=502)
         return JSONResponse(payload)
 
+    async def preview_progression_json(request: Request) -> JSONResponse:
+        """`/preview/progression.json` — the SPA's skills-history data plane.
+
+        Dispatches `get_eco_progression` and returns its JSON block. A dedicated
+        route (rather than the generic `/preview/<tool>.json`) so the SPA can hit
+        the short, stable `/preview/progression.json` path the issue asked for,
+        with `?server=` passing straight through as the tool arg (eco-app#64).
+        """
+        args = {k: v for k, v in request.query_params.items() if k in ("server",)}
+        req = mt.CallToolRequest(
+            method="tools/call",
+            params=mt.CallToolRequestParams(name="get_eco_progression", arguments=args),
+        )
+        try:
+            result = await call_tool_handler(req)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+        payload = _extract_json_block(cast(mt.CallToolResult, result.root))
+        if payload is None:
+            return JSONResponse(
+                {"error": "no JSON block from get_eco_progression"}, status_code=502
+            )
+        return JSONResponse(payload)
+
     async def preview_social_json(request: Request) -> JSONResponse:
         """`/preview/social.json` — the SPA's `/social` route data plane.
 
@@ -501,6 +525,7 @@ def create_app() -> Starlette:
         Route("/preview/stores.json", preview_stores_json, methods=["GET"]),
         Route("/preview/logistics.json", preview_logistics_json, methods=["GET"]),
         Route("/preview/civics.json", preview_civics_json, methods=["GET"]),
+        Route("/preview/progression.json", preview_progression_json, methods=["GET"]),
         Route("/preview/social.json", preview_social_json, methods=["GET"]),
         Route("/preview/world.json", preview_world_json, methods=["GET"]),
         Route("/preview/watchers.json", preview_watchers_json, methods=["GET"]),

@@ -1,7 +1,15 @@
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { Link } from "react-router-dom"
 import Layout from "../components/Layout"
 import { useJobsData } from "../hooks/useJobsData"
 import type { PlayerRow, ProfessionStat, SpecialtyStat } from "../lib/jobsApi"
+import {
+  fetchProgressionHistory,
+  KIND_LABELS,
+  type CitizenTrajectory,
+  type ProgressionHistory,
+} from "../lib/progressionApi"
+import { formatCount } from "../lib/format"
 
 function ProfessionCard({ stat }: { stat: ProfessionStat }) {
   const [open, setOpen] = useState(false)
@@ -52,7 +60,17 @@ function SpecialtyCard({ stat }: { stat: SpecialtyStat }) {
   )
 }
 
-function PlayerCard({ player }: { player: PlayerRow }) {
+// A player card, enriched with a "how they got here" history lane when the
+// progression surface has a matching trajectory (eco-app#64). The current-state
+// specialties come from the jobs API; the expandable timeline is the history.
+function PlayerCard({
+  player,
+  trajectory,
+}: {
+  player: PlayerRow
+  trajectory?: CitizenTrajectory
+}) {
+  const [open, setOpen] = useState(false)
   return (
     <li className={`card${player.active ? "" : " dim"}`}>
       <h3 className="card-title">
@@ -71,12 +89,60 @@ function PlayerCard({ player }: { player: PlayerRow }) {
           </li>
         ))}
       </ul>
+      {trajectory && trajectory.timeline.length > 0 && (
+        <>
+          <button
+            className="prof-btn prof-btn-sub"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            data-testid="player-history-toggle"
+          >
+            <span>How they got here</span>
+            <span className="count">{formatCount(trajectory.levelUpCount)} level-ups</span>
+          </button>
+          {open && (
+            <ul className="prog-timeline" data-testid="player-history">
+              {trajectory.timeline.map((ev, i) => (
+                <li key={`${ev.time}-${i}`}>
+                  <span className="prog-day">day {ev.day}</span>
+                  <span className="prog-what">
+                    {KIND_LABELS[ev.kind] ?? ev.kind}
+                    {ev.skill ? `: ${ev.pretty}` : ""}
+                    {ev.level !== null ? ` (lvl ${Math.round(ev.level)})` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
     </li>
   )
 }
 
 export default function Jobs() {
   const { data, error, loading } = useJobsData()
+  // Progression is a best-effort enrichment — a failure leaves the jobs page
+  // exactly as it was before this surface existed, so we swallow errors.
+  const [progression, setProgression] = useState<ProgressionHistory | null>(null)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchProgressionHistory(controller.signal)
+      .then(setProgression)
+      .catch(() => {
+        /* non-fatal: the history lane just doesn't render */
+      })
+    return () => controller.abort()
+  }, [])
+
+  const trajectoryByName = useMemo(() => {
+    const map = new Map<string, CitizenTrajectory>()
+    for (const c of progression?.citizens ?? []) map.set(c.name, c)
+    return map
+  }, [progression])
+
+  const hasHistory = (progression?.totalEvents ?? 0) > 0
 
   return (
     <Layout>
@@ -94,6 +160,23 @@ export default function Jobs() {
           week; "total" counts everyone who's ever touched the skill.
         </p>
       </section>
+
+      {hasHistory && (
+        <section className="jobs-history-lane" data-testid="jobs-history-lane">
+          <h2 className="section-title">
+            Skill history{" "}
+            <span className="section-sub">
+              ({formatCount(progression!.totalEvents)} recorded events — how these skills were
+              earned)
+            </span>
+          </h2>
+          <p className="intro">
+            The tables below are the current state. The <Link to="/progression">progression
+            history</Link> is how everyone got there — expand a player below for their timeline, or
+            open the full view for server-wide trends and trajectories.
+          </p>
+        </section>
+      )}
 
       {loading && (
         <p className="loading" data-testid="loading">
@@ -131,7 +214,7 @@ export default function Jobs() {
             <h2 className="section-title">Players</h2>
             <ul className="cards">
               {data.players.map((p) => (
-                <PlayerCard key={p.name} player={p} />
+                <PlayerCard key={p.name} player={p} trajectory={trajectoryByName.get(p.name)} />
               ))}
             </ul>
           </section>
