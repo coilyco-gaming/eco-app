@@ -12,7 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Eco.ReferenceAssemblies" Version="0.13.0-beta-release-998" />
+    <PackageReference Include="Eco.ReferenceAssemblies" Version="0.13.0.4-beta-release-1024" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" PrivateAssets="all" />
     <!-- Microsoft.Data.Sqlite uses SQLitePCLRaw.bundle_e_sqlite3, which ships a
          Linux-native libe_sqlite3.so alongside the managed assemblies. No
