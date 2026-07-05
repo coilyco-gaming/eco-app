@@ -82,14 +82,54 @@ const LEDGER = {
   warnings: [],
 }
 
-function stubLedgerFetch(payload: unknown = LEDGER) {
+const WATCHERS_REPORT = {
+  view: "watcher_hits",
+  advanced: false,
+  hits: [
+    {
+      id: "w_abc123",
+      kind: "price",
+      value: "IronIngotItem",
+      op: "under",
+      threshold: 2.5,
+      label: "cheap iron",
+      server: null,
+      lastSeen: 0,
+      createdAt: 0,
+      describe: "Iron Ingot under 2.5",
+      feed: [],
+      feedCount: 2,
+      display: {
+        matchCount: 5,
+        recent: [],
+        bestUnitPrice: 2,
+        totalVolume: 40,
+        lastMatchTime: 300000,
+      },
+      newLastSeen: 300000,
+    },
+  ],
+}
+
+function jsonResponse(payload: unknown): Response {
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  })
+}
+
+// The page fires two fetches: the ledger and the watchers report. By default
+// both resolve; a URL check routes each to its payload. `watchers` defaults to
+// an empty report so the watcher sidebar stays hidden unless a test opts in.
+function stubLedgerFetch(payload: unknown = LEDGER, watchers: unknown = { hits: [] }) {
   vi.stubGlobal(
     "fetch",
-    vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(payload), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
+    vi.fn((url: string) =>
+      Promise.resolve(
+        String(url).includes("/preview/watchers.json")
+          ? jsonResponse(watchers)
+          : jsonResponse(payload),
+      ),
     ),
   )
 }
@@ -188,5 +228,29 @@ describe("Trades", () => {
     await waitFor(() => {
       expect(screen.getByTestId("trades-error")).toBeInTheDocument()
     })
+  })
+
+  it("shows the trade-watcher sidebar with a feed badge when watchers exist", async () => {
+    stubLedgerFetch(LEDGER, WATCHERS_REPORT)
+    renderTrades()
+
+    await waitFor(() => {
+      expect(screen.getByTestId("watchers-section")).toBeInTheDocument()
+    })
+    expect(screen.getByTestId("watcher-row")).toHaveTextContent("cheap iron")
+    // Current matching state (display semantic).
+    expect(screen.getByTestId("watcher-row")).toHaveTextContent("5 match")
+    // New-since-last-check count (feed semantic).
+    expect(screen.getByTestId("watcher-badge")).toHaveTextContent("+2 new")
+  })
+
+  it("hides the watcher sidebar when the store is empty", async () => {
+    stubLedgerFetch()
+    renderTrades()
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("trade-row")).toHaveLength(3)
+    })
+    expect(screen.queryByTestId("watchers-section")).not.toBeInTheDocument()
   })
 })

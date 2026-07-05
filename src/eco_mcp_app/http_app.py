@@ -259,6 +259,78 @@ def create_app() -> Starlette:
             return JSONResponse({"error": "no JSON block from get_eco_currency"}, status_code=502)
         return JSONResponse(payload)
 
+    async def preview_market_json(request: Request) -> JSONResponse:
+        """`/preview/market.json` — the SPA's `/trade` price-intelligence plane.
+
+        Dispatches `get_eco_market` and returns its JSON block. A dedicated
+        route (rather than the generic `/preview/<tool>.json`) so the SPA hits
+        the short, stable path the epic asked for, and so `?server=` / `?item=`
+        / `?currency=` pass straight through as tool args.
+        """
+        args = {
+            k: v for k, v in request.query_params.items() if k in ("server", "item", "currency")
+        }
+        req = mt.CallToolRequest(
+            method="tools/call",
+            params=mt.CallToolRequestParams(name="get_eco_market", arguments=args),
+        )
+        try:
+            result = await call_tool_handler(req)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+        payload = _extract_json_block(cast(mt.CallToolResult, result.root))
+        if payload is None:
+            return JSONResponse({"error": "no JSON block from get_eco_market"}, status_code=502)
+        return JSONResponse(payload)
+
+    async def preview_stores_json(request: Request) -> JSONResponse:
+        """`/preview/stores.json` — the SPA's store/trader directory data plane.
+
+        Dispatches `get_eco_stores` and returns its JSON block. A dedicated
+        route (rather than the generic `/preview/<tool>.json`) so the SPA can
+        hit the short, stable `/preview/stores.json` path the epic asked for,
+        with `?server=` passing straight through as the tool arg (eco-app#50).
+        """
+        args = {k: v for k, v in request.query_params.items() if k in ("server",)}
+        req = mt.CallToolRequest(
+            method="tools/call",
+            params=mt.CallToolRequestParams(name="get_eco_stores", arguments=args),
+        )
+        try:
+            result = await call_tool_handler(req)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+        payload = _extract_json_block(cast(mt.CallToolResult, result.root))
+        if payload is None:
+            return JSONResponse({"error": "no JSON block from get_eco_stores"}, status_code=502)
+        return JSONResponse(payload)
+
+    async def preview_watchers_json(request: Request) -> JSONResponse:
+        """`/preview/watchers.json` — the SPA's trade-watcher data plane.
+
+        Dispatches `eco_trade_watchers` with `action=evaluate` in *peek* mode
+        (`advance=false`), so loading the `/trades` page shows each watcher's
+        current matching state without consuming its feed mark — only the MCP
+        `evaluate` verb (advance defaulting true) advances the last-seen marks.
+        A dedicated route (not the generic `/preview/<tool>.json`) so the bool
+        arg is a real boolean, not the truthy string a query param would be.
+        """
+        args: dict[str, Any] = {"action": "evaluate", "advance": False}
+        if "server" in request.query_params:
+            args["server"] = request.query_params["server"]
+        req = mt.CallToolRequest(
+            method="tools/call",
+            params=mt.CallToolRequestParams(name="eco_trade_watchers", arguments=args),
+        )
+        try:
+            result = await call_tool_handler(req)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+        payload = _extract_json_block(cast(mt.CallToolResult, result.root))
+        if payload is None:
+            return JSONResponse({"error": "no JSON block from eco_trade_watchers"}, status_code=502)
+        return JSONResponse(payload)
+
     def _extract_json_block(call_result: mt.CallToolResult) -> Any:
         # Each tool emits markdown + JSON TextContent blocks (see
         # server.call_tool). Find the JSON one by skipping any HTMX-prefixed
@@ -329,6 +401,9 @@ def create_app() -> Starlette:
         Route("/preview.json", preview_json, methods=["GET"]),
         Route("/preview-map.json", preview_map_json, methods=["GET"]),
         Route("/preview/currency.json", preview_currency_json, methods=["GET"]),
+        Route("/preview/market.json", preview_market_json, methods=["GET"]),
+        Route("/preview/stores.json", preview_stores_json, methods=["GET"]),
+        Route("/preview/watchers.json", preview_watchers_json, methods=["GET"]),
         Route("/preview/{tool}", preview_tool, methods=["GET"]),
         Mount("/mcp", app=handle_mcp),
         Mount("/jobs/api", app=jobs_app),

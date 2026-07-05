@@ -40,10 +40,22 @@ from . import climate as climate_mod
 from . import currency as currency_mod
 from . import ecoregion as ecoregion_mod
 from . import fair_price as fair_price_mod
+from . import market as market_mod
 from . import species as species_mod
 from .crafting import atlas_template_context, fetch_atlas
 from .map import build_map_payload, fetch_map_bundle
+from .stores import directory_markdown, directory_template_context, fetch_directory
 from .trades import fetch_ledger, ledger_markdown, ledger_template_context
+from .watchers import (
+    WatcherError,
+    build_query,
+    create_watcher,
+    evaluate_all,
+    evaluate_markdown,
+    list_watchers,
+    remove_watcher,
+    watchers_list_markdown,
+)
 
 DEFAULT_ECO_INFO_URL = os.environ.get("ECO_INFO_URL", "http://eco.coilysiren.me:3001/info")
 DEFAULT_ECO_PORT = int(os.environ.get("ECO_INFO_PORT", "3001"))
@@ -1009,6 +1021,10 @@ def _render_trades_ledger(ctx: dict[str, Any]) -> str:
     return _JINJA.get_template("partials/trades.html").render(**ctx)
 
 
+def _render_stores_directory(ctx: dict[str, Any]) -> str:
+    return _JINJA.get_template("partials/stores.html").render(**ctx)
+
+
 def _format_crafting_markdown(ctx: dict[str, Any]) -> str:
     """Plain-text fallback for hosts that don't render the MCP Apps iframe."""
     if ctx["empty"]:
@@ -1051,7 +1067,38 @@ def _render_fair_price(result: fair_price_mod.FairPriceResult) -> str:
         narrative=result.narrative,
         cached=result.cached,
         error=result.error,
+        in_game_median=result.in_game_median,
+        in_game_currency=result.in_game_currency,
+        in_game_trend=result.in_game_trend,
+        in_game_verdict=result.in_game_verdict,
     )
+
+
+def _render_market(ctx: dict[str, Any]) -> str:
+    return _JINJA.get_template("partials/market.html").render(**ctx)
+
+
+async def _in_game_reference_for(
+    item: str | None, server_arg: str | None
+) -> market_mod.InGameReference | None:
+    """Best-effort in-game price read for the fair-price cross-reference.
+
+    Gated on an admin key (the trades exporter needs one) so a keyless host —
+    and the FRED-only unit tests — never touch the exporter. Any failure
+    (unreachable server, no matching in-game market) returns None and the
+    advisor falls back to the pure FRED narrative.
+    """
+    api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
+    if not api_key:
+        return None
+    eco_item = fair_price_mod.eco_item_for(item)
+    if not eco_item:
+        return None
+    try:
+        intel = await market_mod.fetch_market(base_url=server_arg, api_key=api_key)
+    except Exception:  # the FRED path must survive any exporter fault
+        return None
+    return market_mod.in_game_reference(intel, eco_item)
 
 
 # Circumference of the donut's r=40 circle — baked in so Jinja can reference
@@ -2115,6 +2162,42 @@ def build_server() -> Server:
                 **{"_meta": UI_META},
             ),
             Tool(
+                name="get_eco_stores",
+                title="Eco — store & trader directory",
+                description=(
+                    "Build store and trader directories from an Eco server's "
+                    "trade history (the CurrencyTrade / BarterTrade action log). "
+                    "Store profiles are keyed by shop owner + location and carry "
+                    "items traded, buy-vs-sell mix, price points, total volume "
+                    "and value, unique counterparties, and last-trade recency — "
+                    "and crucially surface the **store owner**, which "
+                    "DiscordLink's `Trades` lookup omits. Trader profiles give "
+                    "each citizen's buys, sells, top items, volume, and the "
+                    "stores they operate — the history-derived answer to "
+                    "`Trades <player>`. Owner / party ids resolve to names via "
+                    "the jobs mod's citizens surface, falling back to "
+                    "`Citizen #<id>`. Requires an admin API key configured "
+                    "server-side. History only — the current shelf snapshot is "
+                    "the reset-gated stores exporter (sibling issue). Renders as "
+                    "an inline widget; falls back to a markdown summary."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "server": {
+                            "type": "string",
+                            "description": (
+                                "Eco admin base URL (`host`, `host:port`, or "
+                                "full URL). Omit to use the configured "
+                                "default (`eco.coilysiren.me:3001`)."
+                            ),
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+                **{"_meta": UI_META},
+            ),
+            Tool(
                 name="fair_price",
                 title="Eco — fair-price advisor",
                 description=(
@@ -2143,8 +2226,63 @@ def build_server() -> Server:
                                 "Omit to skip the calibrated-price line."
                             ),
                         },
+                        "server": {
+                            "type": "string",
+                            "description": (
+                                "Optional Eco server for the in-game median "
+                                "cross-reference (host, host:port, or URL). Needs "
+                                "an admin key; omit to use the configured default "
+                                "or skip the in-game merge when no key is set."
+                            ),
+                        },
                     },
                     "required": ["item"],
+                    "additionalProperties": False,
+                },
+                **{"_meta": UI_META},
+            ),
+            Tool(
+                name="get_eco_market",
+                title="Eco — market price intelligence",
+                description=(
+                    "Per-item market price intelligence built from the trades "
+                    "ledger: for each item and currency, a daily price series "
+                    "(median / min / max / units traded per in-game day) plus a "
+                    "short-vs-long-window trend verdict (rising / falling / flat, "
+                    "or 'insufficient' when data is too thin). Exceeds "
+                    "DiscordLink's single asking price with history, volume, and "
+                    "trend. Pass `item` to focus one item (e.g. 'IronIngot', "
+                    "'Iron'), `currency` to isolate a currency. Requires an admin "
+                    "API key server-side (same exporter as get_eco_trades). "
+                    "Defaults to ECO_INFO_URL; pass `server` for another."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "server": {
+                            "type": "string",
+                            "description": (
+                                "Eco admin base URL (`host`, `host:port`, or full "
+                                "URL). Omit to use the configured default."
+                            ),
+                        },
+                        "item": {
+                            "type": "string",
+                            "description": (
+                                "Optional item filter. Case-insensitive, matches "
+                                "on the normalized id so 'Iron' finds "
+                                "'IronIngotItem'. Omit for every traded item."
+                            ),
+                        },
+                        "currency": {
+                            "type": "string",
+                            "description": (
+                                "Optional currency filter (e.g. 'Credit'). "
+                                "Case-insensitive exact match. Omit for all "
+                                "currencies."
+                            ),
+                        },
+                    },
                     "additionalProperties": False,
                 },
                 **{"_meta": UI_META},
@@ -2289,6 +2427,92 @@ def build_server() -> Server:
                 **{"_meta": UI_META},
             ),
             Tool(
+                name="eco_trade_watchers",
+                title="Eco — trade watchers",
+                description=(
+                    "Host-agnostic trade watchers — the website-and-MCP answer to "
+                    "DiscordLink's WatchTradeFeed / WatchTradeDisplay / "
+                    "UnwatchTradeFeed / ListTradeWatchers, with no Discord "
+                    "dependency. Watch an item, a store, a trader, or a price "
+                    "threshold (e.g. 'iron ingot under 2.5'), then evaluate against "
+                    "the trades the server already exports. `evaluate` returns both "
+                    "the feed (matching trades new since the watcher last checked) "
+                    "and the display (the current matching state). Watchers persist "
+                    "in SQLite and survive restarts; they also show on the SPA "
+                    "`/trades` route. Use `action` to pick the verb:\n"
+                    "- `create` — new watcher. `kind` + `value`; for `kind=price` "
+                    "also `op` (under/over) + `threshold`.\n"
+                    "- `list` — every stored watcher.\n"
+                    "- `remove` — delete by `id`.\n"
+                    "- `evaluate` — run all watchers against the live ledger."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "enum": ["create", "list", "remove", "evaluate"],
+                            "description": "Which watcher verb to run.",
+                        },
+                        "kind": {
+                            "type": "string",
+                            "enum": ["item", "store", "trader", "price"],
+                            "description": (
+                                "For `create`: what to watch. `item` / `store` / "
+                                "`trader` are case-insensitive name matches; `price` "
+                                "pairs an item with a threshold predicate."
+                            ),
+                        },
+                        "value": {
+                            "type": "string",
+                            "description": (
+                                "For `create`: the item / store / trader name to "
+                                "match (the item name, for `kind=price`)."
+                            ),
+                        },
+                        "op": {
+                            "type": "string",
+                            "enum": ["under", "over"],
+                            "description": "For `kind=price`: threshold direction.",
+                        },
+                        "threshold": {
+                            "type": "number",
+                            "description": "For `kind=price`: the unit-price cutoff.",
+                        },
+                        "label": {
+                            "type": "string",
+                            "description": (
+                                "Optional friendly label for the watcher; defaults "
+                                "to a description of the query."
+                            ),
+                        },
+                        "id": {
+                            "type": "string",
+                            "description": "For `remove`: the watcher id to delete.",
+                        },
+                        "server": {
+                            "type": "string",
+                            "description": (
+                                "For `evaluate` (and stored on `create`): the Eco "
+                                "admin base URL to pull the ledger from. Omit to use "
+                                "the configured default."
+                            ),
+                        },
+                        "advance": {
+                            "type": "boolean",
+                            "description": (
+                                "For `evaluate`: whether to advance each watcher's "
+                                "last-seen mark past its feed hits (default true — "
+                                "the feed semantic). Pass false to peek without "
+                                "consuming."
+                            ),
+                        },
+                    },
+                    "required": ["action"],
+                    "additionalProperties": False,
+                },
+            ),
+            Tool(
                 name="list_public_eco_servers",
                 title="Eco — list public servers",
                 description=(
@@ -2431,6 +2655,137 @@ def build_server() -> Server:
                     TextContent(type="text", text=json.dumps(ledger.to_dict())),
                 ],
                 **{"_meta": _ui_meta(_render_trades_ledger(ctx))},
+            )
+
+        if name == "eco_trade_watchers":
+            args = arguments or {}
+            action = (args.get("action") or "").strip().lower()
+
+            def _watchers_result(md: str, payload: dict[str, Any]) -> CallToolResult:
+                return CallToolResult(
+                    content=[
+                        TextContent(type="text", text=md),
+                        TextContent(type="text", text=json.dumps(payload)),
+                    ],
+                )
+
+            if action == "create":
+                try:
+                    query = build_query(
+                        kind=args.get("kind", ""),
+                        value=args.get("value", ""),
+                        op=args.get("op"),
+                        threshold=args.get("threshold"),
+                    )
+                except WatcherError as e:
+                    return CallToolResult(
+                        content=[
+                            TextContent(type="text", text=f"**Could not create watcher:** {e}"),
+                            TextContent(type="text", text=json.dumps({"error": str(e)})),
+                        ],
+                        isError=True,
+                    )
+                watcher = create_watcher(query, label=args.get("label"), server=args.get("server"))
+                md = f"**Watcher created** — `{watcher.id}` watching {query.describe()}."
+                return _watchers_result(
+                    md, {"view": "watcher_created", "watcher": watcher.to_dict()}
+                )
+
+            if action == "list":
+                watchers = list_watchers()
+                return _watchers_result(
+                    watchers_list_markdown(watchers),
+                    {"view": "watchers", "watchers": [w.to_dict() for w in watchers]},
+                )
+
+            if action == "remove":
+                watcher_id = (args.get("id") or "").strip()
+                if not watcher_id:
+                    return CallToolResult(
+                        content=[
+                            TextContent(
+                                type="text", text="**`id` is required to remove a watcher.**"
+                            ),
+                            TextContent(type="text", text=json.dumps({"error": "missing id"})),
+                        ],
+                        isError=True,
+                    )
+                removed = remove_watcher(watcher_id)
+                md = (
+                    f"**Watcher `{watcher_id}` removed.**"
+                    if removed
+                    else f"**No watcher `{watcher_id}` found.**"
+                )
+                return _watchers_result(
+                    md, {"view": "watcher_removed", "id": watcher_id, "removed": removed}
+                )
+
+            if action == "evaluate":
+                server_arg = args.get("server")
+                advance = bool(args.get("advance", True))
+                api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
+                try:
+                    ledger = await fetch_ledger(base_url=server_arg, api_key=api_key)
+                except httpx.HTTPError as e:
+                    return CallToolResult(
+                        content=[
+                            TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
+                            TextContent(
+                                type="text",
+                                text=json.dumps({"view": "error", "message": str(e)}),
+                            ),
+                        ],
+                        isError=True,
+                    )
+                hits = evaluate_all(ledger.trades, advance=advance)
+                payload = {
+                    "view": "watcher_hits",
+                    "fetchedAtISO": ledger.fetched_at_iso,
+                    "sourceBaseUrl": ledger.source_base_url,
+                    "advanced": advance,
+                    "hits": [h.to_dict() for h in hits],
+                }
+                return _watchers_result(evaluate_markdown(hits), payload)
+
+            return CallToolResult(
+                content=[
+                    TextContent(
+                        type="text",
+                        text=(
+                            f"**Unknown watcher action '{action}'** — "
+                            "expected create / list / remove / evaluate."
+                        ),
+                    ),
+                    TextContent(type="text", text=json.dumps({"error": "unknown action"})),
+                ],
+                isError=True,
+            )
+
+        if name == "get_eco_stores":
+            server_arg = arguments.get("server") if arguments else None
+            api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
+            try:
+                directory = await fetch_directory(base_url=server_arg, api_key=api_key)
+            except httpx.HTTPError as e:
+                err_payload = {
+                    "view": "error",
+                    "message": f"Could not reach Eco exporter: {e}",
+                }
+                return CallToolResult(
+                    content=[
+                        TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
+                        TextContent(type="text", text=json.dumps(err_payload)),
+                    ],
+                    isError=True,
+                    **{"_meta": _ui_meta(_render_error(str(e)))},
+                )
+            ctx = directory_template_context(directory)
+            return CallToolResult(
+                content=[
+                    TextContent(type="text", text=directory_markdown(directory)),
+                    TextContent(type="text", text=json.dumps(directory.to_dict())),
+                ],
+                **{"_meta": _ui_meta(_render_stores_directory(ctx))},
             )
 
         if name == "list_public_eco_servers":
@@ -2666,7 +3021,15 @@ def build_server() -> Server:
         if name == "fair_price":
             item = arguments.get("item") if arguments else None
             cycle_id = arguments.get("cycle_id") if arguments else None
-            result = await fair_price_mod.fetch_fair_price(item, cycle_id=cycle_id)
+            server_arg = arguments.get("server") if arguments else None
+            ref = await _in_game_reference_for(item, server_arg)
+            result = await fair_price_mod.fetch_fair_price(
+                item,
+                cycle_id=cycle_id,
+                in_game_median=ref.median if ref else None,
+                in_game_currency=ref.currency if ref else None,
+                in_game_trend=ref.trend if ref else None,
+            )
             payload = fair_price_mod.to_payload(result)
             fragment = _render_fair_price(result)
             is_error = result.error is not None
@@ -2677,6 +3040,40 @@ def build_server() -> Server:
                 ],
                 isError=is_error,
                 **{"_meta": _ui_meta(fragment)},
+            )
+
+        if name == "get_eco_market":
+            server_arg = arguments.get("server") if arguments else None
+            item_arg = (arguments.get("item") if arguments else None) or None
+            currency_arg = (arguments.get("currency") if arguments else None) or None
+            api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
+            try:
+                intel = await market_mod.fetch_market(
+                    base_url=server_arg,
+                    api_key=api_key,
+                    item=item_arg,
+                    currency=currency_arg,
+                )
+            except httpx.HTTPError as e:
+                err_payload = {
+                    "view": "error",
+                    "message": f"Could not reach Eco exporter: {e}",
+                }
+                return CallToolResult(
+                    content=[
+                        TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
+                        TextContent(type="text", text=json.dumps(err_payload)),
+                    ],
+                    isError=True,
+                    **{"_meta": _ui_meta(_render_error(str(e)))},
+                )
+            ctx = market_mod.market_template_context(intel)
+            return CallToolResult(
+                content=[
+                    TextContent(type="text", text=market_mod.market_markdown(intel)),
+                    TextContent(type="text", text=json.dumps(intel.to_dict(), default=str)),
+                ],
+                **{"_meta": _ui_meta(_render_market(ctx))},
             )
 
         if name not in ("get_eco_server_status", "get_eco_milestones"):

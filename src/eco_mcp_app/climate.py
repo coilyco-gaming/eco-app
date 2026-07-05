@@ -127,10 +127,12 @@ _CRITICAL_PPM = 500.0
 # the in-game pollution-machine "CO2 Effects" lines:
 #   "Temperature rises 1 degree for every {ppm_per_degree}ppm past {threshold}ppm"
 #   "Sea level rises 1 meter every {ppm_per_meter}ppm past {threshold}ppm"
-# Eco lets a server admin retune them and exposes no HTTP endpoint to read
-# the live values, so we ship the defaults (the targeted server runs them —
-# MinCO2ppm 325 matches the observed floor) and let a differently-tuned
-# deploy correct the explanation via env without a code change.
+# Eco lets a server admin retune them. The telemetry mod now exposes the live
+# values at /api/v1/climate-settings (eco-app#8), and ``_resolve_rules`` prefers
+# those per-field — these constants are the fallback when that endpoint is
+# absent (un-modded / older server) or omits a field. The env overrides remain
+# as a second fallback so a differently-tuned un-modded deploy can still correct
+# the explanation without a code change.
 _RULE_MIN_CO2_PPM = float(os.environ.get("ECO_CLIMATE_MIN_CO2_PPM", "325"))
 _RULE_TEMP_THRESHOLD_PPM = float(os.environ.get("ECO_CLIMATE_TEMP_THRESHOLD_PPM", "400"))
 _RULE_PPM_PER_DEGREE = float(os.environ.get("ECO_CLIMATE_PPM_PER_DEGREE", "25"))
@@ -180,6 +182,11 @@ class ClimateSnapshot:
     # server. Surfaced on the card so an empty-data path is debuggable
     # without the user having to grep server logs.
     available_climate_datasets: list[str] = field(default_factory=list)
+    # Live per-server climate ruleset from the telemetry mod's
+    # /api/v1/climate-settings endpoint (EcoDef.Obj.ClimateSettings). ``None``
+    # when the endpoint is absent (un-modded / older server), in which case the
+    # effects block falls back to the documented Eco defaults (``_RULE_*``).
+    climate_settings: dict[str, Any] | None = None
     warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -205,6 +212,7 @@ class ClimateSnapshot:
             "pollutionActionsTotal": self.pollution_actions_total,
             "pollutionActionTypesSeen": list(self.pollution_action_types_seen),
             "availableClimateDatasets": list(self.available_climate_datasets),
+            "climateSettings": self.climate_settings,
             "warnings": list(self.warnings),
         }
 
@@ -441,6 +449,32 @@ POLLUTION_DISCOVERY_KEYWORDS: tuple[str, ...] = (
 )
 
 
+async def _fetch_climate_settings(
+    client: httpx.AsyncClient, base: str, headers: dict[str, str]
+) -> dict[str, Any] | None:
+    """GET the telemetry mod's ``/api/v1/climate-settings`` endpoint.
+
+    Returns the live per-server climate ruleset (``EcoDef.Obj.ClimateSettings``
+    serialized by ``mods/telemetry``) as a dict of camelCase keys, or ``None``
+    when the endpoint is absent (un-modded / older server) or returns anything
+    unexpected. Absence is a valid state — the effects block falls back to the
+    documented Eco defaults for whatever the server doesn't emit.
+
+    Admin-gated like the rest of the ``/api/v1`` surface, so it rides the same
+    ``X-API-Key`` header the dataset probes use.
+    """
+    try:
+        r = await client.get(f"{base}/api/v1/climate-settings", headers=headers)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+    except (httpx.HTTPError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
 async def _fetch_pollution_layer_summary(client: httpx.AsyncClient, base: str) -> str | None:
     """Pull the ``Pollution`` layer's ``Summary`` (e.g. ``"4%"``) from worldlayers.
 
@@ -649,6 +683,9 @@ async def fetch_climate(
                     discovery_keywords=("temperature",),
                 )
             )
+            # Live per-server climate ruleset (thresholds/rates). Absent on
+            # un-modded servers — the effects block falls back to Eco defaults.
+            settings_task = asyncio.create_task(_fetch_climate_settings(client, base, headers))
             poll_src_task = asyncio.create_task(
                 _fetch_first_nonempty(
                     client, base, CO2_FROM_POLLUTION_CANDIDATES, snapshot.days_elapsed, headers
@@ -669,6 +706,7 @@ async def fetch_climate(
             (snapshot.sea_level_dataset_name, snapshot.sea_level_series) = await sea_task
             (snapshot.pollution_dataset_name, snapshot.pollution_series) = await poll_task
             (snapshot.temperature_dataset_name, snapshot.temperature_series) = await temp_task
+            snapshot.climate_settings = await settings_task
             (_, snapshot.co2_pollution_series) = await poll_src_task
             (_, snapshot.co2_animals_series) = await animal_src_task
             (_, snapshot.co2_plants_series) = await plant_src_task
@@ -854,19 +892,75 @@ def _compute_breakdown(snapshot: ClimateSnapshot, days_elapsed: int) -> dict[str
     }
 
 
+# Live climate-settings JSON keys (camelCase, as emitted by mods/telemetry)
+# paired with the module-level default used when the endpoint is absent or
+# omits that field. The five core thresholds/rates are all the CO2-effects card
+# needs; the trailing three are extras Eco also exposes, surfaced for parity
+# with the in-game status even though the card doesn't chart them yet.
+def _resolve_rules(settings: dict[str, Any] | None) -> dict[str, Any]:
+    """Resolve the CO2-effects ruleset, preferring live per-server values.
+
+    Each field falls back independently to its documented Eco default, so a
+    server that emits only some of the block still corrects the rest. ``source``
+    is ``"live"`` when the endpoint supplied at least one of the five core
+    thresholds/rates, else ``"default"`` — the card keys its "these are the real
+    values" vs "these are Eco defaults" disclaimer off that flag.
+    """
+    live_any = False
+
+    def pick(key: str, default: float) -> float:
+        nonlocal live_any
+        if settings:
+            v = settings.get(key)
+            if isinstance(v, int | float) and not isinstance(v, bool):
+                live_any = True
+                return float(v)
+        return default
+
+    def pick_optional(key: str) -> float | None:
+        if settings:
+            v = settings.get(key)
+            if isinstance(v, int | float) and not isinstance(v, bool):
+                return float(v)
+        return None
+
+    rules: dict[str, Any] = {
+        "min_co2_ppm": pick("minCo2Ppm", _RULE_MIN_CO2_PPM),
+        "temp_threshold_ppm": pick("temperatureThresholdPpm", _RULE_TEMP_THRESHOLD_PPM),
+        "ppm_per_degree": pick("co2PpmPerDegree", _RULE_PPM_PER_DEGREE),
+        "sea_threshold_ppm": pick("seaLevelThresholdPpm", _RULE_SEA_THRESHOLD_PPM),
+        "ppm_per_meter": pick("co2PpmPerMeter", _RULE_PPM_PER_METER),
+        "pollution_multiplier": pick_optional("pollutionMultiplier"),
+        "max_co2_per_day_from_animals": pick_optional("maxCo2PerDayFromAnimals"),
+        "min_co2_per_day_from_plants": pick_optional("minCo2PerDayFromPlants"),
+    }
+    rules["source"] = "live" if live_any else "default"
+    return rules
+
+
 def _compute_effects(
     *,
     co2_series: list[tuple[float, float]],
     sea_series: list[tuple[float, float]],
     temp_series: list[tuple[float, float]],
+    rules: dict[str, Any],
 ) -> dict[str, Any]:
     """Translate the live state into the in-game "CO2 Effects" mechanics.
 
     Returns the ruleset constants (so the card can state the exact formula),
     the current CO2 standing relative to each threshold, and the observed
     real-world deltas (degrees warmed, meters of sea-level rise) computed
-    straight from the series.
+    straight from the series. ``rules`` carries the resolved per-server
+    thresholds/rates (live where the server emits them, Eco defaults otherwise)
+    plus a ``source`` flag the card uses to drop the "these are defaults"
+    disclaimer once the values are live.
     """
+    min_co2 = rules["min_co2_ppm"]
+    temp_threshold = rules["temp_threshold_ppm"]
+    ppm_per_degree = rules["ppm_per_degree"]
+    sea_threshold = rules["sea_threshold_ppm"]
+    ppm_per_meter = rules["ppm_per_meter"]
+
     co2_now = _series_last(co2_series)
     co2_peak = _series_peak(co2_series)
 
@@ -875,38 +969,49 @@ def _compute_effects(
     sea_now = _series_last(sea_series)
     sea_base = _series_baseline(sea_series)
 
-    temp_headroom = _RULE_TEMP_THRESHOLD_PPM - co2_now
-    sea_headroom = _RULE_SEA_THRESHOLD_PPM - co2_now
-    return {
+    temp_headroom = temp_threshold - co2_now
+    sea_headroom = sea_threshold - co2_now
+    effects: dict[str, Any] = {
         "co2_now": round(co2_now, 1) if co2_series else None,
         "co2_peak": round(co2_peak, 1) if co2_series else None,
-        "min_floor_ppm": _RULE_MIN_CO2_PPM,
-        "at_floor": bool(co2_series) and co2_now <= _RULE_MIN_CO2_PPM + 0.5,
+        "min_floor_ppm": min_co2,
+        "at_floor": bool(co2_series) and co2_now <= min_co2 + 0.5,
+        "source": rules["source"],
         "temperature": {
-            "threshold_ppm": _RULE_TEMP_THRESHOLD_PPM,
-            "ppm_per_degree": _RULE_PPM_PER_DEGREE,
+            "threshold_ppm": temp_threshold,
+            "ppm_per_degree": ppm_per_degree,
             "headroom_ppm": round(temp_headroom, 1) if co2_series else None,
             "current_c": round(temp_now, 2) if temp_series else None,
             "risen_c": round(temp_now - temp_base, 2) if temp_series else None,
             "peak_drives_c": (
-                round((co2_peak - _RULE_TEMP_THRESHOLD_PPM) / _RULE_PPM_PER_DEGREE, 2)
-                if co2_series and co2_peak > _RULE_TEMP_THRESHOLD_PPM
+                round((co2_peak - temp_threshold) / ppm_per_degree, 2)
+                if co2_series and co2_peak > temp_threshold and ppm_per_degree
                 else 0.0
             ),
         },
         "sea_level": {
-            "threshold_ppm": _RULE_SEA_THRESHOLD_PPM,
-            "ppm_per_meter": _RULE_PPM_PER_METER,
+            "threshold_ppm": sea_threshold,
+            "ppm_per_meter": ppm_per_meter,
             "headroom_ppm": round(sea_headroom, 1) if co2_series else None,
             "current_m": round(sea_now, 2) if sea_series else None,
             "risen_m": round(sea_now - sea_base, 2) if sea_series else None,
             "peak_drives_m": (
-                round((co2_peak - _RULE_SEA_THRESHOLD_PPM) / _RULE_PPM_PER_METER, 2)
-                if co2_series and co2_peak > _RULE_SEA_THRESHOLD_PPM
+                round((co2_peak - sea_threshold) / ppm_per_meter, 2)
+                if co2_series and co2_peak > sea_threshold and ppm_per_meter
                 else 0.0
             ),
         },
     }
+    # Extra Eco climate knobs, surfaced only when the server actually emits
+    # them (no documented default to fall back to, unlike the five core rules).
+    for key in (
+        "pollution_multiplier",
+        "max_co2_per_day_from_animals",
+        "min_co2_per_day_from_plants",
+    ):
+        if rules.get(key) is not None:
+            effects[key] = rules[key]
+    return effects
 
 
 def _build_explainer(breakdown: dict[str, Any], effects: dict[str, Any]) -> list[str]:
@@ -1031,10 +1136,12 @@ def compute_climate_payload(snapshot: ClimateSnapshot) -> dict[str, Any]:
     status = _classify_status(co2_last, sea_change_pct) if snapshot.co2_series else "unknown"
 
     breakdown = _compute_breakdown(snapshot, days_elapsed)
+    rules = _resolve_rules(snapshot.climate_settings)
     effects = _compute_effects(
         co2_series=snapshot.co2_series,
         sea_series=snapshot.sea_level_series,
         temp_series=snapshot.temperature_series,
+        rules=rules,
     )
     explainer = _build_explainer(breakdown, effects)
 

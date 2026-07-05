@@ -25,6 +25,7 @@ const SNAPSHOT = {
     co2_peak: 520,
     min_floor_ppm: 325,
     at_floor: true,
+    source: "default",
     temperature: { threshold_ppm: 400, ppm_per_degree: 25, headroom_ppm: 75, current_c: 14.86, risen_c: 0.86, peak_drives_c: 4.8 },
     sea_level: { threshold_ppm: 400, ppm_per_meter: 25, headroom_ppm: 75, current_m: 61.83, risen_m: 1.83, peak_drives_m: 4.8 },
   },
@@ -71,6 +72,36 @@ describe("Climate", () => {
     expect(screen.getByText("From pollution")).toBeInTheDocument()
     expect(screen.getByText("From plants")).toBeInTheDocument()
     expect(screen.getByTestId("climate-effects-explainer")).toHaveTextContent("pinned to the simulation floor")
+    // Default ruleset → the "these are Eco defaults, retunable" disclaimer.
+    expect(screen.getByTestId("climate-ruleset-source")).toHaveTextContent(
+      "Eco's default climate ruleset",
+    )
+  })
+
+  it("drops the defaults disclaimer when the ruleset is live", async () => {
+    const live = { ...SNAPSHOT, effects: { ...SNAPSHOT.effects, source: "live" } }
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(live), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    )
+
+    render(
+      <MemoryRouter initialEntries={["/climate"]}>
+        <Climate />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId("climate-ruleset-source")).toBeInTheDocument()
+    })
+    const src = screen.getByTestId("climate-ruleset-source")
+    expect(src).toHaveTextContent("Live from this server's climate config")
+    expect(src).not.toHaveTextContent("Eco's default climate ruleset")
   })
 
   it("degrades when the snapshot fetch fails", async () => {

@@ -344,26 +344,40 @@ def build_ledger(
     ledger.trades = [_row_dict(t, name_map) for t in ordered]
 
 
-async def fetch_ledger(
+@dataclass
+class ParsedTradeFetch:
+    """Raw fetch result — parsed rows + the id->name map, before aggregation.
+
+    Shared handoff between :func:`fetch_ledger` and the store / trader
+    directory (`stores.py`, eco-app#50): both fold the *same* streamed rows into
+    different shapes, so the network + parse + citizen-join happens once here.
+    """
+
+    normalized_base_url: str
+    parsed: list[_ParsedTrade] = field(default_factory=list)
+    name_map: dict[str, str] = field(default_factory=dict)
+    per_type_counts: dict[str, int] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+
+
+async def fetch_parsed_trades(
     base_url: str | None = None,
     api_key: str | None = None,
-    cache_ttl_s: float = DEFAULT_CACHE_TTL_S,
     client: httpx.AsyncClient | None = None,
-) -> TradesLedger:
-    """Stream both trade action CSVs and fold them into a single ledger.
+) -> ParsedTradeFetch:
+    """Stream both trade action CSVs and resolve citizen names, no aggregation.
 
-    `client` is injectable so tests can hand in a pre-stubbed httpx client. When
-    omitted we build one with a 30 s timeout — late-cycle CSVs take a beat.
+    This is the shared fetch spine — `fetch_ledger` folds the result into a
+    row-level ledger, `stores.build_directory` folds the same rows into store /
+    trader profiles (eco-app#50). `client` is injectable so tests can hand in a
+    pre-stubbed httpx client. When omitted we build one with a 30 s timeout —
+    late-cycle CSVs take a beat.
     """
     normalized = _normalize_admin_base(base_url)
-    key = _cache_key(normalized, api_key)
-    if cache_ttl_s > 0:
-        cached = _trades_cache.get(key)
-        if cached is not None:
-            return _ledger_from_dict(cached)
-
-    ledger = TradesLedger(fetched_at_iso=_now_iso(), source_base_url=normalized)
     headers = {"X-API-Key": api_key} if api_key else {}
+    # A throwaway ledger used only as the mutable sink `parse_trade_rows`
+    # expects (its per_type_counts + warnings); its aggregates are never built.
+    scratch = TradesLedger(fetched_at_iso="", source_base_url=normalized)
     parsed: list[_ParsedTrade] = []
 
     owns_client = client is None
@@ -383,28 +397,60 @@ async def fetch_ledger(
                     batch.append(row)
                     if len(batch) >= 1024:
                         consumed = parse_trade_rows(
-                            action, batch, ledger, parsed, max_rows=remaining
+                            action, batch, scratch, parsed, max_rows=remaining
                         )
                         remaining -= consumed
                         if remaining <= 0:
                             break
                         batch = [header]
                 if header is not None and len(batch) > 1 and remaining > 0:
-                    parse_trade_rows(action, batch, ledger, parsed, max_rows=remaining)
+                    parse_trade_rows(action, batch, scratch, parsed, max_rows=remaining)
                 # Record fetched-but-empty so the UI tells "empty" from "errored".
-                ledger.per_type_counts.setdefault(action, 0)
+                scratch.per_type_counts.setdefault(action, 0)
             except httpx.HTTPStatusError as e:
-                ledger.warnings.append(f"{action}: HTTP {e.response.status_code}")
+                scratch.warnings.append(f"{action}: HTTP {e.response.status_code}")
             except httpx.HTTPError as e:
-                ledger.warnings.append(f"{action}: {type(e).__name__}: {e}")
+                scratch.warnings.append(f"{action}: {type(e).__name__}: {e}")
 
         name_map: dict[str, str] = {}
         if parsed:
-            name_map = await fetch_citizen_name_map(http, normalized, headers, ledger.warnings)
-        build_ledger(parsed, ledger, name_map)
+            name_map = await fetch_citizen_name_map(http, normalized, headers, scratch.warnings)
     finally:
         if owns_client:
             await http.aclose()
+
+    return ParsedTradeFetch(
+        normalized_base_url=normalized,
+        parsed=parsed,
+        name_map=name_map,
+        per_type_counts=scratch.per_type_counts,
+        warnings=scratch.warnings,
+    )
+
+
+async def fetch_ledger(
+    base_url: str | None = None,
+    api_key: str | None = None,
+    cache_ttl_s: float = DEFAULT_CACHE_TTL_S,
+    client: httpx.AsyncClient | None = None,
+) -> TradesLedger:
+    """Stream both trade action CSVs and fold them into a single ledger.
+
+    `client` is injectable so tests can hand in a pre-stubbed httpx client. When
+    omitted we build one with a 30 s timeout — late-cycle CSVs take a beat.
+    """
+    normalized = _normalize_admin_base(base_url)
+    key = _cache_key(normalized, api_key)
+    if cache_ttl_s > 0:
+        cached = _trades_cache.get(key)
+        if cached is not None:
+            return _ledger_from_dict(cached)
+
+    fetch = await fetch_parsed_trades(base_url=base_url, api_key=api_key, client=client)
+    ledger = TradesLedger(fetched_at_iso=_now_iso(), source_base_url=fetch.normalized_base_url)
+    ledger.per_type_counts = dict(fetch.per_type_counts)
+    ledger.warnings = list(fetch.warnings)
+    build_ledger(fetch.parsed, ledger, fetch.name_map)
 
     if cache_ttl_s > 0:
         _trades_cache[key] = ledger.to_dict()

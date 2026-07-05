@@ -54,6 +54,9 @@ commands:
   build-docker:
     run: make build-docker
     description: Build the eco-app docker image locally.
+  build-mods:
+    run: make build-mods
+    description: Build every Eco mod DLL (jobs, replay, telemetry, stores) - the CI compile gate.
   build-mod-jobs:
     run: make build-mod-jobs
     description: Build the jobs-tracker Eco mod DLL (mods/jobs/src).
