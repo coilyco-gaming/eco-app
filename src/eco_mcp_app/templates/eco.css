@@ -672,6 +672,29 @@
   .trades-table th { color: var(--fg-muted); font-weight: 700; }
   .trades-table td.num, .trades-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
+  /* ---- market price intelligence card (get_eco_market tool) ---- */
+  .trades-table .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 600; white-space: nowrap;
+    border: 1px solid var(--panel-border);
+  }
+  .trades-table .pill.trend-rising { color: var(--leaf-bright); background: rgba(165, 209, 74, 0.14); }
+  .trades-table .pill.trend-falling { color: var(--warn); background: rgba(224, 108, 76, 0.14); }
+  .trades-table .pill.trend-flat,
+  .trades-table .pill.trend-insufficient { color: var(--fg-muted); background: rgba(165, 209, 74, 0.05); }
+  .market-spark {
+    display: inline-flex; align-items: flex-end; gap: 1px; height: 18px;
+  }
+  .market-spark-bar {
+    display: inline-block; width: 3px; height: var(--h, 0%); min-height: 1px;
+    background: var(--leaf); border-radius: 1px; opacity: 0.85;
+  }
+  /* fair-price in-game cross-reference verdict emphasis */
+  .verdict-overpriced { color: var(--warn); }
+  .verdict-underpriced { color: var(--leaf-bright); }
+  .verdict-fair { color: var(--fg-muted); }
+  .verdict-inconclusive { color: var(--fg-faint); }
+
   /* ---- ecoregion card (get_eco_ecoregion tool) ---- */
   .ecoregion {
     background: var(--panel);

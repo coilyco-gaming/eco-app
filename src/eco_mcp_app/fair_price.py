@@ -100,6 +100,18 @@ def resolve_item(item: str | None) -> str | None:
     return _ITEM_ALIASES.get(item.strip().lower())
 
 
+def eco_item_for(item: str | None) -> str | None:
+    """Resolve `item` to its in-game item id (e.g. 'copper' -> 'CopperIngot').
+
+    Used by the market layer to bridge a fair-price request to the matching
+    in-game trades. Returns None for unknown items.
+    """
+    resolved = resolve_item(item)
+    if resolved is None:
+        return None
+    return ITEM_MAP[resolved]["eco_item"]
+
+
 # ---------------------------------------------------------------------------
 # Secret resolution
 # ---------------------------------------------------------------------------
@@ -300,6 +312,12 @@ class FairPriceResult:
     narrative: str
     cached: bool
     error: str | None = None
+    # In-game cross-reference (eco-app#49). Populated when the caller hands in a
+    # live in-game median from the trades ledger; None keeps the FRED-only path.
+    in_game_median: float | None = None
+    in_game_currency: str | None = None
+    in_game_trend: str | None = None
+    in_game_verdict: str | None = None
 
 
 def _parse_obs_value(raw: str) -> float | None:
@@ -470,6 +488,81 @@ def _format_value(v: float | None) -> str:
     return f"{v:.2f}"
 
 
+def _headline_direction(changes: dict[str, float | None], changes_label: str) -> str:
+    """Real-world short-window direction: 'trending up' / 'trending down' / 'flat'."""
+    if changes_label == "daily":
+        short = changes.get("7d")
+    elif changes_label == "monthly":
+        short = changes.get("1m")
+    else:
+        keys = list(changes.keys())
+        short = changes.get(keys[0]) if keys else None
+    if short is None:
+        return "flat"
+    return "trending up" if short > 0 else "trending down" if short < 0 else "flat"
+
+
+# Percent band around the calibrated expectation inside which the in-game price
+# reads "fair" rather than over / under. Symmetric with the trend flat band.
+_FAIR_VALUE_BAND_PCT = 10.0
+
+
+def _fair_value_verdict(
+    *,
+    real_direction: str,
+    in_game_trend: str,
+    in_game_median: float,
+    in_game_currency: str | None,
+    calibrated_price: float | None,
+    eco_item: str,
+) -> tuple[str, str]:
+    """Cross-reference the in-game median against the real-world FRED read.
+
+    Returns `(verdict, sentence)`. When a cycle calibration exists we have a
+    concrete expected in-game price and compare directly (over / under / fair).
+    Without one — the Day-3-of-Cycle-13 common case — we fall back to trend
+    *divergence*: a real-world benchmark climbing while the in-game price sits
+    flat reads as underpriced, and vice versa. This closes the gap the module
+    docstring names without pretending the two units are directly comparable.
+    """
+    cur = in_game_currency or "currency"
+    median_str = f"{in_game_median:,.2f} {cur}/unit"
+    if calibrated_price is not None and calibrated_price > 0:
+        lo = calibrated_price * (1 - _FAIR_VALUE_BAND_PCT / 100.0)
+        hi = calibrated_price * (1 + _FAIR_VALUE_BAND_PCT / 100.0)
+        if in_game_median > hi:
+            verdict = "overpriced"
+        elif in_game_median < lo:
+            verdict = "underpriced"
+        else:
+            verdict = "fair"
+        return verdict, (
+            f"In-game median {median_str} ({in_game_trend}) vs calibrated "
+            f"~{calibrated_price:,.2f}/unit → looks {verdict}."
+        )
+    # No calibration: trend divergence.
+    real_up = real_direction == "trending up"
+    real_down = real_direction == "trending down"
+    ig_up = in_game_trend == "rising"
+    ig_down = in_game_trend == "falling"
+    if real_up and not ig_up:
+        verdict, tail = "underpriced", "the real-world benchmark is rising faster"
+    elif real_down and ig_up:
+        verdict, tail = "overpriced", "the real-world benchmark is falling"
+    elif (
+        (real_up and ig_up)
+        or (real_down and ig_down)
+        or (real_direction == "flat" and in_game_trend == "flat")
+    ):
+        verdict, tail = "fair", "in-game tracks the real-world trend"
+    else:
+        verdict, tail = "inconclusive", "the two trends don't clearly diverge"
+    return verdict, (
+        f"In-game median {median_str} ({in_game_trend}) vs real-world "
+        f"{real_direction} → looks {verdict} ({tail})."
+    )
+
+
 def _build_narrative(
     *,
     display_name: str,
@@ -480,6 +573,7 @@ def _build_narrative(
     changes_label: str,
     eco_item: str,
     calibrated_price: float | None,
+    in_game_sentence: str | None = None,
 ) -> str:
     if latest_value is None:
         return (
@@ -512,13 +606,7 @@ def _build_narrative(
     trend_line = "Trend: " + ", ".join(trend_parts) + "." if trend_parts else "Trend: unavailable."
     # Advisory line. Day 3 of Cycle 13 — the server has thin market data, so
     # the calibration path is usually empty and we surface that honestly.
-    direction = (
-        "trending up"
-        if (short is not None and short > 0)
-        else "trending down"
-        if (short is not None and short < 0)
-        else "flat"
-    )
+    direction = _headline_direction(changes, changes_label)
     if calibrated_price is not None:
         advisory = (
             f"In-cycle fair price for {eco_item} {direction} — "
@@ -530,6 +618,8 @@ def _build_narrative(
             "calibration not yet recorded for this cycle. "
             "Advisory only; no in-game enforcement."
         )
+    if in_game_sentence:
+        advisory = f"{advisory} {in_game_sentence}"
     return f"{headline} {trend_line} {advisory}"
 
 
@@ -538,13 +628,25 @@ def _build_narrative(
 # ---------------------------------------------------------------------------
 
 
-async def fetch_fair_price(item: str | None, *, cycle_id: str | None = None) -> FairPriceResult:
+async def fetch_fair_price(
+    item: str | None,
+    *,
+    cycle_id: str | None = None,
+    in_game_median: float | None = None,
+    in_game_currency: str | None = None,
+    in_game_trend: str | None = None,
+) -> FairPriceResult:
     """Top-level: resolve item, fetch metadata + observations, build narrative.
 
     Robustness: every failure mode (unknown item, no API key, FRED 4xx/5xx,
     no observations) produces a `FairPriceResult` with `error` set and a
     narrative suitable for the empty-state UI — we never raise through to
     the MCP layer because Day 3 of Cycle 13 means thin data is normal.
+
+    `in_game_median` / `in_game_currency` / `in_game_trend` are the live in-game
+    read from the trades ledger (eco-app#49). When supplied and FRED data is
+    present, the narrative gains an over / under / fair cross-reference; when
+    omitted the module stays FRED-only, exactly as before.
     """
     resolved = resolve_item(item)
     if resolved is None:
@@ -635,6 +737,17 @@ async def fetch_fair_price(item: str | None, *, cycle_id: str | None = None) -> 
         if calib and resolved in calib:
             # Calibration stored as (in-game price / real price) at first call.
             calibrated_price = calib[resolved] * latest_value
+    in_game_verdict: str | None = None
+    in_game_sentence: str | None = None
+    if in_game_median is not None:
+        in_game_verdict, in_game_sentence = _fair_value_verdict(
+            real_direction=_headline_direction(changes, changes_label),
+            in_game_trend=in_game_trend or "insufficient",
+            in_game_median=in_game_median,
+            in_game_currency=in_game_currency,
+            calibrated_price=calibrated_price,
+            eco_item=meta["eco_item"],
+        )
     narrative = _build_narrative(
         display_name=meta["display_name"],
         display_unit=meta["display_unit"],
@@ -644,6 +757,7 @@ async def fetch_fair_price(item: str | None, *, cycle_id: str | None = None) -> 
         changes_label=changes_label,
         eco_item=meta["eco_item"],
         calibrated_price=calibrated_price,
+        in_game_sentence=in_game_sentence,
     )
     return FairPriceResult(
         item=resolved,
@@ -657,6 +771,10 @@ async def fetch_fair_price(item: str | None, *, cycle_id: str | None = None) -> 
         changes_label=changes_label,
         narrative=narrative,
         cached=obs_cached_before and meta_cached_before,
+        in_game_median=in_game_median,
+        in_game_currency=in_game_currency,
+        in_game_trend=in_game_trend,
+        in_game_verdict=in_game_verdict,
     )
 
 
@@ -677,4 +795,8 @@ def to_payload(result: FairPriceResult) -> dict[str, Any]:
         "narrative": result.narrative,
         "cached": result.cached,
         "error": result.error,
+        "inGameMedian": result.in_game_median,
+        "inGameCurrency": result.in_game_currency,
+        "inGameTrend": result.in_game_trend,
+        "inGameVerdict": result.in_game_verdict,
     }
