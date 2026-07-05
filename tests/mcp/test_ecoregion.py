@@ -149,6 +149,20 @@ def test_rank_drift_splits_boom_and_bust() -> None:
     assert [d.name for d in bust] == ["Falling"]
 
 
+def test_drift_entry_serializes_from_zero_grower_as_json_safe() -> None:
+    # first == 0, latest > 0 → infinite relative delta. Must not leak `inf`
+    # into the payload (Starlette's JSONResponse rejects it) — emit
+    # deltaRel=None + fromZero=True instead.
+    d = eco.compute_drift([(0, 0.0), (600, 40.0)])
+    assert d is not None
+    assert math.isinf(d.delta_rel)
+    entry = eco._drift_entry(d)
+    assert entry["deltaRel"] is None
+    assert entry["fromZero"] is True
+    # The payload has to survive json.dumps with allow_nan=False (Starlette).
+    json.dumps(entry, allow_nan=False)
+
+
 def test_load_ecoregions_bundled_returns_committed_fixture() -> None:
     regions = eco._load_ecoregions_bundled()
     # At least a handful of regions committed so the match section always

@@ -1171,16 +1171,17 @@ def _format_ecoregion_markdown(payload: dict[str, Any]) -> str:
     elif (drift.get("speciesWithDrift") or 0) == 0:
         lines.append(f"- Drift minimal so far across {drift.get('speciesSeen') or 0} species.")
     else:
+
+        def _delta(d: dict[str, Any]) -> str:
+            # A from-zero grower has deltaRel=None (see ecoregion._drift_entry).
+            if d.get("fromZero") or d.get("deltaRel") is None:
+                return "new"
+            return f"{d['deltaRel'] * 100:+.0f}%"
+
         if drift.get("boom"):
-            lines.append(
-                "- Boom: "
-                + ", ".join(f"{d['name']} {d['deltaRel'] * 100:+.0f}%" for d in drift["boom"])
-            )
+            lines.append("- Boom: " + ", ".join(f"{d['name']} {_delta(d)}" for d in drift["boom"]))
         if drift.get("bust"):
-            lines.append(
-                "- Bust: "
-                + ", ".join(f"{d['name']} {d['deltaRel'] * 100:+.0f}%" for d in drift["bust"])
-            )
+            lines.append("- Bust: " + ", ".join(f"{d['name']} {_delta(d)}" for d in drift["bust"]))
     return "\n".join(lines)
 
 
