@@ -25,9 +25,14 @@ public class EcoReplayPlugin : IModKitPlugin, IInitializablePlugin, IShutdownabl
     public EventStore Store { get; } = new EventStore();
 
     public string GetCategory() => "Mods";
-    public string GetStatus() => Store.IsReady
-        ? $"recording (total events: {Store.RowCount()})"
-        : "not initialized";
+    public string GetStatus()
+    {
+        if (!Store.IsReady) return "not initialized";
+        var status = $"recording (total events: {Store.RowCount()})";
+        if (Store.DroppedCount > 0) status += $", dropped: {Store.DroppedCount}";
+        if (Store.WriteErrorCount > 0) status += $", write errors: {Store.WriteErrorCount}";
+        return status;
+    }
 
     public void Initialize(TimedTask timer)
     {

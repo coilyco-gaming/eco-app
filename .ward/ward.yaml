@@ -60,6 +60,9 @@ commands:
   build-mod-replay:
     run: make build-mod-replay
     description: Build the replay Eco mod DLL (mods/replay/src).
+  test-mod-replay:
+    run: make test-mod-replay
+    description: Run the replay mod C# unit tests (mods/replay/tests).
   build-mod-telemetry:
     run: make build-mod-telemetry
     description: Build the telemetry Eco mod DLL (mods/telemetry).
