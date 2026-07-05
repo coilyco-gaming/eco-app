@@ -73,10 +73,70 @@ jobs:
     # invariant mode). This replaced the old node:20-bookworm self-install path,
     # which failed on every run since #60 (eco-app#68). Bump this pin in lockstep
     # with the `test` job's.
+    #
+    # WHY THE RETRY + NUGET_ENHANCED env (eco-app#69): #68 fixed the toolchain
+    # (baked SDK + full ICU, so the SDK-install and ICU suspects are gone) but
+    # the job still went red on run 58. The build itself is sound - `ward exec
+    # build-mods` compiles all four mods green in this dev-base image with the
+    # Eco.ReferenceAssemblies 1024 pin restoring cleanly - so the remaining
+    # failure is `dotnet restore` reaching api.nuget.org over the in-cluster
+    # runner's KNOWN-FLAKY external egress. That is the same documented trait
+    # that makes infra's CD runner pull helm off the Alpine CDN instead of
+    # get.helm.sh and fetch kubectl with `curl --retry` (see
+    # infrastructure/docs/cd-runner.md). The `test` job survives it because a
+    # flaky egress still lets pypi through often enough; the mods' ONLY external
+    # build dependency is the NuGet feed, so it is the job that trips. The fix
+    # is to make the restore patient: NUGET_ENHANCED_* raises NuGet's own
+    # in-process HTTP retry, and the outer loop re-runs the whole compile so a
+    # wholesale restore timeout is survived rather than fatal. There is no
+    # in-cluster NuGet mirror to repoint the feed at; if a fresh run still fails
+    # AND the preflight shows api.nuget.org unreachable, the egress is a hard
+    # block (not flaky) and the durable fix is an in-cluster NuGet proxy in
+    # infra, tracked separately - not something eco-app CI can paper over.
     container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.195.0
+    env:
+      # Raise NuGet's built-in HTTP retry so a slow/flaky nuget.org fetch keeps
+      # trying in-process before the restore gives up. Stock defaults are 3
+      # tries / 1s delay; the runner's flaky egress needs more headroom.
+      NUGET_ENABLE_ENHANCED_HTTP_RETRY: "true"
+      NUGET_ENHANCED_MAX_NETWORK_TRY_COUNT: "6"
+      NUGET_ENHANCED_NETWORK_RETRY_DELAY_MILLISECONDS: "3000"
     steps:
       - uses: actions/checkout@v4
-      - run: ward exec build-mods
+      # Non-fatal preflight: surface the toolchain + NuGet-feed reachability up
+      # front so a future red run is diagnosable at a glance (toolchain vs
+      # egress) instead of buried in a restore stack trace deep in the loop.
+      - name: Toolchain + NuGet egress preflight
+        run: |
+          dotnet --version
+          dotnet --list-sdks
+          curl -fsS --max-time 20 -o /dev/null \
+            -w 'api.nuget.org index: HTTP %{http_code} in %{time_total}s\n' \
+            https://api.nuget.org/v3/index.json \
+            || echo "WARN: api.nuget.org unreachable from this runner - restore leans on the retry loop below"
+      # Compile all four mods, retried to ride out the runner's flaky external
+      # egress to the NuGet feed (see the job comment). Each attempt is a full
+      # `ward exec build-mods` (gate + restore + build); the NUGET_ENHANCED_*
+      # env keeps each attempt's restore patient, the loop keeps a wholesale
+      # timeout non-fatal. A genuine compile error still fails all 3 attempts
+      # deterministically, so the retry rides out flakiness without masking a
+      # truly-broken mod.
+      - name: Compile the four C# mods (build-mods gate)
+        run: |
+          set -eu
+          for attempt in 1 2 3; do
+            echo "::group::build-mods attempt ${attempt}/3"
+            if ward exec build-mods; then
+              echo "::endgroup::"
+              echo "mods compiled green on attempt ${attempt}"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "attempt ${attempt} failed; backing off before retry" >&2
+            sleep $((attempt * 15))
+          done
+          echo "build-mods failed after 3 attempts - check the preflight for egress vs toolchain" >&2
+          exit 1
 
   publish:
     runs-on: docker
