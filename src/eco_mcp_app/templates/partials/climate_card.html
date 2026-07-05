@@ -162,7 +162,7 @@
 
 {% if effects.co2_now is not none %}
 <div class="climate-section-head" style="margin-top:14px">CO2 effects</div>
-<div class="hint" style="margin-bottom:8px">Eco's default climate ruleset — a server admin can retune these.</div>
+<div class="hint" style="margin-bottom:8px">{{ "Live from this server's climate config." if effects.source == 'live' else "Eco's default climate ruleset — a server admin can retune these." }}</div>
 <div class="grid spark-grid">
   <div class="card">
     <div class="card-label">Temperature rise</div>
