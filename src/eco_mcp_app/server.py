@@ -46,6 +46,7 @@ from .crafting import atlas_template_context, fetch_atlas
 from .logistics import fetch_logistics, logistics_markdown, logistics_template_context
 from .map import build_map_payload, fetch_map_bundle
 from .progression import fetch_history, history_markdown, history_template_context
+from .social import fetch_social, social_markdown, social_template_context
 from .stores import directory_markdown, directory_template_context, fetch_directory
 from .trades import fetch_ledger, ledger_markdown, ledger_template_context
 from .watchers import (
@@ -1029,6 +1030,10 @@ def _render_stores_directory(ctx: dict[str, Any]) -> str:
 
 def _render_progression(ctx: dict[str, Any]) -> str:
     return _JINJA.get_template("partials/progression.html").render(**ctx)
+
+
+def _render_social(ctx: dict[str, Any]) -> str:
+    return _JINJA.get_template("partials/social.html").render(**ctx)
 
 
 def _format_crafting_markdown(ctx: dict[str, Any]) -> str:
@@ -2277,6 +2282,50 @@ def build_server() -> Server:
                 **{"_meta": UI_META},
             ),
             Tool(
+                name="get_eco_social",
+                title="Eco — social / chat surface",
+                description=(
+                    "Reconstruct the social side of an Eco server from its "
+                    "action-log exporter: an activity timeline (play + new "
+                    "arrivals from FirstLogin), chat volume over time and by "
+                    "channel, a reputation graph (who reps whom), and redacted "
+                    "recent-chat samples. Chat is player-authored content, so "
+                    "player names are hashed to stable handles and message "
+                    "bodies are scrubbed of real names **by default** — a "
+                    "names-in-the-clear mode is operator-gated (needs "
+                    "ECO_SOCIAL_ALLOW_NAMES set server-side plus reveal_names), "
+                    "never public. Requires an admin API key configured "
+                    "server-side (same exporter as get_eco_trades). Renders as "
+                    "an inline widget via the MCP Apps spec; falls back to a "
+                    "markdown summary otherwise."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "server": {
+                            "type": "string",
+                            "description": (
+                                "Eco admin base URL (`host`, `host:port`, or "
+                                "full URL). Omit to use the configured "
+                                "default (`eco.coilysiren.me:3001`)."
+                            ),
+                        },
+                        "reveal_names": {
+                            "type": "boolean",
+                            "description": (
+                                "Show player names + raw chat bodies instead of "
+                                "redacted handles. Operator-gated: only takes "
+                                "effect when the deploy sets ECO_SOCIAL_ALLOW_NAMES "
+                                "(default-deny), so a public call is always "
+                                "redacted regardless. Default false."
+                            ),
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+                **{"_meta": UI_META},
+            ),
+            Tool(
                 name="fair_price",
                 title="Eco — fair-price advisor",
                 description=(
@@ -2945,6 +2994,36 @@ def build_server() -> Server:
                     TextContent(type="text", text=json.dumps(directory.to_dict())),
                 ],
                 **{"_meta": _ui_meta(_render_stores_directory(ctx))},
+            )
+
+        if name == "get_eco_social":
+            server_arg = arguments.get("server") if arguments else None
+            reveal_names = bool(arguments.get("reveal_names")) if arguments else False
+            api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
+            try:
+                surface = await fetch_social(
+                    base_url=server_arg, api_key=api_key, reveal_names=reveal_names
+                )
+            except httpx.HTTPError as e:
+                err_payload = {
+                    "view": "error",
+                    "message": f"Could not reach Eco exporter: {e}",
+                }
+                return CallToolResult(
+                    content=[
+                        TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
+                        TextContent(type="text", text=json.dumps(err_payload)),
+                    ],
+                    isError=True,
+                    **{"_meta": _ui_meta(_render_error(str(e)))},
+                )
+            ctx = social_template_context(surface)
+            return CallToolResult(
+                content=[
+                    TextContent(type="text", text=social_markdown(surface)),
+                    TextContent(type="text", text=json.dumps(surface.to_dict())),
+                ],
+                **{"_meta": _ui_meta(_render_social(ctx))},
             )
 
         if name == "list_public_eco_servers":

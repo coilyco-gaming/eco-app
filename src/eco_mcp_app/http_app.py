@@ -355,6 +355,31 @@ def create_app() -> Starlette:
             )
         return JSONResponse(payload)
 
+    async def preview_social_json(request: Request) -> JSONResponse:
+        """`/preview/social.json` — the SPA's `/social` route data plane.
+
+        Dispatches `get_eco_social` and returns its JSON block. This is a
+        **public** path, so it never forwards `reveal_names`: the surface is
+        always redacted (handles + name-scrubbed message bodies), regardless of
+        any server-side names gate. A dedicated route (not the generic
+        `/preview/<tool>.json`) so `?server=` passes straight through and the
+        redaction posture is pinned here rather than left to a query param
+        (eco-app#63).
+        """
+        args = {k: v for k, v in request.query_params.items() if k in ("server",)}
+        req = mt.CallToolRequest(
+            method="tools/call",
+            params=mt.CallToolRequestParams(name="get_eco_social", arguments=args),
+        )
+        try:
+            result = await call_tool_handler(req)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+        payload = _extract_json_block(cast(mt.CallToolResult, result.root))
+        if payload is None:
+            return JSONResponse({"error": "no JSON block from get_eco_social"}, status_code=502)
+        return JSONResponse(payload)
+
     async def preview_watchers_json(request: Request) -> JSONResponse:
         """`/preview/watchers.json` — the SPA's trade-watcher data plane.
 
@@ -456,6 +481,7 @@ def create_app() -> Starlette:
         Route("/preview/stores.json", preview_stores_json, methods=["GET"]),
         Route("/preview/logistics.json", preview_logistics_json, methods=["GET"]),
         Route("/preview/progression.json", preview_progression_json, methods=["GET"]),
+        Route("/preview/social.json", preview_social_json, methods=["GET"]),
         Route("/preview/watchers.json", preview_watchers_json, methods=["GET"]),
         Route("/preview/{tool}", preview_tool, methods=["GET"]),
         Mount("/mcp", app=handle_mcp),

@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom"
 import Layout from "../components/Layout"
 import { useEcoStatus } from "../hooks/useEcoStatus"
+import { useSocialPulse } from "../hooks/useSocialPulse"
 import { useTradePulse } from "../hooks/useTradePulse"
 import { formatCount, safeHttpUrl } from "../lib/format"
 
@@ -11,6 +12,7 @@ const STEAM_URL = "https://store.steampowered.com/app/382310/Eco/"
 export default function Home() {
   const { status } = useEcoStatus()
   const tradePulse = useTradePulse()
+  const socialPulse = useSocialPulse()
   const discordUrl = safeHttpUrl(status?.server.discord)
 
   return (
@@ -74,6 +76,17 @@ export default function Home() {
         <Link className="dir-card" to="/crafting" data-testid="dir-crafting">
           <h3>Crafting atlas</h3>
           <p>What the world is making — top items and stations, deep-linkable.</p>
+        </Link>
+
+        <Link className="dir-card" to="/social" data-testid="dir-social">
+          <h3>Social &amp; chat</h3>
+          <p>Chat volume, the reputation graph, and new arrivals — names redacted.</p>
+          {socialPulse && (
+            <p className="dir-badges" data-testid="social-badges">
+              <span className="mini-pill">{formatCount(socialPulse.chat)} messages</span>
+              <span className="mini-pill">{formatCount(socialPulse.arrivals)} new</span>
+            </p>
+          )}
         </Link>
 
         <Link className="dir-card" to="/climate" data-testid="dir-climate">
