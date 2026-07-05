@@ -6,6 +6,13 @@ name ?= eco-app
 port ?= 4000
 git-hash ?= $(shell git rev-parse HEAD 2>/dev/null || echo dev)
 
+# dev-base ships Python 3.12 with a root-owned /opt/uv/python; this repo targets
+# 3.13 (pyproject requires-python, product Dockerfile FROM python:3.13), so uv must
+# download a managed 3.13. Point that download at a HOME-writable dir so `ward exec`
+# (make -> uv) works in the non-root agent container. Unconditional on purpose: the
+# image env-sets UV_PYTHON_INSTALL_DIR=/opt/uv/python, so `?=` would not override it.
+export UV_PYTHON_INSTALL_DIR := $(HOME)/.cache/uv-python
+
 help: ## Print this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "%-30s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
