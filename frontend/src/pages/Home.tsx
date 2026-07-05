@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom"
 import Layout from "../components/Layout"
+import { useCivicsPulse } from "../hooks/useCivicsPulse"
 import { useEcoStatus } from "../hooks/useEcoStatus"
 import { useTradePulse } from "../hooks/useTradePulse"
 import { formatCount, safeHttpUrl } from "../lib/format"
@@ -11,6 +12,7 @@ const STEAM_URL = "https://store.steampowered.com/app/382310/Eco/"
 export default function Home() {
   const { status } = useEcoStatus()
   const tradePulse = useTradePulse()
+  const civicsPulse = useCivicsPulse()
   const discordUrl = safeHttpUrl(status?.server.discord)
 
   return (
@@ -74,6 +76,19 @@ export default function Home() {
         <Link className="dir-card" to="/crafting" data-testid="dir-crafting">
           <h3>Crafting atlas</h3>
           <p>What the world is making — top items and stations, deep-linkable.</p>
+        </Link>
+
+        <Link className="dir-card" to="/civics" data-testid="dir-civics">
+          <h3>Civics &amp; governance</h3>
+          <p>Elections, turnout, demographics, and new settlements over time.</p>
+          {civicsPulse && (
+            <p className="dir-badges" data-testid="civics-badges">
+              <span className="mini-pill">{formatCount(civicsPulse.events)} civic events</span>
+              {civicsPulse.turnoutPct !== null && (
+                <span className="mini-pill">{civicsPulse.turnoutPct}% turnout</span>
+              )}
+            </p>
+          )}
         </Link>
 
         <Link className="dir-card" to="/climate" data-testid="dir-climate">

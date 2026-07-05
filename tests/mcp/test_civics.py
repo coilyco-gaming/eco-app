@@ -1,0 +1,350 @@
+"""Tests for the civics & governance aggregator + tool wiring (eco-app#61).
+
+Covers:
+  - Folding civic action CSVs into events with the right actor / subject /
+    day fields (header-keyed, seconds -> in-game day via /86400).
+  - Turnout: Vote vs DidntVote counts, participation rate, most-active voters.
+  - Demographics: citizens gained / lost, net, residency moves.
+  - Settlements: founded + homesteads, founder resolved to a name.
+  - Numeric actor ids joined to names via /api/v1/citizens, `Citizen #<id>`
+    fallback for a missing id (eco-app#5).
+  - Daily-count series folded into the trend map (seconds -> day x-axis).
+  - Defensive realignment of a row carrying an undeclared extra column.
+  - Missing-endpoint (401 / connect error) becomes a non-fatal warning.
+  - Empty exporters produce a clean "no civic events" report.
+  - The in-memory TTL cache is per (base, api-key) and hits within TTL.
+  - Tool wiring returns two TextContent blocks + a `_meta.ui` fragment.
+"""
+
+from __future__ import annotations
+
+import csv
+from collections.abc import Iterator
+
+import httpx
+import mcp.types as mt
+import pytest
+import respx
+
+from eco_mcp_app import civics as civics_mod
+from eco_mcp_app.civics import (
+    SECONDS_PER_DAY,
+    CivicsReport,
+    _CivicEvent,
+    build_report,
+    civics_markdown,
+    civics_template_context,
+    fetch_civics,
+    parse_civic_rows,
+)
+from eco_mcp_app.server import build_server
+
+BASE = "http://eco.example.com:3001"
+CITIZENS_URL = f"{BASE}/api/v1/citizens"
+
+
+def _exporter_url(action: str) -> str:
+    return f"{BASE}/api/v1/exporter/actions?actionName={action}"
+
+
+def _series_url(name: str) -> str:
+    end = max(civics_mod.SERIES_DAY_END, 1)
+    return f"{BASE}/datasets/get?dataset={name}&dayStart=0&dayEnd={end}"
+
+
+_CITIZENS_JSON = [
+    {"id": 101, "name": "alice"},
+    {"id": 102, "name": "bob"},
+    {"id": 103, "name": "carol"},
+]
+
+# Aligned civic CSVs. The exact civic headers weren't captured live this cycle,
+# so the module parses a generous candidate set header-keyed; these fixtures use
+# the columns it looks for (Citizen, an election/settlement subject,
+# ActionLocation, Count, Time).
+_VOTE_CSV = (
+    "Citizen,ElectionName,ActionLocation,Count,Time\n"
+    '101,MayorRace,"1,2,3",1,300000\n'
+    '101,SheriffRace,"1,2,3",1,290000\n'
+    '102,MayorRace,"4,5,6",1,280000\n'
+)
+_DIDNTVOTE_CSV = 'Citizen,ElectionName,ActionLocation,Count,Time\n103,MayorRace,"7,8,9",1,270000\n'
+_START_ELECTION_CSV = (
+    'Citizen,ElectionName,ActionLocation,Count,Time\n101,MayorRace,"1,2,3",1,260000\n'
+)
+_WON_ELECTION_CSV = (
+    'Citizen,ElectionName,ActionLocation,Count,Time\n101,MayorRace,"1,2,3",1,250000\n'
+)
+_BECOME_CITIZEN_CSV = (
+    "Citizen,SettlementName,ActionLocation,Count,Time\n"
+    '102,Rivertown,"4,5,6",1,240000\n'
+    '103,Rivertown,"7,8,9",1,230000\n'
+)
+_LEAVE_CITIZENSHIP_CSV = (
+    'Citizen,SettlementName,ActionLocation,Count,Time\n104,Rivertown,"1,1,1",1,220000\n'
+)
+_RESIDENCY_CSV = (
+    'Citizen,SettlementName,ActionLocation,Count,Time\n102,Rivertown,"4,5,6",1,210000\n'
+)
+_SETTLEMENT_FOUNDED_CSV = (
+    'Citizen,SettlementName,ActionLocation,Count,Time\n101,Rivertown,"1,2,3",1,200000\n'
+)
+_HOMESTEAD_CSV = 'Citizen,SettlementName,ActionLocation,Count,Time\n102,BobsFarm,"4,5,6",1,190000\n'
+
+_CSV_BY_ACTION = {
+    "Vote": _VOTE_CSV,
+    "DidntVote": _DIDNTVOTE_CSV,
+    "StartElection": _START_ELECTION_CSV,
+    "WonElection": _WON_ELECTION_CSV,
+    "BecomeCitizen": _BECOME_CITIZEN_CSV,
+    "LeaveCitizenship": _LEAVE_CITIZENSHIP_CSV,
+    "ResidencyChanged": _RESIDENCY_CSV,
+    "SettlementFounded": _SETTLEMENT_FOUNDED_CSV,
+    "StartHomestead": _HOMESTEAD_CSV,
+}
+_EMPTY_CSV = "Citizen,Name,ActionLocation,Count,Time\n"
+
+_SERIES_BY_NAME = {
+    "Vote": [
+        {"Time": 0, "Value": 0},
+        {"Time": 86400, "Value": 1},
+        {"Time": 172800, "Value": 3},
+    ],
+    "BecomeCitizen": [
+        {"Time": 86400, "Value": 1},
+        {"Time": 172800, "Value": 2},
+    ],
+}
+
+
+@pytest.fixture(autouse=True)
+def _clear_cache() -> Iterator[None]:
+    civics_mod._civics_cache.clear()
+    yield
+    civics_mod._civics_cache.clear()
+
+
+def _rows(csv_text: str) -> list[list[str]]:
+    return list(csv.reader(csv_text.splitlines()))
+
+
+def _mock_full_server(
+    router: respx.Router,
+    csv_by_action: dict[str, str] | None = None,
+    series_by_name: dict[str, list[dict[str, int]]] | None = None,
+    status_by_action: dict[str, int] | None = None,
+) -> None:
+    """Register an exact-URL route for every civic exporter / series / citizens.
+
+    respx's regex URL matching didn't fire in this env, so we enumerate the
+    module's own action + series names and register one route each on the
+    injected `router` (the configured `@respx.mock(...)` decorator hands the
+    test its router as an argument — the module-level `respx.get` targets a
+    different one). Any action not in `csv_by_action` serves the empty CSV; any
+    series not in `series_by_name` serves `[]`.
+    """
+    csv_by_action = _CSV_BY_ACTION if csv_by_action is None else csv_by_action
+    series_by_name = _SERIES_BY_NAME if series_by_name is None else series_by_name
+    status_by_action = status_by_action or {}
+    for action in civics_mod.CIVICS_ACTION_TYPES:
+        status = status_by_action.get(action, 200)
+        if status != 200:
+            router.get(_exporter_url(action)).mock(return_value=httpx.Response(status))
+        else:
+            router.get(_exporter_url(action)).mock(
+                return_value=httpx.Response(200, text=csv_by_action.get(action, _EMPTY_CSV))
+            )
+    for name in civics_mod.CIVICS_SERIES:
+        router.get(_series_url(name)).mock(
+            return_value=httpx.Response(200, json=series_by_name.get(name, []))
+        )
+    router.get(CITIZENS_URL).mock(return_value=httpx.Response(200, json=_CITIZENS_JSON))
+
+
+# --- Unit: parse + aggregate ------------------------------------------------
+
+
+def test_parse_civic_rows_folds_vote_csv() -> None:
+    parsed: list[_CivicEvent] = []
+    counts: dict[str, int] = {}
+    warnings: list[str] = []
+    n = parse_civic_rows("Vote", _rows(_VOTE_CSV), parsed, counts, warnings)
+    assert n == 3
+    assert counts["Vote"] == 3
+    first = parsed[0]
+    assert first.citizen_id == "101"
+    assert first.subject == "MayorRace"
+    assert first.day == pytest.approx(300000 / SECONDS_PER_DAY)
+
+
+def test_parse_civic_rows_realigns_shifted_row() -> None:
+    """A row with an undeclared extra column still folds with correct fields."""
+    parsed: list[_CivicEvent] = []
+    csv_text = (
+        'Citizen,ElectionName,ActionLocation,Count,Time\n101,MayorRace,HandsItem,"1,2,3",1,300000\n'
+    )
+    parse_civic_rows("Vote", _rows(csv_text), parsed, {}, [])
+    e = parsed[0]
+    assert e.citizen_id == "101"
+    assert e.subject == "MayorRace"
+    assert e.location == "1,2,3"
+    assert e.day == pytest.approx(300000 / SECONDS_PER_DAY)
+
+
+def test_parse_civic_rows_respects_max_rows_cap() -> None:
+    parsed: list[_CivicEvent] = []
+    warnings: list[str] = []
+    n = parse_civic_rows("Vote", _rows(_VOTE_CSV), parsed, {}, warnings, max_rows=2)
+    assert n == 2
+    assert any("truncated" in w for w in warnings)
+
+
+def _fold_all(name_map: dict[str, str]) -> CivicsReport:
+    parsed: list[_CivicEvent] = []
+    counts: dict[str, int] = {}
+    for action, text in _CSV_BY_ACTION.items():
+        parse_civic_rows(action, _rows(text), parsed, counts, [])
+    report = CivicsReport(fetched_at_iso="t", source_base_url="b")
+    report.per_action_counts = counts
+    build_report(parsed, report, name_map)
+    return report
+
+
+def test_build_report_turnout_and_voters() -> None:
+    report = _fold_all({"101": "alice", "102": "bob", "103": "carol"})
+    assert report.votes_cast == 3
+    assert report.abstentions == 1
+    assert report.turnout_rate == pytest.approx(0.75)
+    # alice voted twice, bob once.
+    top = dict(report.top_voters)
+    assert top["alice"] == 2
+    assert top["bob"] == 1
+    assert report.top_voters[0][0] == "alice"
+
+
+def test_build_report_elections() -> None:
+    report = _fold_all({"101": "alice"})
+    assert report.elections_started == 1
+    assert report.elections_won == 1
+    assert report.recent_elections[0]["subject"] == "MayorRace"
+    assert report.recent_elections[0]["proposer"] == "alice"
+    assert report.recent_outcomes[0]["winner"] == "alice"
+
+
+def test_build_report_demographics_and_fallback() -> None:
+    report = _fold_all({"101": "alice", "102": "bob", "103": "carol"})
+    assert report.citizens_gained == 2
+    assert report.citizens_lost == 1
+    assert report.net_citizens == 1
+    assert report.residency_moves == 1
+    # Unmapped id 104 falls back rather than dropping.
+    left = [d for d in report.recent_demographics if d["kind"] == "left"]
+    assert left[0]["name"] == "Citizen #104"
+
+
+def test_build_report_settlements() -> None:
+    report = _fold_all({"101": "alice", "102": "bob"})
+    assert report.settlements_founded == 1
+    assert report.homesteads_started == 1
+    kinds = {s["kind"] for s in report.recent_settlements}
+    assert kinds == {"settlement", "homestead"}
+    settlement = next(s for s in report.recent_settlements if s["kind"] == "settlement")
+    assert settlement["founder"] == "alice"
+    assert settlement["subject"] == "Rivertown"
+
+
+# --- Integration: fetch_civics ---------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock(assert_all_called=False)
+async def test_fetch_civics_merges_actions_series_and_names(respx_mock: respx.Router) -> None:
+    _mock_full_server(respx_mock)
+    report = await fetch_civics(base_url=BASE, api_key="secret", cache_ttl_s=0)
+
+    assert report.total_events == 12
+    assert report.votes_cast == 3
+    assert report.turnout_rate == pytest.approx(0.75)
+    assert report.net_citizens == 1
+    assert report.settlements_founded == 1
+    # Actor names resolved from the citizens join.
+    assert report.recent_elections[0]["proposer"] == "alice"
+    # Daily-count series folded into the trend, seconds -> day on the x-axis.
+    assert report.trend["Vote"] == [(0.0, 0.0), (1.0, 1.0), (2.0, 3.0)]
+    assert "BecomeCitizen" in report.trend
+    assert report.warnings == []
+
+
+@pytest.mark.asyncio
+@respx.mock(assert_all_called=False)
+async def test_fetch_civics_tolerates_partial_failure(respx_mock: respx.Router) -> None:
+    _mock_full_server(respx_mock, status_by_action={"Vote": 401})
+
+    report = await fetch_civics(base_url=BASE, api_key=None, cache_ttl_s=0)
+    # The other civic actions still fold; only Vote is missing.
+    assert report.votes_cast == 0
+    assert report.citizens_gained == 2
+    assert any("Vote" in w and "401" in w for w in report.warnings)
+
+
+@pytest.mark.asyncio
+@respx.mock(assert_all_called=False)
+async def test_fetch_civics_empty_is_clean(respx_mock: respx.Router) -> None:
+    _mock_full_server(respx_mock, csv_by_action={}, series_by_name={})
+
+    report = await fetch_civics(base_url=BASE, api_key=None, cache_ttl_s=0)
+    assert report.total_events == 0
+    assert civics_template_context(report)["empty"] is True
+    assert "no civic events" in civics_markdown(report).lower()
+
+
+@pytest.mark.asyncio
+@respx.mock(assert_all_called=False)
+async def test_fetch_civics_cache_hits_within_ttl(respx_mock: respx.Router) -> None:
+    _mock_full_server(respx_mock)
+
+    a1 = await fetch_civics(base_url=BASE, api_key="k", cache_ttl_s=60)
+    after_first = respx_mock.calls.call_count
+    a2 = await fetch_civics(base_url=BASE, api_key="k", cache_ttl_s=60)
+    assert a1.total_events == a2.total_events == 12
+    # Second call served entirely from cache — no new upstream hits.
+    assert respx_mock.calls.call_count == after_first
+
+
+# --- Tool wiring ------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock(assert_all_called=False)
+async def test_tool_call_returns_text_blocks_and_fragment(
+    respx_mock: respx.Router,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ECO_ADMIN_API_KEY", "k")
+    _mock_full_server(respx_mock)
+
+    mcp = build_server()
+    handler = mcp.request_handlers[mt.CallToolRequest]
+    req = mt.CallToolRequest(
+        method="tools/call",
+        params=mt.CallToolRequestParams(
+            name="get_eco_civics",
+            arguments={"server": "eco.example.com:3001"},
+        ),
+    )
+    result = await handler(req)
+    blocks = result.root.content
+    assert len(blocks) == 2
+    assert isinstance(blocks[0], mt.TextContent)
+    assert "Civics" in blocks[0].text
+    assert result.root.meta is not None
+    assert "Civics" in result.root.meta["ui"]["fragment"]
+
+
+@pytest.mark.asyncio
+async def test_list_tools_includes_get_eco_civics() -> None:
+    mcp = build_server()
+    handler = mcp.request_handlers[mt.ListToolsRequest]
+    result = await handler(mt.ListToolsRequest(method="tools/list"))
+    names = {tool.name for tool in result.root.tools}
+    assert "get_eco_civics" in names
