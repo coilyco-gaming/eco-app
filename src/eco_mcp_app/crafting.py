@@ -118,6 +118,11 @@ _COLUMN_SHAPE: dict[str, Any] = {
     "Currency": _looks_like_name,
     "BlockItemOnDestroy": _looks_like_name,
     "BlockDestroyed": _looks_like_name,
+    # World/industry action name columns — let the world-mutation timeline share
+    # this realign path (eco-app#62). Construction/road/object rows carry a
+    # block or world-object id where these validate as names.
+    "Block": _looks_like_name,
+    "Item": _looks_like_name,
 }
 
 

@@ -2,6 +2,7 @@ import { Link } from "react-router-dom"
 import Layout from "../components/Layout"
 import { useEcoStatus } from "../hooks/useEcoStatus"
 import { useTradePulse } from "../hooks/useTradePulse"
+import { useWorldPulse } from "../hooks/useWorldPulse"
 import { formatCount, safeHttpUrl } from "../lib/format"
 
 const STEAM_URL = "https://store.steampowered.com/app/382310/Eco/"
@@ -11,6 +12,7 @@ const STEAM_URL = "https://store.steampowered.com/app/382310/Eco/"
 export default function Home() {
   const { status } = useEcoStatus()
   const tradePulse = useTradePulse()
+  const worldPulse = useWorldPulse()
   const discordUrl = safeHttpUrl(status?.server.discord)
 
   return (
@@ -74,6 +76,19 @@ export default function Home() {
         <Link className="dir-card" to="/crafting" data-testid="dir-crafting">
           <h3>Crafting atlas</h3>
           <p>What the world is making — top items and stations, deep-linkable.</p>
+        </Link>
+
+        <Link className="dir-card" to="/world" data-testid="dir-world">
+          <h3>World &amp; industry</h3>
+          <p>Construction, roads, terraforming, explosions, and pollution — the mutation timeline.</p>
+          {worldPulse && (
+            <p className="dir-badges" data-testid="world-badges">
+              <span className="mini-pill">{formatCount(worldPulse.events)} events</span>
+              {worldPulse.topCategory && (
+                <span className="mini-pill">{worldPulse.topCategory}</span>
+              )}
+            </p>
+          )}
         </Link>
 
         <Link className="dir-card" to="/climate" data-testid="dir-climate">

@@ -17,6 +17,7 @@ Defined in [src/eco_mcp_app/server.py](../../src/eco_mcp_app/server.py). All acc
 - **get_eco_species** - Species card. iNaturalist/Wikipedia taxonomy + in-game population chart.
 - **explain_eco_item** - Wikidata + Wikipedia lookup. Images, category facts. 7-day cache.
 - **get_eco_crafting_atlas** - Live crafting from action-log exporter. Top items, station util, leaderboard.
+- **get_eco_world** - World / industry activity from the action-log exporter. Construction, terraforming, roads, moved objects, explosions, garbage, and air pollution folded into a per-day mutation timeline by category, a top-world-shapers + top-polluters leaderboard, most-touched objects, and coarse-binned activity hotspots. No new mod, no restart - reuses the crafting atlas's streamed-CSV plumbing. Probe: [docs/world.md](../world.md).
 - **fair_price** - Real-world commodity prices via FRED (copper, wheat, lumber, iron, crude). 7d/30d/90d.
 - **get_eco_ecoregion** - WWF ecoregion classification. Donut, top-3 matches, boom/bust lists.
 - **get_eco_government** - Civic org chart. Elected titles, active elections, active laws.

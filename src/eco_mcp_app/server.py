@@ -57,6 +57,7 @@ from .watchers import (
     remove_watcher,
     watchers_list_markdown,
 )
+from .world import fetch_world, world_markdown, world_template_context
 
 DEFAULT_ECO_INFO_URL = os.environ.get("ECO_INFO_URL", "http://eco.coilysiren.me:3001/info")
 DEFAULT_ECO_PORT = int(os.environ.get("ECO_INFO_PORT", "3001"))
@@ -1016,6 +1017,10 @@ def _render_ecopedia(card_dict: dict[str, Any]) -> str:
 
 def _render_crafting_atlas(ctx: dict[str, Any]) -> str:
     return _JINJA.get_template("partials/crafting.html").render(**ctx)
+
+
+def _render_world_activity(ctx: dict[str, Any]) -> str:
+    return _JINJA.get_template("partials/world.html").render(**ctx)
 
 
 def _render_trades_ledger(ctx: dict[str, Any]) -> str:
@@ -2133,6 +2138,45 @@ def build_server() -> Server:
                 **{"_meta": UI_META},
             ),
             Tool(
+                name="get_eco_world",
+                title="Eco — world / industry activity",
+                description=(
+                    "Reconstruct the physical story of what players are doing to "
+                    "the world from an Eco server's action-log exporter: "
+                    "construction and deconstruction, terraforming, roads tamped, "
+                    "world objects placed and moved, explosions, garbage, and "
+                    "air-pollution events. Returns a world-mutation activity "
+                    "timeline (events per in-game day, by category), a "
+                    "top-world-shapers leaderboard by citizen, the most-touched "
+                    "objects, and coarse-binned activity hotspots (where the "
+                    "bulldozers are). Folds ConstructOrDeconstruct, "
+                    "PlaceOrPickUpObject, MoveWorldObject, TampRoad, "
+                    "DropOrPickupGarbage, ObjectExplosion, PolluteAir, and the "
+                    "extraction actions (DigOrMine, ChopTree) re-framed as "
+                    "terraforming. No new mod and no restart — reuses the "
+                    "crafting atlas's streamed-CSV plumbing, so it stays bounded "
+                    "on late-cycle logs. Requires an admin API key configured "
+                    "server-side (ECO_ADMIN_API_KEY, populated from SSM in the "
+                    "homelab deploy). Renders as an inline widget via the MCP "
+                    "Apps spec; falls back to a markdown summary otherwise."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "server": {
+                            "type": "string",
+                            "description": (
+                                "Eco admin base URL (`host`, `host:port`, or "
+                                "full URL). Omit to use the configured "
+                                "default (`eco.coilysiren.me:3001`)."
+                            ),
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+                **{"_meta": UI_META},
+            ),
+            Tool(
                 name="get_eco_trades",
                 title="Eco — trades ledger",
                 description=(
@@ -2686,6 +2730,33 @@ def build_server() -> Server:
                     TextContent(type="text", text=json.dumps(atlas.to_dict())),
                 ],
                 **{"_meta": _ui_meta(_render_crafting_atlas(ctx))},
+            )
+
+        if name == "get_eco_world":
+            server_arg = arguments.get("server") if arguments else None
+            api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
+            try:
+                activity = await fetch_world(base_url=server_arg, api_key=api_key)
+            except httpx.HTTPError as e:
+                err_payload = {
+                    "view": "error",
+                    "message": f"Could not reach Eco exporter: {e}",
+                }
+                return CallToolResult(
+                    content=[
+                        TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
+                        TextContent(type="text", text=json.dumps(err_payload)),
+                    ],
+                    isError=True,
+                    **{"_meta": _ui_meta(_render_error(str(e)))},
+                )
+            ctx = world_template_context(activity)
+            return CallToolResult(
+                content=[
+                    TextContent(type="text", text=world_markdown(activity)),
+                    TextContent(type="text", text=json.dumps(activity.to_dict())),
+                ],
+                **{"_meta": _ui_meta(_render_world_activity(ctx))},
             )
 
         if name == "get_eco_trades":
