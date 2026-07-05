@@ -30,6 +30,17 @@
             {% else %}{% if v >= 0 %}+{% endif %}{{ "%.2f"|format(v) }}%{% endif %}
           </dd>
         {% endfor %}
+        {% if in_game_median is not none %}
+          <dt>In-game median</dt>
+          <dd>
+            {{ "%.2f"|format(in_game_median) }} {{ in_game_currency or "currency" }}/unit
+            {% if in_game_trend %} · {{ in_game_trend }}{% endif %}
+          </dd>
+          {% if in_game_verdict %}
+            <dt>Cross-reference</dt>
+            <dd><strong class="verdict-{{ in_game_verdict }}">{{ in_game_verdict }}</strong></dd>
+          {% endif %}
+        {% endif %}
       </dl>
     {% endif %}
   {% endif %}

@@ -40,6 +40,7 @@ from . import climate as climate_mod
 from . import currency as currency_mod
 from . import ecoregion as ecoregion_mod
 from . import fair_price as fair_price_mod
+from . import market as market_mod
 from . import species as species_mod
 from .crafting import atlas_template_context, fetch_atlas
 from .map import build_map_payload, fetch_map_bundle
@@ -1051,7 +1052,38 @@ def _render_fair_price(result: fair_price_mod.FairPriceResult) -> str:
         narrative=result.narrative,
         cached=result.cached,
         error=result.error,
+        in_game_median=result.in_game_median,
+        in_game_currency=result.in_game_currency,
+        in_game_trend=result.in_game_trend,
+        in_game_verdict=result.in_game_verdict,
     )
+
+
+def _render_market(ctx: dict[str, Any]) -> str:
+    return _JINJA.get_template("partials/market.html").render(**ctx)
+
+
+async def _in_game_reference_for(
+    item: str | None, server_arg: str | None
+) -> market_mod.InGameReference | None:
+    """Best-effort in-game price read for the fair-price cross-reference.
+
+    Gated on an admin key (the trades exporter needs one) so a keyless host —
+    and the FRED-only unit tests — never touch the exporter. Any failure
+    (unreachable server, no matching in-game market) returns None and the
+    advisor falls back to the pure FRED narrative.
+    """
+    api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
+    if not api_key:
+        return None
+    eco_item = fair_price_mod.eco_item_for(item)
+    if not eco_item:
+        return None
+    try:
+        intel = await market_mod.fetch_market(base_url=server_arg, api_key=api_key)
+    except Exception:  # the FRED path must survive any exporter fault
+        return None
+    return market_mod.in_game_reference(intel, eco_item)
 
 
 # Circumference of the donut's r=40 circle — baked in so Jinja can reference
@@ -2143,8 +2175,63 @@ def build_server() -> Server:
                                 "Omit to skip the calibrated-price line."
                             ),
                         },
+                        "server": {
+                            "type": "string",
+                            "description": (
+                                "Optional Eco server for the in-game median "
+                                "cross-reference (host, host:port, or URL). Needs "
+                                "an admin key; omit to use the configured default "
+                                "or skip the in-game merge when no key is set."
+                            ),
+                        },
                     },
                     "required": ["item"],
+                    "additionalProperties": False,
+                },
+                **{"_meta": UI_META},
+            ),
+            Tool(
+                name="get_eco_market",
+                title="Eco — market price intelligence",
+                description=(
+                    "Per-item market price intelligence built from the trades "
+                    "ledger: for each item and currency, a daily price series "
+                    "(median / min / max / units traded per in-game day) plus a "
+                    "short-vs-long-window trend verdict (rising / falling / flat, "
+                    "or 'insufficient' when data is too thin). Exceeds "
+                    "DiscordLink's single asking price with history, volume, and "
+                    "trend. Pass `item` to focus one item (e.g. 'IronIngot', "
+                    "'Iron'), `currency` to isolate a currency. Requires an admin "
+                    "API key server-side (same exporter as get_eco_trades). "
+                    "Defaults to ECO_INFO_URL; pass `server` for another."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "server": {
+                            "type": "string",
+                            "description": (
+                                "Eco admin base URL (`host`, `host:port`, or full "
+                                "URL). Omit to use the configured default."
+                            ),
+                        },
+                        "item": {
+                            "type": "string",
+                            "description": (
+                                "Optional item filter. Case-insensitive, matches "
+                                "on the normalized id so 'Iron' finds "
+                                "'IronIngotItem'. Omit for every traded item."
+                            ),
+                        },
+                        "currency": {
+                            "type": "string",
+                            "description": (
+                                "Optional currency filter (e.g. 'Credit'). "
+                                "Case-insensitive exact match. Omit for all "
+                                "currencies."
+                            ),
+                        },
+                    },
                     "additionalProperties": False,
                 },
                 **{"_meta": UI_META},
@@ -2666,7 +2753,15 @@ def build_server() -> Server:
         if name == "fair_price":
             item = arguments.get("item") if arguments else None
             cycle_id = arguments.get("cycle_id") if arguments else None
-            result = await fair_price_mod.fetch_fair_price(item, cycle_id=cycle_id)
+            server_arg = arguments.get("server") if arguments else None
+            ref = await _in_game_reference_for(item, server_arg)
+            result = await fair_price_mod.fetch_fair_price(
+                item,
+                cycle_id=cycle_id,
+                in_game_median=ref.median if ref else None,
+                in_game_currency=ref.currency if ref else None,
+                in_game_trend=ref.trend if ref else None,
+            )
             payload = fair_price_mod.to_payload(result)
             fragment = _render_fair_price(result)
             is_error = result.error is not None
@@ -2677,6 +2772,40 @@ def build_server() -> Server:
                 ],
                 isError=is_error,
                 **{"_meta": _ui_meta(fragment)},
+            )
+
+        if name == "get_eco_market":
+            server_arg = arguments.get("server") if arguments else None
+            item_arg = (arguments.get("item") if arguments else None) or None
+            currency_arg = (arguments.get("currency") if arguments else None) or None
+            api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
+            try:
+                intel = await market_mod.fetch_market(
+                    base_url=server_arg,
+                    api_key=api_key,
+                    item=item_arg,
+                    currency=currency_arg,
+                )
+            except httpx.HTTPError as e:
+                err_payload = {
+                    "view": "error",
+                    "message": f"Could not reach Eco exporter: {e}",
+                }
+                return CallToolResult(
+                    content=[
+                        TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
+                        TextContent(type="text", text=json.dumps(err_payload)),
+                    ],
+                    isError=True,
+                    **{"_meta": _ui_meta(_render_error(str(e)))},
+                )
+            ctx = market_mod.market_template_context(intel)
+            return CallToolResult(
+                content=[
+                    TextContent(type="text", text=market_mod.market_markdown(intel)),
+                    TextContent(type="text", text=json.dumps(intel.to_dict(), default=str)),
+                ],
+                **{"_meta": _ui_meta(_render_market(ctx))},
             )
 
         if name not in ("get_eco_server_status", "get_eco_milestones"):
