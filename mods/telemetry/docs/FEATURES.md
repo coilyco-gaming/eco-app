@@ -18,6 +18,10 @@ EcoTelemetry is an OpenTelemetry-backed observability mod for Eco game servers. 
 - **Eco game metrics** - Observable instruments pulled from live server state: `eco.players.online` (gauge), `eco.world_objects.count` (gauge, tagged by object type), `eco.sim.world_time_seconds` (counter), and a curated `eco.stats.*` gauge set (population + economy) from `GlobalStats`. All callbacks are init-safe and never throw into the OTel reader.
 - **Traces** - A `TracerProvider` exports the `EcoTelemetry` `ActivitySource` over OTLP (or console). Ships plugin-init spans plus a config-driven slow-handler detector (`TraceSurface.TrackHandler`, `SlowHandlerThresholdMs`) that emits a span only when a timed handler exceeds the threshold.
 
+### HTTP surfaces
+
+- **Climate-settings endpoint** - A read-only `GET /api/v1/climate-settings` `[ApiController]` serializes the live per-server climate ruleset (`EcoDef.Obj.ClimateSettings`: `MinCO2ppm`, the temperature/sea-level thresholds and their ppm-per-degree / ppm-per-meter rates, `PollutionMultiplier`, and the animal/plant CO2 caps) as camelCase JSON. Eco exposes no HTTP surface for these values, so the eco-app `/climate` card otherwise ships hardcoded Eco defaults that silently disagree with a retuned server ([eco-app#8](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/8)); this mirrors the real thresholds. Reflection-based and best-effort (same defensive pattern as `mods/stores`): unreadable fields serialize as `null` and the consumer falls back to the documented Eco default per field; a `404` when the simulation isn't up yet is a valid answer. Rides Eco's existing `/api/v1/*` admin-token (`X-API-Key`) middleware - the mod adds no auth of its own.
+
 ### Configuration and routing
 
 - **Per-signal endpoint overrides** - Logs can route to Sentry, metrics to VictoriaMetrics, and so on. Each signal independently configurable with its own OTLP endpoint, protocol (gRPC or HttpProtobuf), and auth headers.

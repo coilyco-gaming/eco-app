@@ -27,6 +27,7 @@ async def test_list_tools_advertises_all_tools() -> None:
         "get_eco_crafting_atlas",
         "get_eco_trades",
         "get_eco_market",
+        "get_eco_stores",
         "fair_price",
         "get_eco_government",
         "get_eco_ecoregion",

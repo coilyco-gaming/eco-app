@@ -465,6 +465,27 @@ async def test_get_eco_market_tool_returns_blocks_and_fragment(
     assert "Market price intelligence" in result.root.meta["ui"]["fragment"]
 
 
+@respx.mock
+def test_preview_market_json_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The dedicated `/preview/market.json` data-plane route serves the series."""
+    from fastapi.testclient import TestClient
+
+    from eco_mcp_app.http_app import create_app
+
+    trades_mod._trades_cache.clear()
+    monkeypatch.setenv("ECO_ADMIN_API_KEY", "k")
+    respx.get(CURRENCY_URL).mock(return_value=httpx.Response(200, text=_CURRENCY_CSV))
+    respx.get(BARTER_URL).mock(return_value=httpx.Response(200, text=_BARTER_EMPTY))
+    respx.get(CITIZENS_URL).mock(return_value=httpx.Response(200, json=_CITIZENS_JSON))
+
+    client = TestClient(create_app())
+    r = client.get("/preview/market.json?server=eco.example.com:3001")
+    assert r.status_code == 200
+    payload = r.json()
+    assert payload["view"] == "market"
+    assert payload["markets"][0]["item"] == "IronIngotItem"
+
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_fair_price_tool_merges_in_game(

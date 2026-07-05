@@ -242,6 +242,28 @@ def create_app() -> Starlette:
             return JSONResponse({"error": "no JSON block from get_eco_market"}, status_code=502)
         return JSONResponse(payload)
 
+    async def preview_stores_json(request: Request) -> JSONResponse:
+        """`/preview/stores.json` — the SPA's store/trader directory data plane.
+
+        Dispatches `get_eco_stores` and returns its JSON block. A dedicated
+        route (rather than the generic `/preview/<tool>.json`) so the SPA can
+        hit the short, stable `/preview/stores.json` path the epic asked for,
+        with `?server=` passing straight through as the tool arg (eco-app#50).
+        """
+        args = {k: v for k, v in request.query_params.items() if k in ("server",)}
+        req = mt.CallToolRequest(
+            method="tools/call",
+            params=mt.CallToolRequestParams(name="get_eco_stores", arguments=args),
+        )
+        try:
+            result = await call_tool_handler(req)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+        payload = _extract_json_block(cast(mt.CallToolResult, result.root))
+        if payload is None:
+            return JSONResponse({"error": "no JSON block from get_eco_stores"}, status_code=502)
+        return JSONResponse(payload)
+
     def _extract_json_block(call_result: mt.CallToolResult) -> Any:
         # Each tool emits markdown + JSON TextContent blocks (see
         # server.call_tool). Find the JSON one by skipping any HTMX-prefixed
@@ -309,6 +331,7 @@ def create_app() -> Starlette:
         Route("/preview-map.json", preview_map_json, methods=["GET"]),
         Route("/preview/currency.json", preview_currency_json, methods=["GET"]),
         Route("/preview/market.json", preview_market_json, methods=["GET"]),
+        Route("/preview/stores.json", preview_stores_json, methods=["GET"]),
         Route("/preview/{tool}", preview_tool, methods=["GET"]),
         Mount("/mcp", app=handle_mcp),
         Mount("/jobs/api", app=jobs_app),

@@ -44,6 +44,7 @@ from . import market as market_mod
 from . import species as species_mod
 from .crafting import atlas_template_context, fetch_atlas
 from .map import build_map_payload, fetch_map_bundle
+from .stores import directory_markdown, directory_template_context, fetch_directory
 from .trades import fetch_ledger, ledger_markdown, ledger_template_context
 
 DEFAULT_ECO_INFO_URL = os.environ.get("ECO_INFO_URL", "http://eco.coilysiren.me:3001/info")
@@ -1008,6 +1009,10 @@ def _render_crafting_atlas(ctx: dict[str, Any]) -> str:
 
 def _render_trades_ledger(ctx: dict[str, Any]) -> str:
     return _JINJA.get_template("partials/trades.html").render(**ctx)
+
+
+def _render_stores_directory(ctx: dict[str, Any]) -> str:
+    return _JINJA.get_template("partials/stores.html").render(**ctx)
 
 
 def _format_crafting_markdown(ctx: dict[str, Any]) -> str:
@@ -2147,6 +2152,42 @@ def build_server() -> Server:
                 **{"_meta": UI_META},
             ),
             Tool(
+                name="get_eco_stores",
+                title="Eco — store & trader directory",
+                description=(
+                    "Build store and trader directories from an Eco server's "
+                    "trade history (the CurrencyTrade / BarterTrade action log). "
+                    "Store profiles are keyed by shop owner + location and carry "
+                    "items traded, buy-vs-sell mix, price points, total volume "
+                    "and value, unique counterparties, and last-trade recency — "
+                    "and crucially surface the **store owner**, which "
+                    "DiscordLink's `Trades` lookup omits. Trader profiles give "
+                    "each citizen's buys, sells, top items, volume, and the "
+                    "stores they operate — the history-derived answer to "
+                    "`Trades <player>`. Owner / party ids resolve to names via "
+                    "the jobs mod's citizens surface, falling back to "
+                    "`Citizen #<id>`. Requires an admin API key configured "
+                    "server-side. History only — the current shelf snapshot is "
+                    "the reset-gated stores exporter (sibling issue). Renders as "
+                    "an inline widget; falls back to a markdown summary."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "server": {
+                            "type": "string",
+                            "description": (
+                                "Eco admin base URL (`host`, `host:port`, or "
+                                "full URL). Omit to use the configured "
+                                "default (`eco.coilysiren.me:3001`)."
+                            ),
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+                **{"_meta": UI_META},
+            ),
+            Tool(
                 name="fair_price",
                 title="Eco — fair-price advisor",
                 description=(
@@ -2518,6 +2559,33 @@ def build_server() -> Server:
                     TextContent(type="text", text=json.dumps(ledger.to_dict())),
                 ],
                 **{"_meta": _ui_meta(_render_trades_ledger(ctx))},
+            )
+
+        if name == "get_eco_stores":
+            server_arg = arguments.get("server") if arguments else None
+            api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
+            try:
+                directory = await fetch_directory(base_url=server_arg, api_key=api_key)
+            except httpx.HTTPError as e:
+                err_payload = {
+                    "view": "error",
+                    "message": f"Could not reach Eco exporter: {e}",
+                }
+                return CallToolResult(
+                    content=[
+                        TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
+                        TextContent(type="text", text=json.dumps(err_payload)),
+                    ],
+                    isError=True,
+                    **{"_meta": _ui_meta(_render_error(str(e)))},
+                )
+            ctx = directory_template_context(directory)
+            return CallToolResult(
+                content=[
+                    TextContent(type="text", text=directory_markdown(directory)),
+                    TextContent(type="text", text=json.dumps(directory.to_dict())),
+                ],
+                **{"_meta": _ui_meta(_render_stores_directory(ctx))},
             )
 
         if name == "list_public_eco_servers":
