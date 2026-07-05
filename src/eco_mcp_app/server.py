@@ -46,6 +46,7 @@ from .civics import civics_markdown, civics_template_context, fetch_civics
 from .crafting import atlas_template_context, fetch_atlas
 from .logistics import fetch_logistics, logistics_markdown, logistics_template_context
 from .map import build_map_payload, fetch_map_bundle
+from .social import fetch_social, social_markdown, social_template_context
 from .stores import directory_markdown, directory_template_context, fetch_directory
 from .trades import fetch_ledger, ledger_markdown, ledger_template_context
 from .watchers import (
@@ -1031,6 +1032,10 @@ def _render_civics_card(ctx: dict[str, Any]) -> str:
     return _JINJA.get_template("partials/civics.html").render(**ctx)
 
 
+def _render_social(ctx: dict[str, Any]) -> str:
+    return _JINJA.get_template("partials/social.html").render(**ctx)
+
+
 def _format_crafting_markdown(ctx: dict[str, Any]) -> str:
     """Plain-text fallback for hosts that don't render the MCP Apps iframe."""
     if ctx["empty"]:
@@ -1176,16 +1181,17 @@ def _format_ecoregion_markdown(payload: dict[str, Any]) -> str:
     elif (drift.get("speciesWithDrift") or 0) == 0:
         lines.append(f"- Drift minimal so far across {drift.get('speciesSeen') or 0} species.")
     else:
+
+        def _delta(d: dict[str, Any]) -> str:
+            # A from-zero grower has deltaRel=None (see ecoregion._drift_entry).
+            if d.get("fromZero") or d.get("deltaRel") is None:
+                return "new"
+            return f"{d['deltaRel'] * 100:+.0f}%"
+
         if drift.get("boom"):
-            lines.append(
-                "- Boom: "
-                + ", ".join(f"{d['name']} {d['deltaRel'] * 100:+.0f}%" for d in drift["boom"])
-            )
+            lines.append("- Boom: " + ", ".join(f"{d['name']} {_delta(d)}" for d in drift["boom"]))
         if drift.get("bust"):
-            lines.append(
-                "- Bust: "
-                + ", ".join(f"{d['name']} {d['deltaRel'] * 100:+.0f}%" for d in drift["bust"])
-            )
+            lines.append("- Bust: " + ", ".join(f"{d['name']} {_delta(d)}" for d in drift["bust"]))
     return "\n".join(lines)
 
 
@@ -1461,6 +1467,44 @@ def _stddev(values: list[float]) -> float:
     return var**0.5
 
 
+def _wow_activity_delta(
+    series: dict[str, list[tuple[float, float]]], days_elapsed: int
+) -> float | None:
+    """Week-over-week % change in economic activity: trailing 7 in-game days
+    vs the prior 7, summing every dataset's per-day event values.
+
+    Eco exposes a trade *count* only as a scalar in /info's EconomyDesc, never
+    as a time-series, so a literal "trades/day WoW" is uncomputable. Total
+    transactional activity across the datasets is the closest available
+    velocity proxy, and it is what drives the `booming` classification.
+
+    Returns None until there are two full weeks of runtime with activity in the
+    prior window — WoW is undefined before then, and a young server should read
+    `healthy`, never `booming`. (The previous implementation derived the
+    trailing rate from the cumulative average, which is algebraically identical
+    to that average, so the delta was always 0.0 and `booming` was unreachable.)
+    """
+    if days_elapsed < 14:
+        return None
+    per_day: dict[int, float] = {}
+    for points in series.values():
+        for t, v in points:
+            day = int(t)
+            per_day[day] = per_day.get(day, 0.0) + v
+    if not per_day:
+        return None
+    last_day = max(days_elapsed, max(per_day))
+    mid = last_day - 7
+    prior_start = last_day - 14
+    prior = sum(v for d, v in per_day.items() if prior_start < d <= mid)
+    trailing = sum(v for d, v in per_day.items() if mid < d <= last_day)
+    prior_rate = prior / 7.0
+    if prior_rate <= 0:
+        return None
+    trailing_rate = trailing / 7.0
+    return round((trailing_rate / prior_rate - 1.0) * 100.0, 1)
+
+
 def _sparkline_svg(points: list[tuple[float, float]], width: int = 180, height: int = 40) -> str:
     """Render a series as a minimal inline SVG sparkline.
 
@@ -1505,7 +1549,7 @@ def compute_economy_payload(raw: dict[str, Any]) -> dict[str, Any]:
     """Turn a fetch_economy() result into the dict consumed by the card template.
 
     Classification thresholds (per task spec):
-      booming : default rate < 5% AND trades/day up 20% WoW (when we have ≥7d)
+      booming : default rate < 5% AND activity up ≥20% WoW (needs ≥14d runtime)
       stressed: default rate > 15% OR contract failure rate > 30%
       healthy : otherwise
     """
@@ -1549,18 +1593,11 @@ def compute_economy_payload(raw: dict[str, Any]) -> dict[str, Any]:
     completion_ratio = _pct(completed_contracts, completed_contracts + failed_contracts)
     failure_rate = _pct(failed_contracts, completed_contracts + failed_contracts)
 
-    # Week-over-week trades/day delta (needs ≥8 days of runtime).
-    trades_wow_pct: float | None = None
-    if days_elapsed >= 8 and trades_total > 0:
-        # We don't have a trades time-series, so this is a best-effort based on
-        # assumed uniform rate since cycle start vs. the last 7 days.
-        # With only cumulative info, we approximate by comparing the trailing
-        # week's implied rate to the overall rate.
-        overall_rate = trades_total / days_elapsed
-        trailing = trades_total - (overall_rate * (days_elapsed - 7))
-        trailing_rate = trailing / 7.0
-        if overall_rate > 0:
-            trades_wow_pct = round(((trailing_rate / overall_rate) - 1.0) * 100.0, 1)
+    # Week-over-week economic-activity delta (a real trailing-vs-prior window,
+    # summed across the datasets' per-day events). None until two weeks of
+    # runtime with prior-window activity. See _wow_activity_delta for why this
+    # can't be a literal trades/day WoW.
+    trades_wow_pct = _wow_activity_delta(series, days_elapsed)
 
     # Classify.
     if default_rate > 15.0 or failure_rate > 30.0:
@@ -2200,6 +2237,50 @@ def build_server() -> Server:
                                 "Eco admin base URL (`host`, `host:port`, or "
                                 "full URL). Omit to use the configured "
                                 "default (`eco.coilysiren.me:3001`)."
+                            ),
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+                **{"_meta": UI_META},
+            ),
+            Tool(
+                name="get_eco_social",
+                title="Eco — social / chat surface",
+                description=(
+                    "Reconstruct the social side of an Eco server from its "
+                    "action-log exporter: an activity timeline (play + new "
+                    "arrivals from FirstLogin), chat volume over time and by "
+                    "channel, a reputation graph (who reps whom), and redacted "
+                    "recent-chat samples. Chat is player-authored content, so "
+                    "player names are hashed to stable handles and message "
+                    "bodies are scrubbed of real names **by default** — a "
+                    "names-in-the-clear mode is operator-gated (needs "
+                    "ECO_SOCIAL_ALLOW_NAMES set server-side plus reveal_names), "
+                    "never public. Requires an admin API key configured "
+                    "server-side (same exporter as get_eco_trades). Renders as "
+                    "an inline widget via the MCP Apps spec; falls back to a "
+                    "markdown summary otherwise."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "server": {
+                            "type": "string",
+                            "description": (
+                                "Eco admin base URL (`host`, `host:port`, or "
+                                "full URL). Omit to use the configured "
+                                "default (`eco.coilysiren.me:3001`)."
+                            ),
+                        },
+                        "reveal_names": {
+                            "type": "boolean",
+                            "description": (
+                                "Show player names + raw chat bodies instead of "
+                                "redacted handles. Operator-gated: only takes "
+                                "effect when the deploy sets ECO_SOCIAL_ALLOW_NAMES "
+                                "(default-deny), so a public call is always "
+                                "redacted regardless. Default false."
                             ),
                         },
                     },
@@ -2916,6 +2997,36 @@ def build_server() -> Server:
                     TextContent(type="text", text=json.dumps(directory.to_dict())),
                 ],
                 **{"_meta": _ui_meta(_render_stores_directory(ctx))},
+            )
+
+        if name == "get_eco_social":
+            server_arg = arguments.get("server") if arguments else None
+            reveal_names = bool(arguments.get("reveal_names")) if arguments else False
+            api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
+            try:
+                surface = await fetch_social(
+                    base_url=server_arg, api_key=api_key, reveal_names=reveal_names
+                )
+            except httpx.HTTPError as e:
+                err_payload = {
+                    "view": "error",
+                    "message": f"Could not reach Eco exporter: {e}",
+                }
+                return CallToolResult(
+                    content=[
+                        TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
+                        TextContent(type="text", text=json.dumps(err_payload)),
+                    ],
+                    isError=True,
+                    **{"_meta": _ui_meta(_render_error(str(e)))},
+                )
+            ctx = social_template_context(surface)
+            return CallToolResult(
+                content=[
+                    TextContent(type="text", text=social_markdown(surface)),
+                    TextContent(type="text", text=json.dumps(surface.to_dict())),
+                ],
+                **{"_meta": _ui_meta(_render_social(ctx))},
             )
 
         if name == "list_public_eco_servers":

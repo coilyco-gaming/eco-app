@@ -3,10 +3,13 @@ import Calculator from "./pages/Calculator"
 import Civics from "./pages/Civics"
 import Climate from "./pages/Climate"
 import Crafting from "./pages/Crafting"
+import Ecoregion from "./pages/Ecoregion"
 import Economy from "./pages/Economy"
 import Home from "./pages/Home"
 import Jobs from "./pages/Jobs"
+import Replay from "./pages/Replay"
 import Server from "./pages/Server"
+import Social from "./pages/Social"
 import Trade from "./pages/Trade"
 import Trades from "./pages/Trades"
 
@@ -26,8 +29,11 @@ export default function App() {
         <Route path="/trades" element={<Trades />} />
         <Route path="/crafting" element={<Crafting />} />
         <Route path="/civics" element={<Civics />} />
+        <Route path="/social" element={<Social />} />
         <Route path="/climate" element={<Climate />} />
+        <Route path="/ecoregion" element={<Ecoregion />} />
         <Route path="/calculator" element={<Calculator />} />
+        <Route path="/replay" element={<Replay />} />
       </Routes>
     </BrowserRouter>
   )

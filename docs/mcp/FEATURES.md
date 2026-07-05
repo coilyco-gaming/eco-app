@@ -17,6 +17,7 @@ Defined in [src/eco_mcp_app/server.py](../../src/eco_mcp_app/server.py). All acc
 - **get_eco_species** - Species card. iNaturalist/Wikipedia taxonomy + in-game population chart.
 - **explain_eco_item** - Wikidata + Wikipedia lookup. Images, category facts. 7-day cache.
 - **get_eco_crafting_atlas** - Live crafting from action-log exporter. Top items, station util, leaderboard.
+- **get_eco_social** - Social / chat surface from the `ChatSent` / `Play` / `FirstLogin` / `ReputationTransfer` action exporters: activity timeline, chat volume by day + channel, a who-reps-whom reputation graph, and redacted recent-chat samples. Player names hashed to handles and message bodies name-scrubbed **by default** (chat is player-authored); names-in-the-clear is operator-gated (`ECO_SOCIAL_ALLOW_NAMES` + `reveal_names`), never public.
 - **fair_price** - Real-world commodity prices via FRED (copper, wheat, lumber, iron, crude). 7d/30d/90d.
 - **get_eco_ecoregion** - WWF ecoregion classification. Donut, top-3 matches, boom/bust lists.
 - **get_eco_government** - Civic org chart. Elected titles, active elections, active laws (current-state snapshot from the live civic endpoints).

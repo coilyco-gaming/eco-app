@@ -111,6 +111,13 @@ _COLUMN_SHAPE: dict[str, Any] = {
     "CurrencyAmount": _is_float,
     "NumberOfItems": _is_float,
     "BoughtOrSold": lambda v: bool(_INT_RE.match(v)),
+    # Social-action numerics — let the social surface share this realign path
+    # (ReputationTransfer parties + amount; see social.py, eco-app#63).
+    "Receiver": lambda v: bool(_INT_RE.match(v)),
+    "ReceiverCitizen": lambda v: bool(_INT_RE.match(v)),
+    "Giver": lambda v: bool(_INT_RE.match(v)),
+    "Amount": _is_float,
+    "Reputation": _is_float,
     "Species": _looks_like_name,
     "WorldObjectItem": _looks_like_name,
     "ItemUsed": _looks_like_name,

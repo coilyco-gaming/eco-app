@@ -363,6 +363,26 @@ def rank_drift(
 # ---------- payload + cache invalidation for tests ----------
 
 
+def _drift_entry(d: SpeciesDrift) -> dict[str, Any]:
+    """Serialize one drift row with a JSON-safe ``deltaRel``.
+
+    A species that grew from a zero baseline has an infinite relative delta —
+    correct for ranking (it tops the boom list) but not JSON-serializable, and
+    Starlette's ``JSONResponse`` rejects ``inf`` outright. We emit ``deltaRel:
+    null`` with ``fromZero: true`` in that case so every consumer (the SPA, the
+    Jinja card, the markdown fallback) can render a "new" badge instead of a
+    bogus ``inf%``.
+    """
+    finite = math.isfinite(d.delta_rel)
+    return {
+        "name": d.name,
+        "first": d.first,
+        "latest": d.latest,
+        "deltaRel": d.delta_rel if finite else None,
+        "fromZero": not finite,
+    }
+
+
 def _clear_caches() -> None:
     """Wipe in-process caches — used by the test suite."""
     _worldlayers_cache.clear()
@@ -413,24 +433,8 @@ def build_payload(
             for m in matches
         ],
         "drift": {
-            "boom": [
-                {
-                    "name": d.name,
-                    "first": d.first,
-                    "latest": d.latest,
-                    "deltaRel": d.delta_rel,
-                }
-                for d in boom
-            ],
-            "bust": [
-                {
-                    "name": d.name,
-                    "first": d.first,
-                    "latest": d.latest,
-                    "deltaRel": d.delta_rel,
-                }
-                for d in bust
-            ],
+            "boom": [_drift_entry(d) for d in boom],
+            "bust": [_drift_entry(d) for d in bust],
             "speciesSeen": species_seen,
             "speciesWithDrift": species_with_drift,
         },

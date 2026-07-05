@@ -205,6 +205,8 @@ def create_app() -> Starlette:
                 "mcp": "/mcp/",
                 "jobs": "/jobs",
                 "jobsApi": "/jobs/api/v1",
+                "replay": "/replay",
+                "replayApi": "/replay/api/v1",
                 "health": "/healthz",
                 "previewJson": "/preview.json",
                 "previewMapJson": "/preview-map.json",
@@ -351,6 +353,31 @@ def create_app() -> Starlette:
             return JSONResponse({"error": "no JSON block from get_eco_civics"}, status_code=502)
         return JSONResponse(payload)
 
+    async def preview_social_json(request: Request) -> JSONResponse:
+        """`/preview/social.json` — the SPA's `/social` route data plane.
+
+        Dispatches `get_eco_social` and returns its JSON block. This is a
+        **public** path, so it never forwards `reveal_names`: the surface is
+        always redacted (handles + name-scrubbed message bodies), regardless of
+        any server-side names gate. A dedicated route (not the generic
+        `/preview/<tool>.json`) so `?server=` passes straight through and the
+        redaction posture is pinned here rather than left to a query param
+        (eco-app#63).
+        """
+        args = {k: v for k, v in request.query_params.items() if k in ("server",)}
+        req = mt.CallToolRequest(
+            method="tools/call",
+            params=mt.CallToolRequestParams(name="get_eco_social", arguments=args),
+        )
+        try:
+            result = await call_tool_handler(req)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+        payload = _extract_json_block(cast(mt.CallToolResult, result.root))
+        if payload is None:
+            return JSONResponse({"error": "no JSON block from get_eco_social"}, status_code=502)
+        return JSONResponse(payload)
+
     async def preview_watchers_json(request: Request) -> JSONResponse:
         """`/preview/watchers.json` — the SPA's trade-watcher data plane.
 
@@ -433,11 +460,12 @@ def create_app() -> Starlette:
         assert admin_session_manager is not None  # only mounted when enabled
         await admin_session_manager.handle_request(scope, receive, send)
 
-    # The jobs JSON API (eco_spec_tracker) is a self-contained FastAPI app
-    # mounted under /jobs/api, keeping the public /jobs/api/v1/* paths from
-    # the era when it also served the jobs HTML. The /jobs page itself is an
-    # SPA route, served by the catch-all below. Imported here (not module
-    # top) so the mount only exists on the ASGI path, keeping stdio lean.
+    # The jobs JSON API (eco_spec_tracker) and the replay JSON API (eco_replay,
+    # the Chronicler mirror) are self-contained FastAPI apps mounted under
+    # /jobs/api and /replay/api. Their browser UIs are the SPA's /jobs and
+    # /replay routes, served by the catch-all below. Imported here (not module
+    # top) so the mounts only exist on the ASGI path, keeping stdio lean.
+    from eco_replay.main import app as replay_app
     from eco_spec_tracker.main import app as jobs_app
 
     routes: list[BaseRoute] = [
@@ -451,10 +479,12 @@ def create_app() -> Starlette:
         Route("/preview/stores.json", preview_stores_json, methods=["GET"]),
         Route("/preview/logistics.json", preview_logistics_json, methods=["GET"]),
         Route("/preview/civics.json", preview_civics_json, methods=["GET"]),
+        Route("/preview/social.json", preview_social_json, methods=["GET"]),
         Route("/preview/watchers.json", preview_watchers_json, methods=["GET"]),
         Route("/preview/{tool}", preview_tool, methods=["GET"]),
         Mount("/mcp", app=handle_mcp),
         Mount("/jobs/api", app=jobs_app),
+        Mount("/replay/api", app=replay_app),
     ]
     if admin_enabled:
         routes.append(Mount("/admin", app=handle_admin_mcp))
