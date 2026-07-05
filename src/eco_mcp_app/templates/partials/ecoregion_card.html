@@ -104,7 +104,7 @@
             {% for d in drift_boom %}
             <li>
               <span class="drift-name">{{ d.name }}</span>
-              <span class="drift-delta">+{{ '%.0f' % (d.deltaRel * 100) }}%</span>
+              <span class="drift-delta">{% if d.fromZero %}new{% else %}+{{ '%.0f' % (d.deltaRel * 100) }}%{% endif %}</span>
               <span class="drift-counts">{{ '%.0f' % d.first }} → {{ '%.0f' % d.latest }}</span>
             </li>
             {% endfor %}

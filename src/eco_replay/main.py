@@ -1,8 +1,13 @@
-"""FastAPI app for eco-replay.
+"""JSON API for eco-replay (the "Kaihronicler" — a Chronicler mirror).
 
-Lists recorded player actions written by the C# Eco mod.
+Lists recorded player actions written by the C# Eco replay mod. Mounted at
+`/replay/api` inside eco_mcp_app's ASGI app (http_app.py), so the public paths
+are `/replay/api/v1/*`, mirroring the jobs tracker's `/jobs/api` mount. The
+browser UI is the React SPA's `/replay` route, which consumes this API (plus
+`/v1/meta` for the mock-data banner) — there is no server-rendered HTML surface
+here, per the repo's SPA-only rule (eco-app#38, DLT epic #37).
 
-Two read paths, in priority order:
+Three read paths, in priority order:
 
 1. `ECO_REPLAY_DB` env var pointing at the mod's SQLite file
    (e.g. `/home/kai/Steam/steamapps/common/EcoServer/Storage/EcoReplay.db`).
@@ -19,25 +24,23 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
+from fastapi import FastAPI, Query
+from fastapi.responses import JSONResponse
+
+from eco_mcp_app.telemetry import init_sentry
 
 ECO_REPLAY_DB = os.environ.get("ECO_REPLAY_DB")
 UPSTREAM_URL = os.environ.get("UPSTREAM_URL")
 UPSTREAM_API_KEY = os.environ.get("UPSTREAM_API_KEY")
 USING_MOCK = ECO_REPLAY_DB is None and UPSTREAM_URL is None
 
-BASE_DIR = Path(__file__).resolve().parent
-TEMPLATES = Jinja2Templates(directory=str(BASE_DIR / "templates"))
-TEMPLATES.env.globals["using_mock_data"] = USING_MOCK
+# Shared idempotent init from eco_mcp_app — in the fused process every
+# entrypoint calls it; whichever runs first wins, the rest are no-ops.
+init_sentry()
 
-app = FastAPI(title="eco-replay", version="0.1.0")
-app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+app = FastAPI(title="eco-replay-api", version="0.2.0")
 
 
 _MOCK_EVENTS = [
@@ -159,38 +162,24 @@ async def fetch_stats() -> dict:
     return {"ready": True, "total": len(_MOCK_EVENTS)}
 
 
-@app.get("/healthz")
-def healthz() -> JSONResponse:
-    return JSONResponse({"ok": True})
+@app.get("/v1/meta")
+def api_meta() -> JSONResponse:
+    """Whether the data below is the canned mock set (no DB / upstream set)."""
+    return JSONResponse({"mockData": USING_MOCK})
 
 
-@app.get("/", response_class=HTMLResponse)
-async def index(
-    request: Request,
-    citizen: str | None = Query(default=None),
-    type_: str | None = Query(default=None, alias="type"),
-    limit: int = Query(default=100, ge=1, le=1000),
-) -> HTMLResponse:
-    events = await fetch_events(citizen=citizen, type_=type_, limit=limit)
-    return TEMPLATES.TemplateResponse(
-        request,
-        "index.html",
-        {"events": events, "citizen": citizen, "type": type_, "limit": limit},
-    )
-
-
-@app.get("/api/v1/events")
+@app.get("/v1/events")
 async def api_events(
     citizen: str | None = None,
     type_: str | None = Query(default=None, alias="type"),
-    limit: int = 100,
+    limit: int = Query(default=100, ge=1, le=1000),
 ) -> JSONResponse:
     """JSON mirror of the upstream mod endpoint, with mock fallback."""
     events = await fetch_events(citizen=citizen, type_=type_, limit=limit)
     return JSONResponse({"events": events, "count": len(events)})
 
 
-@app.get("/api/v1/events/stats")
+@app.get("/v1/events/stats")
 async def api_events_stats() -> JSONResponse:
     """JSON mirror of the upstream mod `/stats` endpoint, with mock fallback."""
     return JSONResponse(await fetch_stats())

@@ -768,6 +768,18 @@ a.dir-card:hover {
   color: var(--ink);
 }
 
+/* Replay event bodies are JSON blobs — wrap them tight and monospace so a long
+   payload doesn't blow out the timeline row width. */
+.replay-body {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 32rem;
+}
+
 .price-chart {
   width: 100%;
   max-width: 640px;
@@ -885,4 +897,165 @@ a.dir-card:hover {
   margin-top: 0.5rem;
   font-size: 0.82rem;
   color: var(--ink-faint);
+}
+
+/* --- Ecoregion / biodiversity ---------------------------------------- */
+
+/* Donut + legend sit side by side, stacking on narrow viewports. */
+.eco-donut-row {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.eco-donut {
+  flex: none;
+}
+
+.eco-donut-num {
+  fill: var(--ink);
+  font-size: 9px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.eco-donut-sub {
+  fill: var(--ink-faint);
+  font-size: 5px;
+}
+
+.eco-legend {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.3rem 1.25rem;
+  flex: 1 1 320px;
+}
+
+.eco-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.eco-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.eco-legend-label {
+  flex: 1;
+  color: var(--ink-soft);
+}
+
+.eco-legend-pct {
+  font-variant-numeric: tabular-nums;
+  color: var(--leaf);
+  font-weight: 600;
+}
+
+/* Ranked ecoregion matches — name + similarity on top, description below. */
+.eco-matches {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  counter-reset: eco-match;
+}
+
+.eco-matches li {
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: var(--card);
+}
+
+.eco-match-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.eco-match-name {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.eco-match-name::before {
+  counter-increment: eco-match;
+  content: counter(eco-match) ". ";
+  color: var(--ink-faint);
+}
+
+.eco-match-sim {
+  font-variant-numeric: tabular-nums;
+  color: var(--leaf);
+  font-weight: 600;
+}
+
+.eco-match-desc {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+/* Boom / bust drift strip — two columns of ranked movers. */
+.eco-drift {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+
+@media (max-width: 640px) {
+  .eco-drift {
+    grid-template-columns: 1fr;
+  }
+}
+
+.eco-drift-head {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.eco-drift-add {
+  color: var(--leaf);
+}
+
+.eco-drift-remove {
+  color: var(--meteor);
+}
+
+/* Drift rows reuse .rank-row; the extra count detail and a directional bar
+   colour are ecoregion-specific. */
+.rank-detail {
+  position: relative;
+  z-index: 1;
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.eco-delta-add {
+  color: var(--leaf);
+}
+
+.eco-delta-remove {
+  color: var(--meteor);
+}
+
+.eco-bar-add {
+  background: var(--leaf-wash);
+}
+
+.eco-bar-remove {
+  background: rgba(240, 179, 92, 0.14);
 }
