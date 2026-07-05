@@ -212,6 +212,41 @@ def test_compute_stressed_on_high_contract_failure() -> None:
     assert payload["kpis"]["contract_failure_rate"] > 30.0
 
 
+def test_compute_booming_on_activity_growth() -> None:
+    """Two weeks of runtime, trailing-week activity >20% above the prior week,
+    zero loan defaults → booming. Guards against the old tautological WoW that
+    made `booming` unreachable."""
+    # 15 daily points: 8 quiet days (10/day) then 7 busy days (30/day). The
+    # trailing 7-day window lands squarely on the busy tail.
+    series = {"TransferMoney": [10] * 8 + [30] * 7}
+    payload = compute_economy_payload(_raw(series=series, days=15))
+    wow = payload["kpis"]["trades_wow_pct"]
+    assert wow is not None and wow >= 20.0
+    assert payload["health"] == "booming"
+
+
+def test_compute_wow_none_before_two_weeks() -> None:
+    """WoW is undefined until two full weeks of runtime — a young server must
+    never read `booming`."""
+    series = {"TransferMoney": [10, 20, 30, 40, 50]}
+    payload = compute_economy_payload(_raw(series=series, days=5))
+    assert payload["kpis"]["trades_wow_pct"] is None
+    assert payload["health"] != "booming"
+
+
+def test_compute_wow_stressed_beats_booming() -> None:
+    """A high default rate classifies `stressed` even when activity is growing —
+    the stressed check must take precedence."""
+    series = {
+        "TransferMoney": [10] * 8 + [40] * 7,  # strong WoW growth
+        "DefaultedOnLoanOrBond": [9],  # total 9
+        "RepaidLoanOrBond": [1],  # → 90% default rate
+    }
+    payload = compute_economy_payload(_raw(series=series, days=15))
+    assert payload["kpis"]["trades_wow_pct"] is not None
+    assert payload["health"] == "stressed"
+
+
 def test_compute_healthy_when_both_zero() -> None:
     """Day-3 reality: zero contracts, zero loans must not trigger `stressed`."""
     payload = compute_economy_payload(_raw())
