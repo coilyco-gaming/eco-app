@@ -63,9 +63,15 @@ commands:
   build-mod-telemetry:
     run: make build-mod-telemetry
     description: Build the telemetry Eco mod DLL (mods/telemetry).
+  build-mod-stores:
+    run: make build-mod-stores
+    description: Build the store-exporter Eco mod DLL (mods/stores/src).
   run-shell-jobs:
     run: make run-shell-jobs
     description: Run the jobs C# shell harness on :5100 (same API shape as the real Eco mod).
+  run-shell-stores:
+    run: make run-shell-stores
+    description: Run the stores C# shell harness on :5101 (same API shape as the real Eco mod).
 
 catalog:
   kind: Component

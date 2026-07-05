@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>EcoStoreExporter</AssemblyName>
+    <RootNamespace>EcoStoreExporter</RootNamespace>
+    <Version>0.1.0</Version>
+    <!-- CA1416: ModKit types are flagged Windows-only, but the Eco server runs on Linux via .NET. Noise. -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Eco.ReferenceAssemblies" Version="0.13.0-beta-release-998" />
+    <!-- Eco's web pipeline serializes with Newtonsoft.Json, so the DTOs need
+         Newtonsoft attributes. The package is a compile-time dep only; the
+         runtime copy comes from Eco's own bundled Newtonsoft.Json. -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+</Project>

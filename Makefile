@@ -1,6 +1,6 @@
 DEFAULT_GOAL := help
 
-.PHONY: help sync test lint fmt precommit smoke http harness install-desktop build-docker build-mod-jobs build-mod-replay build-mod-telemetry run-shell-jobs frontend-install frontend-dev frontend-build frontend-test frontend-lint
+.PHONY: help sync test lint fmt precommit smoke http harness install-desktop build-docker build-mod-jobs build-mod-replay build-mod-telemetry build-mod-stores run-shell-jobs run-shell-stores frontend-install frontend-dev frontend-build frontend-test frontend-lint
 
 name ?= eco-app
 port ?= 4000
@@ -92,5 +92,11 @@ build-mod-replay: ## Build the replay Eco mod DLL (mods/replay/src).
 build-mod-telemetry: ## Build the telemetry Eco mod DLL (mods/telemetry).
 	cd mods/telemetry && dotnet build EcoTelemetry.csproj -c Release
 
+build-mod-stores: ## Build the store-exporter Eco mod DLL (mods/stores/src).
+	cd mods/stores && dotnet build src/EcoStoreExporter.csproj -c Release
+
 run-shell-jobs: ## Run the jobs C# shell harness on :5100 (same API shape as the real Eco mod).
 	cd mods/jobs && dotnet run --project shell/EcoJobsTracker.Shell.csproj
+
+run-shell-stores: ## Run the stores C# shell harness on :5101 (same API shape as the real Eco mod).
+	cd mods/stores && dotnet run --project shell/EcoStoreExporter.Shell.csproj
