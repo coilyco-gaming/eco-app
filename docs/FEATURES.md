@@ -19,7 +19,7 @@ One image, one uvicorn process, entrypoint `eco_mcp_app.http_app:app` on port 40
 
 ## In-game C# plugins (`mods/`)
 
-Server plugins for the Eco game server. Built with the `build-mod-*` ward verbs, shipped to the server out of band.
+Server plugins for the Eco game server. Built with the `build-mod-*` ward verbs (or `build-mods` to compile all four at once), shipped to the server out of band. CI compiles every mod on push so a C# typo cannot reach the live server unseen ([#60](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/60)).
 
 - **mods/jobs** - skills API plugin (`/api/v1/skills` for the jobs tracker, `/api/v1/citizens` for the crafting atlas's id→name join) plus a C# shell harness mirroring the API shape for local dev.
 - **mods/replay** - player-action recorder writing the SQLite event log the replay browser reads. Action bodies are serialized with a structurally-bounded snapshot (allow-listed scalar props, wide references collapsed to `<name>`/`<n items>` summaries, 16 KB hard cap) and SQLite writes run on a background bounded-channel batched writer, never the game thread. Serializer unit tests: `ward exec test-mod-replay`.
@@ -28,7 +28,7 @@ Server plugins for the Eco game server. Built with the `build-mod-*` ward verbs,
 
 ## Build and release
 
-- **CI** - `.forgejo/workflows/build-publish.yml`: pytest + ruff + mypy, then docker build and push of `coilysiren-eco-app` to the in-cluster registry. No deploy stage by design.
+- **CI** - `.forgejo/workflows/build-publish.yml`: pytest + ruff + mypy, a frontend lint/test/build job, and a **mods** job that self-installs the .NET 10 SDK and runs `make build-mods` to compile all four C# mods (a compile error fails the build before deploy, [#60](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/60)), then docker build and push of `coilysiren-eco-app` to the in-cluster registry. No deploy stage by design.
 - **Deploy surface** - lives in `coilyco-bridge/deploy/services/eco-app` (manifests + rollout), per the layer invariant.
 
 ## Dropped during consolidation

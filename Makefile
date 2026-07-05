@@ -1,6 +1,6 @@
 DEFAULT_GOAL := help
 
-.PHONY: help sync test lint fmt precommit smoke http harness install-desktop build-docker build-mod-jobs build-mod-replay test-mod-replay build-mod-telemetry build-mod-stores run-shell-jobs run-shell-stores frontend-install frontend-dev frontend-build frontend-test frontend-lint
+.PHONY: help sync test lint fmt precommit smoke http harness install-desktop build-docker build-mods build-mod-jobs build-mod-replay test-mod-replay build-mod-telemetry build-mod-stores run-shell-jobs run-shell-stores frontend-install frontend-dev frontend-build frontend-test frontend-lint
 
 name ?= eco-app
 port ?= 4000
@@ -82,6 +82,8 @@ install-desktop: ## Wire eco-mcp-app into Claude Desktop's claude_desktop_config
 
 build-docker: ## Build the eco-app docker image locally.
 	docker build --progress plain -t $(name):$(git-hash) -t $(name):latest .
+
+build-mods: build-mod-jobs build-mod-replay build-mod-telemetry build-mod-stores ## Build every Eco mod DLL (jobs, replay, telemetry, stores) - the CI compile gate.
 
 build-mod-jobs: ## Build the jobs-tracker Eco mod DLL (mods/jobs/src).
 	cd mods/jobs && dotnet build src/EcoJobsTracker.csproj -c Release
