@@ -205,6 +205,8 @@ def create_app() -> Starlette:
                 "mcp": "/mcp/",
                 "jobs": "/jobs",
                 "jobsApi": "/jobs/api/v1",
+                "replay": "/replay",
+                "replayApi": "/replay/api/v1",
                 "health": "/healthz",
                 "previewJson": "/preview.json",
                 "previewMapJson": "/preview-map.json",
@@ -436,11 +438,12 @@ def create_app() -> Starlette:
         assert admin_session_manager is not None  # only mounted when enabled
         await admin_session_manager.handle_request(scope, receive, send)
 
-    # The jobs JSON API (eco_spec_tracker) is a self-contained FastAPI app
-    # mounted under /jobs/api, keeping the public /jobs/api/v1/* paths from
-    # the era when it also served the jobs HTML. The /jobs page itself is an
-    # SPA route, served by the catch-all below. Imported here (not module
-    # top) so the mount only exists on the ASGI path, keeping stdio lean.
+    # The jobs JSON API (eco_spec_tracker) and the replay JSON API (eco_replay,
+    # the Chronicler mirror) are self-contained FastAPI apps mounted under
+    # /jobs/api and /replay/api. Their browser UIs are the SPA's /jobs and
+    # /replay routes, served by the catch-all below. Imported here (not module
+    # top) so the mounts only exist on the ASGI path, keeping stdio lean.
+    from eco_replay.main import app as replay_app
     from eco_spec_tracker.main import app as jobs_app
 
     routes: list[BaseRoute] = [
@@ -458,6 +461,7 @@ def create_app() -> Starlette:
         Route("/preview/{tool}", preview_tool, methods=["GET"]),
         Mount("/mcp", app=handle_mcp),
         Mount("/jobs/api", app=jobs_app),
+        Mount("/replay/api", app=replay_app),
     ]
     if admin_enabled:
         routes.append(Mount("/admin", app=handle_admin_mcp))

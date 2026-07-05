@@ -94,9 +94,19 @@ export default function Home() {
           <p>CO₂, temperature, sea level, and what the pollution is doing to the world.</p>
         </Link>
 
+        <Link className="dir-card" to="/ecoregion" data-testid="dir-ecoregion">
+          <h3>Ecoregion</h3>
+          <p>The world's biome mix, its closest real-world ecoregions, and which species are booming or busting.</p>
+        </Link>
+
         <Link className="dir-card" to="/calculator" data-testid="dir-calculator">
           <h3>Calculator</h3>
           <p>Price your craft with Eco Gnome — optimal buy and sell prices from your recipes.</p>
+        </Link>
+
+        <Link className="dir-card" to="/replay" data-testid="dir-replay">
+          <h3>Replay</h3>
+          <p>The server chronicle — every recorded player action, logins to blocks, newest first.</p>
         </Link>
 
         <div className="dir-card dir-card-static">

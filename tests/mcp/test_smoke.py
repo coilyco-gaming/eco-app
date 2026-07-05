@@ -111,6 +111,18 @@ def test_jobs_mount(client: TestClient) -> None:
     assert r.json() == {"mockData": True}
 
 
+def test_replay_mount(client: TestClient) -> None:
+    """The replay JSON API (eco_replay) serves through the /replay/api mount."""
+    meta = client.get("/replay/api/v1/meta")
+    assert meta.status_code == 200
+    assert meta.json() == {"mockData": True}
+    events = client.get("/replay/api/v1/events")
+    assert events.status_code == 200
+    body = events.json()
+    assert body["count"] >= 1
+    assert {"id", "unixTime", "type", "citizen", "body"} <= body["events"][0].keys()
+
+
 @respx.mock
 def test_preview_tool_requires_json_suffix(client: TestClient) -> None:
     # The dev HTML card route was removed; only the `.json` data endpoint is
