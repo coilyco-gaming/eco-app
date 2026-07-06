@@ -7,6 +7,8 @@ payloads, so it tests without a live server. The endpoints are exercised with
 
 from __future__ import annotations
 
+import json
+import math
 from typing import Any
 
 import pytest
@@ -192,3 +194,58 @@ def test_users_index_lists_every_user() -> None:
     body = r.json()
     assert body["users"] == sorted({"coilysiren", "redwood", "ekans", "Citizen #999"})
     assert body["available"]["trades"] is True
+
+
+def test_sanitize_nonfinite_walks_nested_structures() -> None:
+    """`_sanitize_nonfinite` drops inf/-inf/nan leaves to None anywhere in the
+    payload while leaving finite values untouched (eco-app#83)."""
+    from eco_mcp_app.http_app import _sanitize_nonfinite
+
+    dirty = {
+        "price": math.inf,
+        "loss": -math.inf,
+        "ratio": math.nan,
+        "ok": 3.5,
+        "count": 7,
+        "nested": {"unit": math.inf, "keep": "x"},
+        "rows": [1.0, math.inf, {"p": math.nan}],
+    }
+    clean = _sanitize_nonfinite(dirty)
+    assert clean == {
+        "price": None,
+        "loss": None,
+        "ratio": None,
+        "ok": 3.5,
+        "count": 7,
+        "nested": {"unit": None, "keep": "x"},
+        "rows": [1.0, None, {"p": None}],
+    }
+    # And the sanitized payload is JSON-compliant (allow_nan=False, like Starlette).
+    json.dumps(clean, allow_nan=False)
+
+
+def test_user_endpoint_survives_nonfinite_floats(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A dossier carrying inf/nan (e.g. a `total/qty` with qty==0 from an
+    upstream exporter) must not 500 the endpoint (eco-app#83)."""
+
+    async def _fake(_server: str | None) -> dict[str, Any]:
+        return sample_sources()
+
+    def _poisoned(username: str, _sources: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "username": username,
+            "found": True,
+            "trades": {"avgUnitPrice": math.inf, "worst": math.nan},
+            "currency": [{"balance": -math.inf}],
+        }
+
+    monkeypatch.setattr("eco_mcp_app.http_app._gather_user_sources", _fake)
+    monkeypatch.setattr("eco_mcp_app.http_app.users_mod.build_user_dossier", _poisoned)
+
+    client = TestClient(create_app())
+    r = client.get("/preview/user.json", params={"name": "elizacorn"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["trades"]["avgUnitPrice"] is None
+    assert body["trades"]["worst"] is None
+    assert body["currency"][0]["balance"] is None

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack, asynccontextmanager
@@ -222,6 +223,25 @@ async def _gather_user_sources(server_arg: str | None) -> dict[str, Any]:
     return sources
 
 
+def _sanitize_nonfinite(value: Any) -> Any:
+    """Recursively replace non-finite floats (``inf``/``-inf``/``nan``) with
+    ``None`` so Starlette's ``JSONResponse`` (which renders with
+    ``allow_nan=False``) can serialize the payload.
+
+    An upstream exporter can emit a unit-price / rate like ``total/qty`` with
+    ``qty == 0`` as ``inf``, which otherwise makes the whole endpoint 500
+    (eco-app#83). We drop the offending leaf to ``null`` rather than fail the
+    entire dossier.
+    """
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: _sanitize_nonfinite(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_nonfinite(item) for item in value]
+    return value
+
+
 async def preview_user_json(request: Request) -> JSONResponse:
     """`/preview/user.json?name=<username>` — the hidden `/users/<hex>` page's
     data plane (eco-app#80).
@@ -241,7 +261,7 @@ async def preview_user_json(request: Request) -> JSONResponse:
     sources = await _gather_user_sources(server_arg)
     dossier = users_mod.build_user_dossier(username, sources)
     dossier["fetchedAtISO"] = datetime.now(UTC).isoformat()
-    return JSONResponse(dossier)
+    return JSONResponse(_sanitize_nonfinite(dossier))
 
 
 async def preview_users_json(request: Request) -> JSONResponse:

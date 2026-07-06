@@ -42,6 +42,7 @@ off the admin endpoint without going stale.
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import statistics
 from collections import defaultdict
@@ -209,9 +210,13 @@ def parse_trade_rows(
     def pick_float(row: list[str], idx: list[int], *candidates: str) -> float:
         raw = pick(row, idx, *candidates)
         try:
-            return float(raw)
+            parsed = float(raw)
         except ValueError:
             return 0.0
+        # ``float("inf")`` / ``float("nan")`` parse without raising; a non-finite
+        # currency/quantity here feeds ``inf`` into the unit-price division and
+        # ultimately 500s ``JSONResponse`` (eco-app#83). Treat it as absent.
+        return parsed if math.isfinite(parsed) else 0.0
 
     consumed = 0
     for row in it:
