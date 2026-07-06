@@ -17,6 +17,7 @@ Covers:
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterator
 
 import httpx
@@ -98,6 +99,24 @@ def test_parse_trade_rows_folds_currency_csv() -> None:
     assert parsed[2].direction == "buy"
     # Time → in-game day via the species /86400 convention.
     assert first.day == pytest.approx(300000 / SECONDS_PER_DAY)
+
+
+def test_parse_trade_rows_coerces_nonfinite_amounts() -> None:
+    """A CSV numeric field of ``Infinity`` (or ``NaN``) parses via ``float``
+    without raising, but must not survive as a non-finite value that later 500s
+    ``JSONResponse`` (eco-app#83). It is coerced to 0.0, so no unit price."""
+    poisoned = (
+        "BankAccount,Currency,CurrencyAmount,NumberOfItems,BoughtOrSold,ShopOwner,"
+        "Buyer,Seller,WorldObjectItem,ItemUsed,Citizen,ActionLocation,Count,Time\n"
+        '"ekans account",Credit,Infinity,10,33,130409,129312,130409,StoreItem,'
+        'IronIngotItem,129312,"1,2,3",1,300000\n'
+    )
+    ledger = TradesLedger(fetched_at_iso="t", source_base_url="b")
+    parsed: list[_ParsedTrade] = []
+    parse_trade_rows("CurrencyTrade", _rows(poisoned), ledger, parsed)
+    assert parsed[0].currency_amount == 0.0
+    assert parsed[0].unit_price is None
+    assert math.isfinite(parsed[0].currency_amount)
 
 
 def test_build_ledger_aggregates_and_resolves_names() -> None:
