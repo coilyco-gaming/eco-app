@@ -114,17 +114,21 @@ def test_aggregate_rows_folds_craft_csv() -> None:
     atlas = CraftingAtlas(fetched_at_iso="t", source_base_url="b")
     n = aggregate_rows("ItemCraftedAction", _rows(_CRAFT_CSV), atlas)
     assert n == 5
-    by_item = dict(atlas.by_item)
+    # Crafts fold into by_crafted, summing the real unit Count (eco-app#70).
+    by_crafted = dict(atlas.by_crafted)
     # AdobeItem 133 + 197 = 330
-    assert by_item["AdobeItem"] == pytest.approx(330.0)
+    assert by_crafted["AdobeItem"] == pytest.approx(330.0)
+    # No gather rows here, so the gathered board stays empty.
+    assert atlas.by_gathered == []
     by_station = dict(atlas.by_station)
     assert by_station["CampfireItem"] == 2
     assert by_station["WorkbenchItem"] == 2
     # aggregate_rows keys by_citizen by the raw numeric id; name resolution
-    # happens later in fetch_atlas (eco-app#5). Count is the weight.
+    # happens later in fetch_atlas (eco-app#5). The value is a production *event*
+    # count now, not summed Count (eco-app#70) — each citizen has one craft here.
     by_citizen = dict(atlas.by_citizen)
-    assert by_citizen["129312"] == pytest.approx(165.0)
-    assert by_citizen["129580"] == pytest.approx(197.0)
+    assert by_citizen["129312"] == 1
+    assert by_citizen["129580"] == 1
     # Flow edges exist for CampfireItem→CharredMushroomsItem etc.
     flow_keys = {(s, t) for s, t, _ in atlas.flows}
     assert ("CampfireItem", "CharredMushroomsItem") in flow_keys
@@ -177,14 +181,15 @@ def test_aggregate_rows_realigns_shifted_rows() -> None:
         '"419,75,458",173.0,3599\n'
     )
     aggregate_rows("HarvestOrHunt", _rows(csv_text), atlas)
-    by_item = dict(atlas.by_item)
-    # Both species fold with their real counts (the shifted row would have read
-    # Count as a position and dropped to 0 before the realign fix).
-    assert by_item["HuckleberrySpecies"] == pytest.approx(113.0)
-    assert by_item["BunchgrassSpecies"] == pytest.approx(173.0)
+    # Harvest rows fold into by_gathered as one event each (not summed biomass);
+    # the realign still has to land the right species on the right row so the
+    # shifted row isn't dropped (before the fix it read Count as a position).
+    by_gathered = dict(atlas.by_gathered)
+    assert by_gathered["HuckleberrySpecies"] == 1
+    assert by_gathered["BunchgrassSpecies"] == 1
     by_citizen = dict(atlas.by_citizen)
-    assert by_citizen["129312"] == pytest.approx(173.0)
-    assert by_citizen["129569"] == pytest.approx(113.0)
+    assert by_citizen["129312"] == 1
+    assert by_citizen["129569"] == 1
     # The position triple never becomes a citizen id.
     assert "419,75,458" not in by_citizen
 
@@ -198,11 +203,11 @@ def test_aggregate_rows_drops_position_and_numeric_keys() -> None:
         "CampfireItem,129312,CharredMushroomsItem,2\n"
     )
     aggregate_rows("ItemCraftedAction", _rows(csv_text), atlas)
-    by_item = dict(atlas.by_item)
+    by_crafted = dict(atlas.by_crafted)
     by_station = dict(atlas.by_station)
-    assert "0.0" not in by_item
+    assert "0.0" not in by_crafted
     assert "254,86,313" not in by_station
-    assert by_item["CharredMushroomsItem"] == pytest.approx(2.0)
+    assert by_crafted["CharredMushroomsItem"] == pytest.approx(2.0)
     assert by_station["CampfireItem"] == 1
 
 
@@ -210,10 +215,11 @@ def test_aggregate_rows_handles_harvest_and_chop_shapes() -> None:
     atlas = CraftingAtlas(fetched_at_iso="t", source_base_url="b")
     aggregate_rows("HarvestOrHunt", _rows(_HARVEST_CSV), atlas)
     aggregate_rows("ChopTree", _rows(_CHOP_CSV), atlas)
-    by_item = dict(atlas.by_item)
-    # Harvest: species becomes the item.
-    assert by_item["BunchgrassSpecies"] == pytest.approx(173.0)
-    assert by_item["FirSpecies"] == pytest.approx(7.0)
+    by_gathered = dict(atlas.by_gathered)
+    # Harvest/chop: species becomes the gathered resource, counted by event (its
+    # biomass Count is never summed — eco-app#70).
+    assert by_gathered["BunchgrassSpecies"] == 1
+    assert by_gathered["FirSpecies"] == 1
     # Chop uses ToolUsed as station since no WorldObjectItem column.
     by_station = dict(atlas.by_station)
     assert by_station["StoneAxeItem"] == 2
@@ -224,7 +230,8 @@ def test_aggregate_rows_empty_csv_stays_empty() -> None:
     n = aggregate_rows("DigOrMine", _rows(_DIG_EMPTY), atlas)
     assert n == 0
     assert atlas.total_events == 0
-    assert atlas.by_item == []
+    assert atlas.by_crafted == []
+    assert atlas.by_gathered == []
 
 
 def test_aggregate_rows_respects_max_rows_cap() -> None:
@@ -251,24 +258,27 @@ async def test_fetch_atlas_merges_multiple_actions() -> None:
 
     atlas = await fetch_atlas(base_url=BASE, api_key="secret", cache_ttl_s=0)
     assert atlas.total_events == 5 + 2 + 2 + 0
-    # Crafts + harvests + chops all appear in the item totals.
-    by_item = dict(atlas.by_item)
-    assert by_item["AdobeItem"] == pytest.approx(330.0)
-    assert by_item["BunchgrassSpecies"] == pytest.approx(173.0)
-    assert by_item["FirSpecies"] == pytest.approx(7.0)
+    # Crafts land on the crafted board with their unit Count; harvests/chops on
+    # the gathered board by event count (eco-app#70).
+    by_crafted = dict(atlas.by_crafted)
+    assert by_crafted["AdobeItem"] == pytest.approx(330.0)
+    by_gathered = dict(atlas.by_gathered)
+    assert by_gathered["BunchgrassSpecies"] == 1
+    assert by_gathered["FirSpecies"] == 1
     assert atlas.per_action_counts == {
         "ItemCraftedAction": 5,
         "HarvestOrHunt": 2,
         "ChopTree": 2,
         "DigOrMine": 0,
     }
-    # Citizen ids resolved to names via the /api/v1/citizens join. coilysiren
-    # (129312) crafted 165 and harvested + chopped 173 + 7 = 345 total.
+    # Citizen ids resolved to names via the /api/v1/citizens join, ranked by
+    # production *events* (eco-app#70). coilysiren (129312) has 1 craft + 1
+    # harvest + 1 chop = 3 events.
     by_citizen = dict(atlas.by_citizen)
-    assert by_citizen["coilysiren"] == pytest.approx(165.0 + 173.0 + 7.0)
+    assert by_citizen["coilysiren"] == 3
     assert "salt" in by_citizen  # id 129558
     # An id with no mapping falls back to a "Citizen #<id>" label, not dropped.
-    assert by_citizen["Citizen #129569"] == pytest.approx(113.0)
+    assert by_citizen["Citizen #129569"] == 1
     assert atlas.warnings == []
 
 
@@ -301,7 +311,8 @@ async def test_fetch_atlas_shows_ids_when_citizen_join_unavailable() -> None:
 
     atlas = await fetch_atlas(base_url=BASE, api_key=None, cache_ttl_s=0)
     by_citizen = dict(atlas.by_citizen)
-    assert by_citizen["Citizen #129312"] == pytest.approx(165.0)
+    # One craft event for 129312 (event-counted, eco-app#70).
+    assert by_citizen["Citizen #129312"] == 1
     assert CITIZEN_NAMES_UNAVAILABLE_WARNING in atlas.warnings
 
 
@@ -363,7 +374,8 @@ def test_atlas_template_context_empty_state_is_clean() -> None:
     atlas = CraftingAtlas(fetched_at_iso="t", source_base_url="b")
     ctx = atlas_template_context(atlas)
     assert ctx["empty"] is True
-    assert ctx["top_items"] == []
+    assert ctx["top_crafted"] == []
+    assert ctx["top_gathered"] == []
     assert ctx["sankey"] is None
 
 
@@ -372,9 +384,9 @@ def test_atlas_template_context_ranks_and_percents() -> None:
     aggregate_rows("ItemCraftedAction", _rows(_CRAFT_CSV), atlas)
     ctx = atlas_template_context(atlas)
     assert ctx["empty"] is False
-    # Top item is AdobeItem with 330, percent must be 100.
-    assert ctx["top_items"][0]["name"] == "AdobeItem"
-    assert ctx["top_items"][0]["pct"] == pytest.approx(100.0)
+    # Top crafted item is AdobeItem with 330, percent must be 100.
+    assert ctx["top_crafted"][0]["name"] == "AdobeItem"
+    assert ctx["top_crafted"][0]["pct"] == pytest.approx(100.0)
     # Sankey has nodes for both columns.
     assert ctx["sankey"] is not None
     assert ctx["sankey"]["edges"], "expected at least one flow edge"
