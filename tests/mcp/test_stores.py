@@ -9,7 +9,7 @@ Covers:
     counterparties, and the stores each citizen operates.
   - Unknown-id and empty-history paths degrade gracefully.
   - The shared `trades.fetch_parsed_trades` spine + `/api/v1/citizens` join.
-  - Tool wiring returns two TextContent blocks + a `_meta.ui` fragment, and the
+  - Tool wiring returns two TextContent blocks and no widget (just-data per eco-app#87), and the
     tool is advertised in tools/list.
 """
 
@@ -248,8 +248,8 @@ async def test_tool_call_returns_text_blocks_and_fragment(
     assert len(blocks) == 2
     assert isinstance(blocks[0], mt.TextContent)
     assert "Store & trader directory" in blocks[0].text
-    assert result.root.meta is not None
-    assert "directory" in result.root.meta["ui"]["fragment"].lower()
+    # Just-data per eco-app#87: get_eco_stores no longer emits a widget.
+    assert result.root.meta is None
 
 
 @respx.mock

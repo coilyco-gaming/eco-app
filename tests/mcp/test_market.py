@@ -14,8 +14,9 @@ Covers:
   - The fair-value merge in `fair_price.fetch_fair_price` (respx-mocked FRED):
     trend-divergence verdict and the calibration-anchored verdict.
   - Thin-data / zero-trade render paths (markdown + card context).
-  - Tool wiring: `get_eco_market` registered, returns text blocks + fragment;
-    the `fair_price` tool merges the in-game read when an admin key is set.
+  - Tool wiring: `get_eco_market` registered, returns text blocks and no widget
+    (just-data per eco-app#87); the `fair_price` tool merges the in-game read
+    when an admin key is set.
 """
 
 from __future__ import annotations
@@ -461,8 +462,8 @@ async def test_get_eco_market_tool_returns_blocks_and_fragment(
     payload = _json.loads(blocks[1].text)
     assert payload["view"] == "market"
     assert payload["markets"][0]["item"] == "IronIngotItem"
-    assert result.root.meta is not None
-    assert "Market price intelligence" in result.root.meta["ui"]["fragment"]
+    # Just-data per eco-app#87: get_eco_market no longer emits a widget.
+    assert result.root.meta is None
 
 
 @respx.mock

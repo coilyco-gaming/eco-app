@@ -11,8 +11,8 @@ Covers:
     skipped) and live offers winning over history in `_merge`.
   - `fetch_logistics` folding the trades ledger (respx-mocked exporter CSVs) and
     a best-effort live shelf; the live-absent (404) path degrading to history.
-  - Tool wiring: `find_eco_trade` registered, returns text blocks + fragment,
-    and the `/preview/logistics.json` data plane.
+  - Tool wiring: `find_eco_trade` registered, returns text blocks and no widget
+    (just-data per eco-app#87), and the `/preview/logistics.json` data plane.
 """
 
 from __future__ import annotations
@@ -508,8 +508,8 @@ async def test_find_eco_trade_tool_returns_blocks_and_fragment(
     payload = _json.loads(blocks[1].text)
     assert payload["view"] == "logistics"
     assert payload["cheapest"][0]["item"] == "IronIngotItem"
-    assert result.root.meta is not None
-    assert "Trade logistics" in result.root.meta["ui"]["fragment"]
+    # Just-data per eco-app#87: find_eco_trade no longer emits a widget.
+    assert result.root.meta is None
 
 
 @respx.mock
