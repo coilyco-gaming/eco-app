@@ -59,9 +59,9 @@ _CITIZENS_JSON = [
 # appends to every action row.
 _CHAT_CSV = (
     "Citizen,Tag,Message,Count,Time\n"
-    '129312,#general,"selling iron, ping ekans please",1,300000\n'
-    '130409,#trade,"anyone need wood?",1,200000\n'
-    '129312,#general,"gg",1,260000\n'
+    '129312,General,"selling iron, ping ekans please",1,300000\n'
+    '130409,Trade,"anyone need wood?",1,200000\n'
+    '129312,General,"gg",1,260000\n'
 )
 _REP_CSV = (
     "Citizen,ReceiverCitizen,Amount,Count,Time\n"
@@ -108,8 +108,8 @@ def test_parse_and_fold_shapes() -> None:
     assert surface.total_play_events == 2
     # Chat bucketed by in-game day (Time / 86400).
     assert dict(surface.chat_by_day) == {2: 1, 3: 2}
-    # Busiest channel is #general (2 of 3 messages).
-    assert surface.chat_by_channel[0] == ("#general", 2)
+    # Busiest channel is General (2 of 3 messages).
+    assert surface.chat_by_channel[0] == ("General", 2)
     # ekans received 8 reputation across two transfers → most-repped.
     assert surface.top_reputation_receivers[0] == ("ekans", pytest.approx(8.0))
     # Directed edges carry the amount + count.
@@ -118,6 +118,65 @@ def test_parse_and_fold_shapes() -> None:
     assert edge["amount"] == pytest.approx(5.0)
     # New arrival from FirstLogin.
     assert surface.new_arrivals == [{"label": "ekans", "day": 1}]
+
+
+def test_hash_prefixed_channels_are_filtered_everywhere() -> None:
+    """`#`-prefixed channels are system/noise — dropped before any aggregate
+    counts them, with a warning naming how many were hidden (eco-app#74)."""
+    csv_text = (
+        "Citizen,Tag,Message,Count,Time\n"
+        '129312,General,"hello",1,100000\n'
+        '130409,#system,"[auto] world tick",1,110000\n'
+        '129580,#trade-bot,"beep",1,120000\n'
+    )
+    surface = SocialSurface(fetched_at_iso="t", source_base_url="b")
+    chat: list = []
+    parse_chat_rows(_rows(csv_text), surface, chat)
+    build_surface(surface, chat, [], [], NAME_MAP, show_names=True)
+
+    # Only the non-# channel survives — count, channel rank, and feed alike.
+    assert surface.total_chat == 1
+    assert surface.chat_by_channel == [("General", 1)]
+    assert [m["channel"] for m in surface.recent_chat] == ["General"]
+    # The filter is transparent: a warning says how many were hidden.
+    assert any("hid 2" in w and "#" in w for w in surface.warnings)
+
+
+def test_recent_chat_lists_every_message_with_relative_time() -> None:
+    """No sample cap — every message ships (eco-app#74) — and each carries the
+    raw `timeS` the SPA renders against `latest_time_s` as "N ago"."""
+    lines = ["Citizen,Tag,Message,Count,Time"]
+    for i in range(60):
+        lines.append(f'129312,General,"msg {i}",1,{100000 + i}')
+    surface = SocialSurface(fetched_at_iso="t", source_base_url="b")
+    chat: list = []
+    parse_chat_rows(_rows("\n".join(lines) + "\n"), surface, chat)
+    build_surface(surface, chat, [], [], NAME_MAP, show_names=True)
+
+    # Every one of the 60 messages is in the feed (the old cap was 40).
+    assert surface.total_chat == 60
+    assert len(surface.recent_chat) == 60
+    # Newest first, each with its raw time; latest_time_s is the newest event.
+    assert surface.latest_time_s == 100059.0
+    assert surface.recent_chat[0]["timeS"] == 100059.0
+    assert surface.recent_chat[-1]["timeS"] == 100000.0
+
+
+def test_empty_reputation_graph_is_diagnosed() -> None:
+    """When transfers parse but the receiver column isn't recognized, every edge
+    drops and the graph reads empty — a warning names the culprit (eco-app#74)."""
+    csv_text = (
+        "Citizen,Beneficiary,Amount,Count,Time\n"  # `Beneficiary` isn't a known column
+        "129312,130409,5.0,1,250000\n"
+    )
+    surface = SocialSurface(fetched_at_iso="t", source_base_url="b")
+    edges: list = []
+    parse_reputation_rows(_rows(csv_text), surface, edges)
+    build_surface(surface, [], edges, [], NAME_MAP, show_names=True)
+
+    assert surface.total_reputation_transfers == 1
+    assert surface.reputation_edges == []
+    assert any("ReputationTransfer" in w and "receiver" in w for w in surface.warnings)
 
 
 def test_public_path_redacts_names_and_message_bodies() -> None:
