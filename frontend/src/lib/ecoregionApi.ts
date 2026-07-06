@@ -15,6 +15,10 @@ export interface Biome {
   // Share of *classified* biome area; the donut slices sum these to 100%.
   sharePercent: number
   color: string
+  // True for the two derived water slices (coastal/shallow sea, fresh water)
+  // appended server-side to reclassify the old grey gap (eco-app#82). They're
+  // not real biome layers, so they carry no raster and don't hover-highlight.
+  isWater?: boolean
 }
 
 export interface EcoregionMatch {

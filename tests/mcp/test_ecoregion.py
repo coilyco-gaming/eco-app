@@ -60,6 +60,101 @@ def test_extract_biome_percents_picks_only_biome_category() -> None:
     assert out["DesertBiome"] == 0.0
 
 
+def test_extract_water_percents_reads_world_and_moisture() -> None:
+    cats = [
+        {
+            "Category": "World",
+            "List": [
+                {"LayerName": "SaltWater", "Summary": "57%"},
+                {"LayerName": "Height", "Summary": "59.89 meters above bedrock"},
+                {"LayerName": "CanopySpace", "Summary": "6.16"},
+            ],
+        },
+        {
+            "Category": "Moisture",
+            "List": [
+                {"LayerName": "FreshWater", "Summary": "5%"},
+                {"LayerName": "Rainfall", "Summary": "50%"},
+            ],
+        },
+    ]
+    water = eco.extract_water_percents(cats)
+    assert water["saltwater"] == 57.0
+    assert water["freshwater"] == 5.0
+    # A non-percentage summary (bare float / "N meters") never leaks in.
+    assert eco._layer_percent(cats, "World", "Height") == 0.0
+    assert eco._layer_percent(cats, "World", "CanopySpace") == 0.0
+    # Missing category / layer degrades to 0.0, not a crash.
+    assert eco.extract_water_percents([]) == {"saltwater": 0.0, "freshwater": 0.0}
+
+
+def test_build_payload_reclassifies_water_into_named_slices() -> None:
+    # Live-shaped biome mix (#82): Ocean 13 + DeepOcean 8 + land ~18 = ~39% of
+    # world named as biome, leaving ~61% grey. SaltWater 57 + FreshWater 5
+    # reclassify most of that gap into coastal-water + fresh-water slices.
+    biomes = dict.fromkeys(eco.BIOME_LAYERS, 0.0)
+    biomes.update(
+        {
+            "OceanBiome": 13.0,
+            "DeepOceanBiome": 8.0,
+            "GrasslandBiome": 7.0,
+            "RainforestBiome": 3.0,
+            "WarmForestBiome": 3.0,
+            "DesertBiome": 2.0,
+            "ColdForestBiome": 1.0,
+            "TaigaBiome": 1.0,
+            "WetlandBiome": 1.0,
+        },
+    )
+    payload = eco.build_payload(
+        biomes,
+        matches=[],
+        boom=[],
+        bust=[],
+        species_seen=0,
+        species_with_drift=0,
+        admin_available=False,
+        source_url="http://eco.example.com:3001/info",
+        saltwater_percent=57.0,
+        freshwater_percent=5.0,
+    )
+    raw_sum = 13 + 8 + 7 + 3 + 3 + 2 + 1 + 1 + 1  # 39
+    assert math.isclose(payload["rawSumPercent"], raw_sum)
+    # Coastal water = SaltWater(57) - Ocean+DeepOcean biome(21) = 36.
+    coastal = next(b for b in payload["biomes"] if b["name"] == "CoastalWater")
+    assert math.isclose(coastal["percent"], 36.0)
+    fresh = next(b for b in payload["biomes"] if b["name"] == "FreshWater")
+    assert math.isclose(fresh["percent"], 5.0)
+    # Classified now credits the water slices; the grey remainder is ~20%, not 61%.
+    assert math.isclose(payload["classifiedPercent"], raw_sum + 36 + 5)
+    assert math.isclose(payload["unclassifiedPercent"], 100 - (raw_sum + 36 + 5))
+    # Water slices sit outside the WWF vector, so they carry no share weight.
+    assert coastal["sharePercent"] == 0.0
+
+
+def test_build_payload_without_water_matches_pre_82_behaviour() -> None:
+    """Passing no water percents leaves the biome-only classification unchanged."""
+    biomes = dict.fromkeys(eco.BIOME_LAYERS, 0.0)
+    biomes["OceanBiome"] = 13.0
+    biomes["GrasslandBiome"] = 8.0
+    payload = eco.build_payload(
+        biomes,
+        matches=[],
+        boom=[],
+        bust=[],
+        species_seen=0,
+        species_with_drift=0,
+        admin_available=False,
+        source_url="x",
+    )
+    assert math.isclose(payload["rawSumPercent"], 21.0)
+    assert math.isclose(payload["classifiedPercent"], 21.0)
+    assert math.isclose(payload["unclassifiedPercent"], 79.0)
+    # Water slices are present but zero, so the donut simply skips them.
+    coastal = next(b for b in payload["biomes"] if b["name"] == "CoastalWater")
+    assert coastal["percent"] == 0.0
+
+
 def test_normalize_vector_sums_to_one() -> None:
     raw = {"A": 10.0, "B": 30.0, "C": 60.0}
     norm = eco.normalize_vector(raw)

@@ -109,8 +109,9 @@ def test_aggregate_world_rows_folds_construction() -> None:
     assert acc.category_events["construction"] == 3
     # Volume is the summed Count (12 + 8 + 5).
     assert acc.category_volume["construction"] == pytest.approx(25.0)
-    # Object weight accumulates per block (StoneItem 12 + 8).
-    assert acc.by_object["StoneItem"] == pytest.approx(20.0)
+    # Objects count touch *events*, not summed Count: StoneItem is placed in
+    # two rows → 2 touches (was 12 + 8 = 20 under the old volume bug, #82).
+    assert acc.by_object["StoneItem"] == 2
     # Citizen keyed by raw numeric id; each row is one event.
     assert acc.by_citizen["129312"] == 1
     assert acc.by_citizen["130409"] == 1
@@ -164,8 +165,14 @@ def test_finalize_ranks_and_round_trips() -> None:
     # Categories ordered by CATEGORY_ORDER, only non-empty ones present.
     keys = activity.category_keys
     assert "construction" in keys and "extraction" in keys
-    # Objects ranked by volume: IronOreItem 52 outranks StoneItem 20.
-    assert activity.by_object[0][0] == "IronOreItem"
+    # Objects ranked by touch-event count (#82), not summed Count: StoneItem
+    # (2 place rows) and IronOreItem (2 dig rows) each score 2 touches and lead
+    # BrickItem's single touch — no more runaway summed-Count headline numbers.
+    obj = dict(activity.by_object)
+    assert obj["StoneItem"] == 2
+    assert obj["IronOreItem"] == 2
+    assert obj["BrickItem"] == 1
+    assert activity.by_object[-1] == ("BrickItem", 1)
     # to_dict / from_dict round-trip preserves the ranked shape.
     from eco_mcp_app.world import WorldActivity
 

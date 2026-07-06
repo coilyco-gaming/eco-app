@@ -106,9 +106,12 @@ export default function Home() {
           )}
         </Link>
 
-        <Link className="dir-card" to="/world" data-testid="dir-world">
-          <h3>World &amp; industry</h3>
-          <p>Construction, roads, terraforming, explosions, and pollution — the mutation timeline.</p>
+        <Link className="dir-card" to="/map" data-testid="dir-map">
+          <h3>World map</h3>
+          <p>
+            The live map, biome &amp; water mix, closest real-world ecoregions, and the mutation
+            timeline — construction, terraforming, and activity hotspots.
+          </p>
           {worldPulse && (
             <p className="dir-badges" data-testid="world-badges">
               <span className="mini-pill">{formatCount(worldPulse.events)} events</span>
@@ -122,11 +125,6 @@ export default function Home() {
         <Link className="dir-card" to="/climate" data-testid="dir-climate">
           <h3>Climate</h3>
           <p>CO₂, temperature, sea level, and what the pollution is doing to the world.</p>
-        </Link>
-
-        <Link className="dir-card" to="/ecoregion" data-testid="dir-ecoregion">
-          <h3>Ecoregion</h3>
-          <p>The world's biome mix, its closest real-world ecoregions, and which species are booming or busting.</p>
         </Link>
 
         <Link className="dir-card" to="/calculator" data-testid="dir-calculator">
