@@ -342,11 +342,18 @@ def finalize(
     fetched_at_iso: str,
     source_base_url: str,
     *,
-    top_citizens: int = 25,
+    top_citizens: int | None = None,
     top_objects: int = 25,
     top_hotspots: int = 12,
 ) -> WorldActivity:
-    """Rank the accumulator's dicts into a serializable WorldActivity."""
+    """Rank the accumulator's dicts into a serializable WorldActivity.
+
+    ``by_citizen`` / ``by_polluter`` list **every** shaper / polluter, not a
+    truncated top-N: these are user-pivoted lists and eco-app#80 requires them
+    complete (the per-user dossier joins against them, and the /world board is
+    already rank-ordered). ``top_citizens=None`` means no cap — ``[:None]``
+    keeps the whole ranked list; pass an int only to bound it (tests, cards).
+    """
     categories = [
         (k, acc.category_events.get(k, 0), acc.category_volume.get(k, 0.0))
         for k in CATEGORY_ORDER

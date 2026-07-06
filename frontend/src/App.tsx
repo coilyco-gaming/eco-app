@@ -16,6 +16,8 @@ import Server from "./pages/Server"
 import Social from "./pages/Social"
 import Trade from "./pages/Trade"
 import Trades from "./pages/Trades"
+import User from "./pages/User"
+import Users from "./pages/Users"
 
 // Route table for the SPA. The homepage is a thin directory of surfaces;
 // per-feature pages (economy, map, species, milestones) join /server and
@@ -62,6 +64,12 @@ export default function App() {
             </PagePassword>
           }
         />
+        {/* Hidden per-user surfaces (eco-app#80): no nav link, and — unlike
+            /social and /replay — deliberately NOT behind PagePassword. /users
+            lists every user; /users/<hex> is one user's dossier, keyed by the
+            base16 of their username. */}
+        <Route path="/users" element={<Users />} />
+        <Route path="/users/:hex" element={<User />} />
       </Routes>
     </BrowserRouter>
   )
