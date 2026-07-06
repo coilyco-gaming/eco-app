@@ -8,7 +8,7 @@ and when. Filed as [#6](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/iss
 
 ## Surfaces
 
-- **`get_eco_trades` MCP tool** - `src/eco_mcp_app/trades.py` + `server.py` wiring. Returns a markdown summary + the structured `TradesLedger.to_dict()` JSON, plus an `_meta.ui` Jinja card (`templates/partials/trades.html`) for MCP Apps hosts. Requires an admin API key server-side (`ECO_ADMIN_API_KEY`, SSM in the homelab deploy).
+- **`get_eco_trades` MCP tool** - `src/eco_mcp_app/trades.py` + `server.py` wiring. Returns a markdown summary + the structured `TradesLedger.to_dict()` JSON. Trades is a "just data" tool - it emits no MCP-app widget ([#87](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/87); the widget is scoped to the world/region view). Requires an admin API key server-side (`ECO_ADMIN_API_KEY`, SSM in the homelab deploy).
 - **`/trades` SPA page** - `frontend/src/pages/Trades.tsx`, consuming `/preview/get_eco_trades.json`. Product UX lives here (the Jinja card is only the in-chat fragment). Cross-links `/economy` and `/crafting` per the wave-0 pattern.
 
 ## Data source

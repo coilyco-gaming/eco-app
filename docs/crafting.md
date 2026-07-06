@@ -9,7 +9,7 @@ or mined. Filed as [#17](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/is
 
 ## Surfaces
 
-- **`get_eco_crafting_atlas` MCP tool** - `src/eco_mcp_app/crafting.py` + `server.py` wiring. Returns a markdown summary + the structured `CraftingAtlas.to_dict()` JSON, plus an `_meta.ui` Jinja card (`templates/partials/crafting.html`) for MCP Apps hosts. Requires an admin API key server-side (`ECO_ADMIN_API_KEY`, populated from SSM `/eco-mcp-app/api-admin-token` in the homelab deploy).
+- **`get_eco_crafting_atlas` MCP tool** - `src/eco_mcp_app/crafting.py` + `server.py` wiring. Returns a markdown summary + the structured `CraftingAtlas.to_dict()` JSON. Crafting atlas is a "just data" tool - it emits no MCP-app widget ([#87](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/87); the widget is scoped to the world/region view). Requires an admin API key server-side (`ECO_ADMIN_API_KEY`, populated from SSM `/eco-mcp-app/api-admin-token` in the homelab deploy).
 - **`/crafting` SPA page** - `frontend/src/pages/Crafting.tsx`, consuming `/preview/get_eco_crafting_atlas.json` via `lib/craftingApi.ts`. Product UX lives here (the Jinja card is only the in-chat fragment). Ranked items/stations feed a `?q=` filter with filter-on-click deep links; the top-crafters list and the sankey do not filter. Cross-links `/economy` and `/trades` per the wave-0 pattern.
 
 ## Data sources

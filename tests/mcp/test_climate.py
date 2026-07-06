@@ -6,8 +6,8 @@ Covers:
 - ``compute_climate_payload`` math: % change, status classification, real-
   world Earth CO2 anchor.
 - Polluter attribution via the action-exporter CSV stream.
-- The MCP tool wiring end-to-end (call_tool returns markdown + JSON +
-  the iframe fragment via ``_meta.ui.fragment``).
+- The MCP tool wiring end-to-end (call_tool returns markdown + JSON,
+  and no widget — just-data per eco-app#87).
 - The ``get_eco_map`` pollution overlay pulls ``Layers/Pollution.gif`` and
   exposes it as ``pollutionDataUri``.
 """
@@ -41,7 +41,6 @@ from eco_mcp_app.climate import (
 )
 from eco_mcp_app.server import (
     DEFAULT_ECO_INFO_URL,
-    UI_META,
     build_server,
 )
 
@@ -889,11 +888,8 @@ async def test_call_get_eco_climate_returns_iframe_fragment() -> None:
     assert payload["status"] in {"stable", "warming", "critical", "unknown"}
     assert "explainer" in payload
 
-    # MCP Apps fragment is on _meta and contains card markup.
-    meta = result.root.meta
-    assert meta is not None
-    assert meta["ui"]["resourceUri"] == UI_META["ui"]["resourceUri"]
-    assert "Climate" in meta["ui"]["fragment"]
+    # Just-data per eco-app#87: get_eco_climate no longer emits a widget.
+    assert result.root.meta is None
 
 
 @pytest.mark.asyncio
@@ -908,9 +904,9 @@ async def test_call_get_eco_climate_handles_info_failure() -> None:
     )
     result = await handler(req)
     assert result.root.isError is True
-    meta = result.root.meta
-    assert meta is not None
-    assert isinstance(meta["ui"]["fragment"], str)
+    assert "unreachable" in result.root.content[0].text.lower()
+    # Just-data per eco-app#87: get_eco_climate no longer emits a widget.
+    assert result.root.meta is None
 
 
 # ---------------------------------------------------------------------------

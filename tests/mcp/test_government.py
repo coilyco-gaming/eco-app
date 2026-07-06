@@ -274,16 +274,11 @@ async def test_call_tool_get_eco_government_happy_path() -> None:
         assert isinstance(b, mt.TextContent)
     md = blocks[0].text
     payload = json.loads(blocks[1].text)
-    assert result.root.meta is not None
-    html = result.root.meta["ui"]["fragment"]
     assert "Steamtide Cay Foundation" in md
     assert "Scuba Steve" in md
     assert payload["scope"] == "Steamtide Cay Foundation"
-    assert "Scuba Steve" in html
-    assert "No active elections" in html
-    # Markup tokens must be scrubbed in the rendered HTML law preview.
-    assert "<link=" not in html
-    assert "<icon " not in html
+    # Just-data per eco-app#87: get_eco_government no longer emits a widget.
+    assert result.root.meta is None
 
 
 @pytest.mark.asyncio

@@ -144,6 +144,16 @@ UI_META: dict[str, Any] = {
     "ui/resourceUri": RESOURCE_URI,
 }
 
+# Only the world/region page renders the MCP-app visual widget; every other
+# tool is "just data" — the text + JSON blocks it already carries, with no
+# `_meta.ui` widget resource emitted (eco-app#87). The world/region page is the
+# SPA's `/map` surface, which fuses three tools: get_eco_world (industry
+# activity + hotspots), get_eco_map (world preview + deed polygons), and
+# get_eco_ecoregion (biome donut + ecoregion match). Those three keep the
+# widget; the list_tools advertisement and the per-call `_meta` are stripped for
+# all others by the gate in `build_server` below.
+WIDGET_TOOLS: frozenset[str] = frozenset({"get_eco_world", "get_eco_map", "get_eco_ecoregion"})
+
 # Legacy prefix from when the rendered HTML was shipped as a `TextContent`
 # block. Kept exported because http_app's preview path and older tests still
 # import it. The widget HTML now travels in `_meta.ui.fragment` instead - see
@@ -1987,7 +1997,7 @@ def build_server() -> Server:
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
-        return [
+        tools = [
             Tool(
                 name="get_eco_server_status",
                 title="Eco — server status",
@@ -1997,8 +2007,8 @@ def build_server() -> Server:
                     "Defaults to the server configured via ECO_INFO_URL; pass `server` "
                     "(host, host:port, or full URL — IPs are fine, most public Eco "
                     "servers advertise as bare IPs) to target a different one. "
-                    "Renders as a visual widget in Claude Desktop via the MCP Apps "
-                    "spec; falls back to a plain-text summary in other hosts."
+                    "Returns a plain-text summary plus structured JSON (the "
+                    "MCP-app visual widget is reserved for the world/region view)."
                 ),
                 inputSchema={
                     "type": "object",
@@ -2084,8 +2094,8 @@ def build_server() -> Server:
                     "ladder of progress bars sorted by completion percentage "
                     "descending. Also surfaces the top-level `TotalCulture` stat. "
                     "Accepts the same `server` argument shape as "
-                    "`get_eco_server_status`. Renders as a visual widget in "
-                    "Claude Desktop via the MCP Apps spec."
+                    "`get_eco_server_status`. Returns plain-text + structured "
+                    "JSON data (no MCP-app widget)."
                 ),
                 inputSchema={
                     "type": "object",
@@ -2187,8 +2197,8 @@ def build_server() -> Server:
                     "(ECO_ADMIN_API_KEY env var, populated from SSM in the "
                     "homelab deploy). Stream-parses the CSV responses so it "
                     "stays well under 200 MB even on late-cycle 20+ MB logs. "
-                    "Renders as an inline widget via the MCP Apps spec; falls "
-                    "back to a markdown leaderboard otherwise."
+                    "Returns a markdown leaderboard plus structured JSON data "
+                    "(no MCP-app widget)."
                 ),
                 inputSchema={
                     "type": "object",
@@ -2259,9 +2269,9 @@ def build_server() -> Server:
                     "citizens surface, falling back to `Citizen #<id>`. Requires "
                     "an admin API key configured server-side (ECO_ADMIN_API_KEY, "
                     "populated from SSM in the homelab deploy). Stream-parses the "
-                    "CSV so it stays bounded on late-cycle logs. Renders as an "
-                    "inline widget via the MCP Apps spec; falls back to a "
-                    "markdown summary otherwise."
+                    "CSV so it stays bounded on late-cycle logs. Returns a "
+                    "markdown summary plus structured JSON data (no MCP-app "
+                    "widget)."
                 ),
                 inputSchema={
                     "type": "object",
@@ -2296,8 +2306,8 @@ def build_server() -> Server:
                     "the jobs mod's citizens surface, falling back to "
                     "`Citizen #<id>`. Requires an admin API key configured "
                     "server-side. History only — the current shelf snapshot is "
-                    "the reset-gated stores exporter (sibling issue). Renders as "
-                    "an inline widget; falls back to a markdown summary."
+                    "the reset-gated stores exporter (sibling issue). Returns a "
+                    "markdown summary plus structured JSON data (no MCP-app widget)."
                 ),
                 inputSchema={
                     "type": "object",
@@ -2333,8 +2343,8 @@ def build_server() -> Server:
                     "API key configured server-side (ECO_ADMIN_API_KEY, populated "
                     "from SSM in the homelab deploy). Stream-parses the CSVs so it "
                     "stays bounded on late-cycle logs, and degrades gracefully when "
-                    "a server is early-cycle or an exporter is disabled. Renders as "
-                    "an inline widget; falls back to a markdown summary."
+                    "a server is early-cycle or an exporter is disabled. Returns a "
+                    "markdown summary plus structured JSON data (no MCP-app widget)."
                 ),
                 inputSchema={
                     "type": "object",
@@ -2366,9 +2376,9 @@ def build_server() -> Server:
                     "names-in-the-clear mode is operator-gated (needs "
                     "ECO_SOCIAL_ALLOW_NAMES set server-side plus reveal_names), "
                     "never public. Requires an admin API key configured "
-                    "server-side (same exporter as get_eco_trades). Renders as "
-                    "an inline widget via the MCP Apps spec; falls back to a "
-                    "markdown summary otherwise."
+                    "server-side (same exporter as get_eco_trades). Returns a "
+                    "markdown summary plus structured JSON data (no MCP-app "
+                    "widget)."
                 ),
                 inputSchema={
                     "type": "object",
@@ -2701,8 +2711,8 @@ def build_server() -> Server:
                     "(ECO_ADMIN_API_KEY, populated from SSM in the homelab "
                     "deploy). Stream-parses the CSV so it stays bounded on "
                     "late-cycle logs; thin / zero-data servers degrade to an "
-                    "empty report. Renders as an inline widget via the MCP Apps "
-                    "spec; falls back to a markdown summary otherwise."
+                    "empty report. Returns a markdown summary plus structured "
+                    "JSON data (no MCP-app widget)."
                 ),
                 inputSchema={
                     "type": "object",
@@ -2822,6 +2832,13 @@ def build_server() -> Server:
                 },
             ),
         ]
+        # eco-app#87: only the world/region tools advertise a widget resource.
+        # Every other tool drops its `_meta.ui` hint so hosts render it as plain
+        # data. The underlying tool payloads are unchanged.
+        for tool in tools:
+            if tool.name not in WIDGET_TOOLS:
+                tool.meta = None
+        return tools
 
     @server.list_resources()
     async def list_resources() -> list[Resource]:
@@ -2859,8 +2876,7 @@ def build_server() -> Server:
             return [ReadResourceContents(content=_render_shell(), mime_type=RESOURCE_MIME)]
         raise ValueError(f"Unknown resource: {uri}")
 
-    @server.call_tool()
-    async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
+    async def _dispatch_call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
         if name == "explain_eco_item":
             from .wikidata import build_ecopedia_card
 
@@ -3553,6 +3569,18 @@ def build_server() -> Server:
             ],
             **{"_meta": _ui_meta(_render_card(payload))},
         )
+
+    @server.call_tool()
+    async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
+        result = await _dispatch_call_tool(name, arguments)
+        # eco-app#87: only the world/region page (the SPA `/map` surface —
+        # get_eco_world + get_eco_map + get_eco_ecoregion) keeps the MCP-app
+        # widget. Every other tool is "just data": drop the widget resource so
+        # the text + JSON blocks stand on their own as the plain render. The
+        # data payloads are untouched — only the `_meta.ui` fragment is removed.
+        if name not in WIDGET_TOOLS and result.meta is not None:
+            result.meta = None
+        return result
 
     return server
 

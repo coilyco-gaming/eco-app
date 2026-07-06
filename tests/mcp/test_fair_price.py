@@ -362,9 +362,8 @@ async def test_tool_registered_and_calls_through(monkeypatch: pytest.MonkeyPatch
     payload = _json.loads(blocks[1].text)
     assert payload["view"] == "fair_price"
     assert payload["seriesId"] == "PCOPPUSDM"
-    assert result.root.meta is not None
-    fragment = result.root.meta["ui"]["fragment"]
-    assert "fair-price-card" in fragment
+    # Just-data per eco-app#87: fair_price no longer emits a widget.
+    assert result.root.meta is None
 
 
 @pytest.mark.asyncio

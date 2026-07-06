@@ -280,11 +280,9 @@ async def test_get_eco_species_tool_returns_card_blocks() -> None:
     for b in blocks:
         assert isinstance(b, mt.TextContent)
     md, raw_json = blocks[0].text, blocks[1].text
-    assert result.root.meta is not None
-    fragment = result.root.meta["ui"]["fragment"]
     assert "Bison" in md
     payload = json.loads(raw_json)
     assert payload["speciesId"] == "BisonSpecies"
     assert payload["populationLatest"] == 24
-    assert 'class="species"' in fragment
-    assert "<svg" in fragment  # sparkline rendered
+    # Just-data per eco-app#87: get_eco_species no longer emits a widget.
+    assert result.root.meta is None
