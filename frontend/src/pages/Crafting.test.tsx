@@ -7,10 +7,13 @@ const ATLAS = {
   fetchedAtISO: "2026-06-12T13:00:00+00:00",
   sourceBaseUrl: "http://x:3001",
   totalEvents: 14251,
-  byItem: [
-    ["DirtItem", 98695],
-    ["BoardItem", 70277],
-    ["FlaxSeedItem", 61502],
+  byCrafted: [
+    ["BoardItem", 2362],
+    ["HewnLogItem", 1691],
+  ],
+  byGathered: [
+    ["DirtItem", 8445],
+    ["FlaxSeedItem", 2471],
   ],
   byStation: [
     ["(hand)", 2471],

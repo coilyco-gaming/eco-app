@@ -122,7 +122,7 @@ export default function Crafting() {
             <input
               className="filter-input"
               type="search"
-              placeholder="Filter items and stations… (deep-linkable as ?q=)"
+              placeholder="Filter items, resources, and stations… (deep-linkable as ?q=)"
               value={q}
               onChange={(e) => setQuery(e.target.value)}
               data-testid="atlas-filter"
@@ -136,24 +136,34 @@ export default function Crafting() {
 
           <div className="atlas-columns">
             <section>
-              <h2 className="section-title">Top items {q ? `matching "${q}"` : ""}</h2>
+              <h2 className="section-title">Top crafted {q ? `matching "${q}"` : ""}</h2>
               <RankTable
-                rows={atlas.byItem}
+                rows={atlas.byCrafted}
                 filter={q}
-                emptyNote="No items match."
+                emptyNote="No crafted items match."
                 onPick={setQuery}
               />
             </section>
             <section>
-              <h2 className="section-title">Top stations {q ? `matching "${q}"` : ""}</h2>
+              <h2 className="section-title">Top gathered {q ? `matching "${q}"` : ""}</h2>
               <RankTable
-                rows={atlas.byStation}
+                rows={atlas.byGathered}
                 filter={q}
-                emptyNote="No stations match."
+                emptyNote="No gathered resources match."
                 onPick={setQuery}
               />
             </section>
           </div>
+
+          <section>
+            <h2 className="section-title">Top stations {q ? `matching "${q}"` : ""}</h2>
+            <RankTable
+              rows={atlas.byStation}
+              filter={q}
+              emptyNote="No stations match."
+              onPick={setQuery}
+            />
+          </section>
 
           <section>
             <h2 className="section-title">Top crafters</h2>
