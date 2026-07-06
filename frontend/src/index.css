@@ -921,6 +921,32 @@ a.dir-card:hover {
   color: var(--ink);
 }
 
+/* Per-item pivot event lines (/item) — one readable sentence per trade / craft
+   event, newest first. A leading tabular day chip keeps the left edge aligned. */
+.pivot-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.pivot-lines li {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--card-border);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.pivot-day {
+  display: inline-block;
+  min-width: 3.5rem;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+}
+
 /* Replay event bodies are JSON blobs — wrap them tight and monospace so a long
    payload doesn't blow out the timeline row width. */
 .replay-body {

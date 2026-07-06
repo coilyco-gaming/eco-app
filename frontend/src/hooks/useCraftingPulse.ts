@@ -19,9 +19,7 @@ export function useCraftingPulse(): CraftingPulse | null {
     fetchCraftingAtlas(controller.signal)
       .then((atlas) => {
         if (controller.signal.aborted || atlas.totalEvents === 0) return
-        // byItem was split into byCrafted/byGathered (#70); the badge's
-        // "most-crafted item" is the top real-crafted-units entry.
-        setPulse({ crafts: atlas.totalEvents, topItem: atlas.byCrafted[0]?.[0] ?? null })
+        setPulse({ crafts: atlas.totalEvents, topItem: atlas.byCrafted?.[0]?.[0] ?? null })
       })
       .catch(() => {
         /* non-fatal: leave the badge absent */
