@@ -2,7 +2,6 @@ import { Link } from "react-router-dom"
 import Layout from "../components/Layout"
 import { useCivicsPulse } from "../hooks/useCivicsPulse"
 import { useEcoStatus } from "../hooks/useEcoStatus"
-import { useSocialPulse } from "../hooks/useSocialPulse"
 import { useTradePulse } from "../hooks/useTradePulse"
 import { useWorldPulse } from "../hooks/useWorldPulse"
 import { formatCount, safeHttpUrl } from "../lib/format"
@@ -15,7 +14,6 @@ export default function Home() {
   const { status } = useEcoStatus()
   const tradePulse = useTradePulse()
   const civicsPulse = useCivicsPulse()
-  const socialPulse = useSocialPulse()
   const worldPulse = useWorldPulse()
   const discordUrl = safeHttpUrl(status?.server.discord)
 
@@ -95,17 +93,6 @@ export default function Home() {
           )}
         </Link>
 
-        <Link className="dir-card" to="/social" data-testid="dir-social">
-          <h3>Social &amp; chat</h3>
-          <p>Chat volume, the reputation graph, and new arrivals — names redacted.</p>
-          {socialPulse && (
-            <p className="dir-badges" data-testid="social-badges">
-              <span className="mini-pill">{formatCount(socialPulse.chat)} messages</span>
-              <span className="mini-pill">{formatCount(socialPulse.arrivals)} new</span>
-            </p>
-          )}
-        </Link>
-
         <Link className="dir-card" to="/world" data-testid="dir-world">
           <h3>World &amp; industry</h3>
           <p>Construction, roads, terraforming, explosions, and pollution — the mutation timeline.</p>
@@ -132,11 +119,6 @@ export default function Home() {
         <Link className="dir-card" to="/calculator" data-testid="dir-calculator">
           <h3>Calculator</h3>
           <p>Price your craft with Eco Gnome — optimal buy and sell prices from your recipes.</p>
-        </Link>
-
-        <Link className="dir-card" to="/replay" data-testid="dir-replay">
-          <h3>Replay</h3>
-          <p>The server chronicle — every recorded player action, logins to blocks, newest first.</p>
         </Link>
 
         <div className="dir-card dir-card-static">

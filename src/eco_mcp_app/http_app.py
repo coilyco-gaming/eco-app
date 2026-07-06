@@ -41,6 +41,7 @@ from starlette.responses import (
 from starlette.routing import BaseRoute, Mount, Route
 from starlette.staticfiles import StaticFiles
 
+from . import page_auth
 from .admin import build_admin_server
 from .livereload import DEBUG, livereload_route
 from .map import build_map_payload, fetch_map_bundle
@@ -216,6 +217,28 @@ def create_app() -> Starlette:
 
     async def healthz(_: Request) -> JSONResponse:
         return JSONResponse({"ok": True})
+
+    async def page_auth_status(_: Request) -> JSONResponse:
+        """`GET /page-auth` — does the SPA need to prompt for a password?
+
+        The SPA gates /replay and /social on this: `required=false` (nothing
+        configured, e.g. a bare local checkout) means render straight through.
+        """
+        return JSONResponse({"required": page_auth.password_required()})
+
+    async def page_auth_verify(request: Request) -> JSONResponse:
+        """`POST {"password": ...}` — verify the page password (eco-app#73).
+
+        Timing-safe compare against the configured password; the password
+        itself never leaves the service. `ok=false` on mismatch or when no
+        password is set. A soft gate, not a security boundary.
+        """
+        try:
+            body = await request.json()
+        except (ValueError, TypeError):
+            body = {}
+        candidate = body.get("password", "") if isinstance(body, dict) else ""
+        return JSONResponse({"ok": page_auth.verify_password(str(candidate))})
 
     # The `/preview*.json` family is the SPA's data plane: the React pages
     # (/server, /economy, /crafting, /climate) fetch these. The HTML `/preview`
@@ -518,6 +541,8 @@ def create_app() -> Starlette:
         Route("/", root, methods=["GET"]),
         Route("/info", service_info, methods=["GET"]),
         Route("/healthz", healthz, methods=["GET"]),
+        Route("/page-auth", page_auth_status, methods=["GET"]),
+        Route("/page-auth", page_auth_verify, methods=["POST"]),
         Route("/preview.json", preview_json, methods=["GET"]),
         Route("/preview-map.json", preview_map_json, methods=["GET"]),
         Route("/preview/currency.json", preview_currency_json, methods=["GET"]),
