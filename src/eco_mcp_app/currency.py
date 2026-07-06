@@ -695,6 +695,17 @@ def _holders_view(rec: CurrencyRecord) -> dict[str, Any]:
     }
 
 
+def _currency_view_full(rec: CurrencyRecord) -> dict[str, Any]:
+    """List-mode currency view enriched with its live top-holder block.
+
+    The roster view (the website ``/economy`` page) renders wealth distribution
+    per currency, so each entry carries ``holders`` (``_holders_view``) next to
+    the issuance / trade facts. The report view builds the same shape inline for
+    its single ``selected`` currency, so the two stay consistent.
+    """
+    return {**_currency_view(rec), "holders": _holders_view(rec)}
+
+
 def _rank_key(rec: CurrencyRecord) -> tuple[float, float, float, str]:
     """Rank currencies by trade activity, then issuance, then name.
 
@@ -772,9 +783,18 @@ def compute_currency_payload(
             money=money,
             available=snapshot.available_currency_datasets,
         ),
-        "currencies": [_currency_view(r) for r in records],
-        "minted": [_currency_view(r) for r in minted],
-        "personal": [_currency_view(r) for r in personal],
+        # Money-supply + trade-volume series over in-game time, so the website
+        # can chart the trend rather than only the latest reading. Each is a
+        # list of [time, value]; empty when the admin token / dataset is absent.
+        "series": {
+            "personalWealth": [[t, v] for t, v in snapshot.personal_wealth_series],
+            "governmentHoldings": [[t, v] for t, v in snapshot.government_holdings_series],
+            "activeCurrencies": [[t, v] for t, v in snapshot.active_currencies_series],
+            "trades7d": [[t, v] for t, v in snapshot.trades_7d_series],
+        },
+        "currencies": [_currency_view_full(r) for r in records],
+        "minted": [_currency_view_full(r) for r in minted],
+        "personal": [_currency_view_full(r) for r in personal],
         "counts": {
             "total": len(records),
             "minted": len(minted),
