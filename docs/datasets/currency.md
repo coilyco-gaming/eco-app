@@ -41,7 +41,17 @@ and climate tools.
 * **Per-currency issuance** - summed `MintCurrency` amount per currency (the backing/minted-supply signal).
 * **Per-currency trade count + volume** - aggregated from `CurrencyTrade` rows, when the exporter carries the currency column.
 * **Money supply** - `PersonalWealthInDefaultCurrency` + `GovernmentHoldingsInDefaultCurrency` latest values, plus `ActiveCurrencies` and `TradesInLast7Days` as circulation signals.
+* **Top holders / per-account balances** - the DiscordLink `Currency <name>` top-holders list. No *export* surface carries per-account balances (see below), so this is served by the stores/economy exporter mod's `GET /api/v1/currency-holdings` ([#58](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/58)), which reads them live from the in-process `CurrencyManager` and joins account owners to names via `UserManager` - sidestepping the [#5](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/5) id-to-name join blocker at the source. The per-currency report folds it in best-effort: reachable when the mod DLL is deployed, and a `holders unavailable` note otherwise (the DLL lands at the next server restart, out of band).
 
-## Deferred (needs a reset-gated exporter mod)
+## Why the mod, not the export surface
 
-* **Top holders / per-account balances** - the DiscordLink `Currency <name>` command lists top holders, but **no export surface carries per-account currency balances**. `PersonalWealthInDefaultCurrency` is a single aggregate series (default currency only), and `CurrencyTrade` rows give flows, not balances - and the buyer/seller ids still hit the [#5](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/5) id-to-name join blocker. Filed as [#58](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/58), linked to the reset-gated stores/economy exporter, rather than silently skipped (AGENTS.md pull-everything rule). The per-currency report renders a `holders unavailable` note pointing at that issue.
+The top-holders list was originally filed as deferred here because **no export
+surface carries per-account currency balances**. `PersonalWealthInDefaultCurrency`
+is a single aggregate series (default currency only), and `CurrencyTrade` rows
+give flows, not balances - and the buyer/seller ids still hit the
+[#5](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/5) id-to-name
+join blocker. The reachable path is therefore an **in-process mod**
+([#58](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/58), built in
+`mods/stores`), not a dataset - the only place per-account, per-currency
+holdings exist is the live `CurrencyManager`. Contract:
+[mods/stores/docs/currency-holdings.md](../../mods/stores/docs/currency-holdings.md).

@@ -6,7 +6,8 @@ Covers:
   when the admin token is absent.
 - ``compute_currency_payload`` in both modes: the roster/list view (meets
   ``Currencies``) and the per-currency report (meets ``Currency <name>``),
-  including the deferred-holders note and the not-found path.
+  including the live top-holders fold, the holders-unavailable fallback, and
+  the not-found path.
 - Currency classification (minted/backed vs personal/credit) and lookup.
 - The MCP tool wiring end-to-end (call_tool returns markdown + JSON + the
   iframe fragment via ``_meta.ui.fragment``).
@@ -26,12 +27,14 @@ from eco_mcp_app import server as eco_server
 from eco_mcp_app.currency import (
     ACTIVE_CURRENCIES_DATASET,
     CREATE_CURRENCY_ACTION,
+    CURRENCY_HOLDINGS_PATH,
     CURRENCY_TRADE_ACTION,
     GOVERNMENT_HOLDINGS_DATASET,
-    HOLDERS_DEFERRED_NOTE,
+    HOLDERS_UNAVAILABLE_NOTE,
     MINT_CURRENCY_ACTION,
     PERSONAL_WEALTH_DATASET,
     TRADES_7D_DATASET,
+    CurrencyHolder,
     CurrencyRecord,
     CurrencySnapshot,
     _classify,
@@ -119,6 +122,33 @@ def _route_all_actions(
     _route_action(CREATE_CURRENCY_ACTION, create)
     _route_action(MINT_CURRENCY_ACTION, mint)
     _route_action(CURRENCY_TRADE_ACTION, trade)
+    _route_holdings()
+
+
+_HOLDINGS_URL = f"{_DEFAULT_BASE}{CURRENCY_HOLDINGS_PATH}"
+
+# Representative holdings from the stores/economy exporter mod (eco-app#58):
+# Sirens held across a government account (no single owner) and two players.
+_HOLDINGS_JSON: list[dict[str, object]] = [
+    {
+        "currency": "Sirens",
+        "backed": True,
+        "accountsCounted": 3,
+        "totalHoldings": 9250.0,
+        "topHolders": [
+            {"account": "Treasury", "holder": None, "balance": 6000.0},
+            {"account": "Kai's Personal Account", "holder": "Kai", "balance": 2500.0},
+            {"account": "Salt's Personal Account", "holder": "Salt", "balance": 750.0},
+        ],
+    },
+]
+
+
+def _route_holdings(payload: object = _HOLDINGS_JSON, status: int = 200) -> None:
+    if status == 200:
+        respx.get(_HOLDINGS_URL).mock(return_value=httpx.Response(200, json=payload))
+    else:
+        respx.get(_HOLDINGS_URL).mock(return_value=httpx.Response(status, text=""))
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +208,43 @@ async def test_fetch_currency_aggregates_roster_and_series() -> None:
     assert "IrrelevantStat" not in snap.available_currency_datasets
     assert "CurrencyTrade" in snap.available_currency_datasets
 
+    # Top holders from the exporter mod folded onto the existing Sirens record.
+    assert snap.holders_reachable is True
+    assert sirens.holders_reachable is True
+    assert sirens.accounts_counted == 3
+    assert sirens.total_holdings == 9250.0
+    assert [(h.account, h.holder, h.balance) for h in sirens.top_holders] == [
+        ("Treasury", None, 6000.0),
+        ("Kai's Personal Account", "Kai", 2500.0),
+        ("Salt's Personal Account", "Salt", 750.0),
+    ]
+    # A currency with no holdings row stays reachable-unaware (mod-not-deployed
+    # and no-holdings are distinguished by the per-record flag).
+    assert gold.holders_reachable is False
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_currency_holdings_absent_when_mod_undeployed() -> None:
+    """A 404 on the holdings endpoint is silent and leaves holders unreachable."""
+    _route_datasets({})
+    _route_flatlist([])
+    _route_action(CREATE_CURRENCY_ACTION, _CREATE_CSV)
+    _route_action(MINT_CURRENCY_ACTION, _MINT_CSV)
+    _route_action(CURRENCY_TRADE_ACTION, _TRADE_CSV)
+    _route_holdings(status=404)
+
+    snap = await fetch_currency(
+        None,
+        info=_info(),
+        days_elapsed=4,
+        admin_token="test-token",
+        default_admin_base=_DEFAULT_BASE,
+    )
+    assert snap.holders_reachable is False
+    assert all(not r.holders_reachable for r in snap.currencies.values())
+    assert snap.warnings == []  # 404 (mod not deployed) is silent
+
 
 @pytest.mark.asyncio
 @respx.mock
@@ -206,6 +273,7 @@ async def test_fetch_currency_tolerates_locked_action() -> None:
     _route_action(CREATE_CURRENCY_ACTION, _CREATE_CSV)
     _route_action(MINT_CURRENCY_ACTION, "", status=401)
     _route_action(CURRENCY_TRADE_ACTION, _TRADE_CSV)
+    _route_holdings(status=404)  # exporter mod not deployed
 
     snap = await fetch_currency(
         None,
@@ -230,6 +298,7 @@ async def test_fetch_currency_flags_missing_trade_currency_column() -> None:
     _route_action(CREATE_CURRENCY_ACTION, _CREATE_CSV)
     _route_action(MINT_CURRENCY_ACTION, _MINT_CSV)
     _route_action(CURRENCY_TRADE_ACTION, "Time,Buyer,Seller,CurrencyAmount\n10,1,2,40\n")
+    _route_holdings(status=404)  # exporter mod not deployed
 
     snap = await fetch_currency(
         None,
@@ -305,23 +374,53 @@ def test_compute_list_view_splits_and_ranks() -> None:
     assert "3 active" in payload["narrative"] or "3 active currencies" in payload["narrative"]
 
 
-def test_compute_report_view_selects_currency_with_deferred_holders() -> None:
-    records = [
-        CurrencyRecord("Sirens", is_minted=True, minted_amount=1500, mint_events=2, trade_count=2),
-        CurrencyRecord("Kai", is_minted=False, trade_count=1),
+def test_compute_report_view_selects_currency_with_live_holders() -> None:
+    sirens = CurrencyRecord(
+        "Sirens", is_minted=True, minted_amount=1500, mint_events=2, trade_count=2
+    )
+    sirens.holders_reachable = True
+    sirens.accounts_counted = 3
+    sirens.total_holdings = 9250.0
+    sirens.top_holders = [
+        CurrencyHolder("Treasury", None, 6000.0),
+        CurrencyHolder("Kai's Personal Account", "Kai", 2500.0),
     ]
-    snap = _snapshot_with(records)
+    snap = _snapshot_with([sirens, CurrencyRecord("Kai", is_minted=False, trade_count=1)])
+    snap.holders_reachable = True
     payload = compute_currency_payload(snap, currency="sirens")  # case-insensitive
 
     assert payload["mode"] == "report"
     assert payload["notFound"] is False
+    assert payload["holders_reachable"] is True
     sel = payload["selected"]
     assert sel is not None
     assert sel["name"] == "Sirens"
     assert sel["type"] == "minted"
     assert sel["mintedAmount"] == 1500.0
+    holders = sel["holders"]
+    assert holders["reachable"] is True
+    assert holders["note"] == ""
+    assert holders["accountsCounted"] == 3
+    assert holders["totalHoldings"] == 9250.0
+    assert holders["list"] == [
+        {"account": "Treasury", "holder": None, "balance": 6000.0},
+        {"account": "Kai's Personal Account", "holder": "Kai", "balance": 2500.0},
+    ]
+
+
+def test_compute_report_view_holders_unavailable_when_mod_undeployed() -> None:
+    """No holdings endpoint reached → the report shows the unavailable note."""
+    records = [CurrencyRecord("Sirens", is_minted=True, minted_amount=1500, trade_count=2)]
+    snap = _snapshot_with(records)  # holders_reachable defaults False
+    payload = compute_currency_payload(snap, currency="Sirens")
+
+    sel = payload["selected"]
+    assert sel is not None
     assert sel["holders"]["reachable"] is False
-    assert sel["holders"]["note"] == HOLDERS_DEFERRED_NOTE
+    assert sel["holders"]["note"] == HOLDERS_UNAVAILABLE_NOTE
+    assert sel["holders"]["list"] == []
+    assert payload["holders_reachable"] is False
+    assert payload["holders_unavailable_note"] == HOLDERS_UNAVAILABLE_NOTE
 
 
 def test_compute_report_view_not_found() -> None:
@@ -393,7 +492,8 @@ async def test_call_get_eco_currency_returns_iframe_fragment() -> None:
     assert payload["mode"] == "list"
     assert payload["counts"]["total"] == 3
     assert payload["money"]["totalSupply"] == 10500.0
-    assert payload["holders_deferred_note"] == HOLDERS_DEFERRED_NOTE
+    # _route_all_actions routes the holdings endpoint too, so the fold reached it.
+    assert payload["holders_reachable"] is True
 
     # Per-call meta carries the shared shell URI (every eco resource renders
     # the same iframe shell); the currency-specific resource URI lives on the
@@ -423,6 +523,12 @@ async def test_call_get_eco_currency_report_mode() -> None:
     assert payload["mode"] == "report"
     assert payload["selected"]["name"] == "Sirens"
     assert payload["selected"]["type"] == "minted"
+    # Live top holders from the exporter mod reached the report end-to-end.
+    holders = payload["selected"]["holders"]
+    assert holders["reachable"] is True
+    assert holders["list"][0] == {"account": "Treasury", "holder": None, "balance": 6000.0}
+    # The report markdown renders the holder table, not a deferred note.
+    assert "Treasury" in result.root.content[0].text
     # Fragment names the currency in the report header.
     meta = result.root.meta
     assert meta is not None

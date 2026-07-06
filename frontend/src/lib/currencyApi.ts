@@ -11,6 +11,12 @@
 
 import { fetchJsonOrNull } from "./api"
 
+export interface CurrencyHolder {
+  account: string
+  holder: string | null
+  balance: number
+}
+
 export interface CurrencyRecord {
   name: string
   isMinted: boolean
@@ -19,6 +25,13 @@ export interface CurrencyRecord {
   tradeCount: number
   tradeVolume: number
   createdBy: string | null
+  // Live per-account balances from the stores/economy exporter mod (eco-app#58).
+  // Optional: present in the snapshot payload, not yet rendered by the currency
+  // strip. `holdersReachable` is false when that mod is not deployed on the server.
+  holdersReachable?: boolean
+  totalHoldings?: number
+  accountsCounted?: number
+  topHolders?: CurrencyHolder[]
 }
 
 export interface CurrencySnapshot {
