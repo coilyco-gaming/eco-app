@@ -2,7 +2,7 @@
 
 Mirrors the eco-spec-tracker sibling's respx pattern: stub the upstream
 `/info` fetch so the test is hermetic, then drive the MCP `CallToolRequest`
-handler and inspect both the JSON payload and the HTML fragment.
+handler and inspect the JSON payload (just-data per eco-app#87: no widget).
 """
 
 from __future__ import annotations
@@ -156,17 +156,8 @@ async def test_call_get_eco_milestones_happy_path() -> None:
     payload = json.loads(json_block.text)
     assert payload["view"] == "eco_milestones"
     assert len(payload["milestones"]) == 5
-    # HTML fragment now travels in `_meta.ui.fragment`, off the content array.
-    assert result.root.meta is not None
-    html = result.root.meta["ui"]["fragment"]
-    # Top-line total culture rendered.
-    assert "166.6" in html
-    # Markup stripped — no Eco inline tags leak into rendered HTML.
-    assert "<style=" not in html
-    assert "<icon " not in html
-    # Sorted top entry matches payload[0].
-    top_name = payload["milestones"][0]["name"]
-    assert top_name in html
+    # Just-data per eco-app#87: get_eco_milestones no longer emits a widget.
+    assert result.root.meta is None
 
 
 @pytest.mark.asyncio
@@ -186,10 +177,11 @@ async def test_call_get_eco_milestones_empty_achievements() -> None:
         params=mt.CallToolRequestParams(name="get_eco_milestones", arguments={}),
     )
     result = await handler(req)
-    assert result.root.meta is not None
-    html = result.root.meta["ui"]["fragment"]
-    # Empty state copy, not a crash.
-    assert "No milestones" in html or "no milestones" in html.lower()
+    # Just-data per eco-app#87: get_eco_milestones no longer emits a widget.
+    assert result.root.meta is None
+    # Empty state is not a crash: the JSON payload carries an empty milestone list.
+    payload = json.loads(result.root.content[1].text)
+    assert payload["milestones"] == []
 
 
 @pytest.mark.asyncio

@@ -9,8 +9,8 @@ Covers:
   including the live top-holders fold, the holders-unavailable fallback, and
   the not-found path.
 - Currency classification (minted/backed vs personal/credit) and lookup.
-- The MCP tool wiring end-to-end (call_tool returns markdown + JSON + the
-  iframe fragment via ``_meta.ui.fragment``).
+- The MCP tool wiring end-to-end (call_tool returns markdown + JSON,
+  and no widget — just-data per eco-app#87).
 """
 
 from __future__ import annotations
@@ -44,7 +44,6 @@ from eco_mcp_app.currency import (
 )
 from eco_mcp_app.server import (
     DEFAULT_ECO_INFO_URL,
-    UI_META,
     build_server,
 )
 
@@ -545,13 +544,8 @@ async def test_call_get_eco_currency_returns_iframe_fragment() -> None:
     # _route_all_actions routes the holdings endpoint too, so the fold reached it.
     assert payload["holders_reachable"] is True
 
-    # Per-call meta carries the shared shell URI (every eco resource renders
-    # the same iframe shell); the currency-specific resource URI lives on the
-    # tool declaration, asserted in test_tool_declaration_uses_currency_uri.
-    meta = result.root.meta
-    assert meta is not None
-    assert meta["ui"]["resourceUri"] == UI_META["ui"]["resourceUri"]
-    assert "Currency" in meta["ui"]["fragment"]
+    # Just-data per eco-app#87: get_eco_currency no longer emits a widget.
+    assert result.root.meta is None
 
 
 @pytest.mark.asyncio
@@ -579,10 +573,8 @@ async def test_call_get_eco_currency_report_mode() -> None:
     assert holders["list"][0] == {"account": "Treasury", "holder": None, "balance": 6000.0}
     # The report markdown renders the holder table, not a deferred note.
     assert "Treasury" in result.root.content[0].text
-    # Fragment names the currency in the report header.
-    meta = result.root.meta
-    assert meta is not None
-    assert "Sirens" in meta["ui"]["fragment"]
+    # Just-data per eco-app#87: get_eco_currency no longer emits a widget.
+    assert result.root.meta is None
 
 
 @pytest.mark.asyncio
@@ -597,20 +589,19 @@ async def test_call_get_eco_currency_handles_info_failure() -> None:
     )
     result = await handler(req)
     assert result.root.isError is True
-    meta = result.root.meta
-    assert meta is not None
-    assert isinstance(meta["ui"]["fragment"], str)
+    assert "unreachable" in result.root.content[0].text.lower()
+    # Just-data per eco-app#87: get_eco_currency no longer emits a widget.
+    assert result.root.meta is None
 
 
 @pytest.mark.asyncio
 async def test_tool_declaration_uses_currency_uri() -> None:
-    """The tool declaration points the host at the currency iframe resource."""
+    """The tool no longer declares a widget resource (just-data per eco-app#87)."""
     mcp = build_server()
     handler = mcp.request_handlers[mt.ListToolsRequest]
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     tool = next(t for t in result.root.tools if t.name == "get_eco_currency")
-    assert tool.meta is not None
-    assert tool.meta["ui"]["resourceUri"] == _CURRENCY_RESOURCE_URI
+    assert tool.meta is None
 
 
 @pytest.mark.asyncio

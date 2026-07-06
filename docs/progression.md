@@ -11,7 +11,7 @@ pull-everything survey [#7](https://forgejo.coilysiren.me/coilyco-gaming/eco-app
 
 ## Surfaces
 
-- **`get_eco_progression` MCP tool** - `src/eco_mcp_app/progression.py` + `server.py` wiring. Returns a markdown summary + the structured `ProgressionHistory.to_dict()` JSON, plus an `_meta.ui` Jinja card (`templates/partials/progression.html`) for MCP Apps hosts. Requires an admin API key server-side (`ECO_ADMIN_API_KEY`, SSM in the homelab deploy).
+- **`get_eco_progression` MCP tool** - `src/eco_mcp_app/progression.py` + `server.py` wiring. Returns a markdown summary + the structured `ProgressionHistory.to_dict()` JSON. Progression is a "just data" tool - it emits no MCP-app widget ([#87](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/87); the widget is scoped to the world/region view). Requires an admin API key server-side (`ECO_ADMIN_API_KEY`, SSM in the homelab deploy).
 - **`/progression` SPA page** - `frontend/src/pages/Progression.tsx`, consuming `/preview/progression.json`. Product UX lives here (the Jinja card is only the in-chat fragment). Carries the per-day trend small-multiples, the leaderboards, and expandable per-citizen trajectory cards, with a `?q=` citizen filter and cross-links to `/jobs` (current state) and `/crafting` (skill provenance).
 - **`/jobs` history lane** - `frontend/src/pages/Jobs.tsx` fetches the same surface best-effort and enriches each player card with a "how they got here" expandable timeline, joined to the progression citizen by name. A failure or thin server leaves `/jobs` exactly as it was - the lane simply doesn't render.
 

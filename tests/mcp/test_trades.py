@@ -12,7 +12,7 @@ Covers:
   - Missing-endpoint (401 / connect error) becomes a non-fatal warning.
   - Empty CSVs produce a clean "no trades" ledger.
   - The in-memory TTL cache is per (base, api-key) and hits within TTL.
-  - Tool wiring returns two TextContent blocks + a `_meta.ui` fragment.
+  - Tool wiring returns two TextContent blocks and no widget (just-data per eco-app#87).
 """
 
 from __future__ import annotations
@@ -281,8 +281,8 @@ async def test_tool_call_returns_text_blocks_and_fragment(
     assert len(blocks) == 2
     assert isinstance(blocks[0], mt.TextContent)
     assert "Trades ledger" in blocks[0].text
-    assert result.root.meta is not None
-    assert "Trades ledger" in result.root.meta["ui"]["fragment"]
+    # Just-data per eco-app#87: get_eco_trades no longer emits a widget.
+    assert result.root.meta is None
 
 
 @pytest.mark.asyncio
