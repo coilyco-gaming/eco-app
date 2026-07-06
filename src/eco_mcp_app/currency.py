@@ -9,11 +9,16 @@ exportable today (see ``docs/datasets/currency.md`` for the probe):
 * ``Currency <name>`` - one currency's trade count, issuance (minted amount),
   and holder list.
 
-The **holder list is deferred**: no export surface carries per-account currency
-balances, so that piece is filed as a follow-up (see ``HOLDERS_DEFERRED_NOTE``)
-rather than faked. Everything else is reachable from the admin dataset catalog.
+The **top-holder list** is served live by the stores/economy exporter mod
+(``mods/stores``, eco-app#58): it reads per-account currency balances from the
+in-process ``CurrencyManager`` and joins account owners to names via the same
+``UserManager`` access the jobs mod uses for ``/api/v1/citizens``. That surface
+is best-effort - when the mod DLL is not deployed on the target server the
+endpoint 404s and the per-currency report degrades to
+``HOLDERS_UNAVAILABLE_NOTE`` rather than faking a list. Everything else is
+reachable from the admin dataset catalog.
 
-Three slices, each absence-tolerant (empty is a valid state, not an error):
+Four slices, each absence-tolerant (empty is a valid state, not an error):
 
 1. **Money-supply series via ``/datasets/get``** - ``ActiveCurrencies`` (count),
    ``TradesInLast7Days`` (rolling trade value), ``PersonalWealthInDefaultCurrency``
@@ -87,13 +92,22 @@ _AMOUNT_KEYS: tuple[str, ...] = (
 )
 _CREATOR_KEYS: tuple[str, ...] = ("Citizen", "Creator", "Founder", "Player", "User")
 
-# The holder list is not derivable from any current export surface. Rendered on
-# the per-currency report and pointed at the follow-up issue (eco-app#58) so
-# the gap is visible, not silent (AGENTS.md pull-everything rule).
-HOLDERS_DEFERRED_NOTE = (
-    "Top holders need per-account currency balances, which no current export "
-    "surface carries - deferred to a reset-gated stores/economy exporter mod "
-    "(eco-app#58)."
+# The stores/economy exporter mod (mods/stores, eco-app#58) serves per-account
+# currency balances live from CurrencyManager at this path, under the same
+# admin-token surface as the action exporter. Best-effort: an absent mod (DLL
+# not yet deployed) 404s and the report degrades to HOLDERS_UNAVAILABLE_NOTE.
+CURRENCY_HOLDINGS_PATH = "/api/v1/currency-holdings"
+
+# How many holders the per-currency report keeps. The mod truncates its own
+# list too; we re-cap so the payload stays lean regardless of the mod's cap.
+_MAX_HOLDERS = int(os.environ.get("ECO_CURRENCY_MAX_HOLDERS", "15"))
+
+# Shown on the per-currency report when the holdings endpoint is unreachable -
+# the exporter mod is not deployed on this server yet (the DLL lands at the next
+# restart, out of band). Not faked, matching the AGENTS.md pull-everything rule.
+HOLDERS_UNAVAILABLE_NOTE = (
+    "Live top-holder balances need the stores/economy exporter mod running on "
+    "the server (eco-app#58); it is not reachable right now."
 )
 
 # Per-process cache. Currency state moves slowly; a 45s TTL matches the economy
@@ -103,6 +117,20 @@ _currency_cache: TTLCache[str, CurrencySnapshot] = TTLCache(maxsize=64, ttl=_CAC
 
 # Action exporter row cap - same defensive bound crafting.py / climate.py use.
 _MAX_ROWS_PER_ACTION = int(os.environ.get("ECO_CURRENCY_MAX_ROWS", "200000"))
+
+
+@dataclass
+class CurrencyHolder:
+    """One account's balance in a currency - a row of the top-holders table.
+
+    ``holder`` is the resolved owner citizen name, or ``None`` for a
+    government/company account with no single owner (the ``account`` name
+    carries those). Sourced from the stores/economy exporter mod (eco-app#58).
+    """
+
+    account: str
+    holder: str | None
+    balance: float
 
 
 @dataclass
@@ -116,6 +144,13 @@ class CurrencyRecord:
     trade_count: int = 0
     trade_volume: float = 0.0
     created_by: str | None = None
+    # Top-holder balances from the exporter mod (eco-app#58). ``holders_reachable``
+    # stays False until the endpoint answers for this currency, so the report can
+    # tell "no holders yet" apart from "mod not deployed".
+    holders_reachable: bool = False
+    total_holdings: float = 0.0
+    accounts_counted: int = 0
+    top_holders: list[CurrencyHolder] = field(default_factory=list)
 
 
 @dataclass
@@ -138,6 +173,10 @@ class CurrencySnapshot:
     # be explained: "the exporter didn't carry a Currency column" vs "no events").
     trade_rows_total: int = 0
     trade_currency_column_seen: bool = False
+    # Whether the stores/economy exporter's holdings endpoint answered at all
+    # (eco-app#58). False means the mod is not deployed on this server, so the
+    # per-currency report shows HOLDERS_UNAVAILABLE_NOTE instead of a list.
+    holders_reachable: bool = False
     # Currency-relevant dataset names the catalog exposes - surfaced so an
     # empty card is debuggable without server logs.
     available_currency_datasets: list[str] = field(default_factory=list)
@@ -169,11 +208,19 @@ class CurrencySnapshot:
                     "tradeCount": r.trade_count,
                     "tradeVolume": r.trade_volume,
                     "createdBy": r.created_by,
+                    "holdersReachable": r.holders_reachable,
+                    "totalHoldings": round(r.total_holdings, 2),
+                    "accountsCounted": r.accounts_counted,
+                    "topHolders": [
+                        {"account": h.account, "holder": h.holder, "balance": round(h.balance, 2)}
+                        for h in r.top_holders
+                    ],
                 }
                 for r in self.currencies.values()
             ],
             "tradeRowsTotal": self.trade_rows_total,
             "tradeCurrencyColumnSeen": self.trade_currency_column_seen,
+            "holdersReachable": self.holders_reachable,
             "availableCurrencyDatasets": list(self.available_currency_datasets),
             "warnings": list(self.warnings),
         }
@@ -430,6 +477,82 @@ async def _aggregate_currency_action(
         return 0, f"{action_name}: {type(e).__name__}"
 
 
+# ---------------------------------------------------------------------------
+# Top holders (stores/economy exporter mod) - the one Currency <name> piece the
+# action exporters cannot reconstruct. See eco-app#58 and mods/stores.
+# ---------------------------------------------------------------------------
+
+
+async def _fetch_currency_holdings(
+    client: httpx.AsyncClient, base: str, headers: dict[str, str], snapshot: CurrencySnapshot
+) -> None:
+    """Fold the exporter mod's per-currency top holders into the roster.
+
+    Best-effort, mirroring the citizens join in ``crafting.py``: a missing mod
+    (401/404/405, the DLL not deployed) leaves ``holders_reachable`` False so the
+    report shows ``HOLDERS_UNAVAILABLE_NOTE``; other failures append a non-fatal
+    warning. A currency seen here but absent from the action roster is created,
+    so a holder-only currency still surfaces. See eco-app#58.
+    """
+    url = f"{base}{CURRENCY_HOLDINGS_PATH}"
+    try:
+        r = await client.get(url, headers=headers)
+        if r.status_code != 200:
+            if r.status_code not in (401, 404, 405):
+                snapshot.warnings.append(f"currency-holdings: HTTP {r.status_code}")
+            return
+        data = r.json()
+    except (httpx.HTTPError, ValueError) as e:
+        snapshot.warnings.append(f"currency-holdings: {type(e).__name__}")
+        return
+
+    if not isinstance(data, list):
+        return
+
+    snapshot.holders_reachable = True
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("currency")
+        if not name:
+            continue
+        rec = snapshot.record(str(name))
+        rec.holders_reachable = True
+        rec.accounts_counted = _as_int(entry.get("accountsCounted"))
+        rec.total_holdings = _as_float(entry.get("totalHoldings"))
+        holders: list[CurrencyHolder] = []
+        for h in entry.get("topHolders") or []:
+            if not isinstance(h, dict):
+                continue
+            account = h.get("account")
+            if not account:
+                continue
+            holder = h.get("holder")
+            holders.append(
+                CurrencyHolder(
+                    account=str(account),
+                    holder=str(holder) if holder else None,
+                    balance=_as_float(h.get("balance")),
+                )
+            )
+        holders.sort(key=lambda x: x.balance, reverse=True)
+        rec.top_holders = holders[:_MAX_HOLDERS]
+
+
+def _as_int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _as_float(value: Any) -> float:
+    try:
+        return float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 async def fetch_currency(
     server: str | None,
     *,
@@ -498,6 +621,11 @@ async def fetch_currency(
             if warn and not any(code in warn for code in ("401", "404", "405")):
                 snapshot.warnings.append(warn)
 
+        # Top holders from the stores/economy exporter mod. Folded after the
+        # roster so it decorates existing records (and adds any holder-only
+        # currency). Best-effort - an undeployed mod leaves holders unreachable.
+        await _fetch_currency_holdings(client, base, headers, snapshot)
+
     _currency_cache[cache_key] = snapshot
     return snapshot
 
@@ -537,6 +665,33 @@ def _currency_view(rec: CurrencyRecord) -> dict[str, Any]:
         "tradeCount": rec.trade_count,
         "tradeVolume": round(rec.trade_volume, 2),
         "createdBy": rec.created_by,
+    }
+
+
+def _holders_view(rec: CurrencyRecord) -> dict[str, Any]:
+    """The per-currency top-holder block (meets ``Currency <name>``'s holders).
+
+    ``reachable`` False means the exporter mod is not deployed on the target
+    server, so ``note`` carries ``HOLDERS_UNAVAILABLE_NOTE``. Reachable-but-empty
+    ("no accounts hold this currency yet") is a distinct, valid state.
+    """
+    if not rec.holders_reachable:
+        return {
+            "reachable": False,
+            "note": HOLDERS_UNAVAILABLE_NOTE,
+            "accountsCounted": 0,
+            "totalHoldings": 0.0,
+            "list": [],
+        }
+    return {
+        "reachable": True,
+        "note": "" if rec.top_holders else "No accounts hold this currency yet.",
+        "accountsCounted": rec.accounts_counted,
+        "totalHoldings": round(rec.total_holdings, 2),
+        "list": [
+            {"account": h.account, "holder": h.holder, "balance": round(h.balance, 2)}
+            for h in rec.top_holders
+        ],
     }
 
 
@@ -583,7 +738,7 @@ def compute_currency_payload(
         else:
             selected = {
                 **_currency_view(match),
-                "holders": {"reachable": False, "note": HOLDERS_DEFERRED_NOTE},
+                "holders": _holders_view(match),
             }
 
     money = {
@@ -626,7 +781,8 @@ def compute_currency_payload(
             "personal": len(personal),
         },
         "selected": selected,
-        "holders_deferred_note": HOLDERS_DEFERRED_NOTE,
+        "holders_reachable": snapshot.holders_reachable,
+        "holders_unavailable_note": HOLDERS_UNAVAILABLE_NOTE,
         "trade_currency_column_seen": snapshot.trade_currency_column_seen,
         "available_currency_datasets": list(snapshot.available_currency_datasets),
         "warnings": list(snapshot.warnings),
@@ -687,13 +843,15 @@ def _clear_cache() -> None:
 __all__ = [
     "ACTIVE_CURRENCIES_DATASET",
     "CREATE_CURRENCY_ACTION",
+    "CURRENCY_HOLDINGS_PATH",
     "CURRENCY_TRADE_ACTION",
     "GOVERNMENT_HOLDINGS_DATASET",
-    "HOLDERS_DEFERRED_NOTE",
+    "HOLDERS_UNAVAILABLE_NOTE",
     "MINT_CURRENCY_ACTION",
     "MONEY_SUPPLY_DATASETS",
     "PERSONAL_WEALTH_DATASET",
     "TRADES_7D_DATASET",
+    "CurrencyHolder",
     "CurrencyRecord",
     "CurrencySnapshot",
     "compute_currency_payload",

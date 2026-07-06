@@ -1,6 +1,6 @@
 using System.Collections;
-using System.Reflection;
 using Eco.Gameplay.Objects;
+using static EcoStoreExporter.Reflect;
 
 namespace EcoStoreExporter;
 
@@ -27,8 +27,6 @@ namespace EcoStoreExporter;
 // shelf is the correct answer; a 500 is not.
 public static class StoreScanner
 {
-    private const BindingFlags Public = BindingFlags.Public | BindingFlags.Instance;
-
     public static List<StoreDto> Scan()
     {
         var stores = new List<StoreDto>();
@@ -164,81 +162,5 @@ public static class StoreScanner
                        ?? 0;
 
         return new OfferDto(itemName, itemTypeName, buying, price, quantity);
-    }
-
-    // --- reflection primitives, all null- and exception-tolerant ---
-
-    private static object? GetMember(object? target, params string[] names)
-    {
-        if (target is null) return null;
-        var type = target.GetType();
-
-        foreach (var name in names)
-        {
-            try
-            {
-                var prop = type.GetProperty(name, Public);
-                if (prop is not null && prop.GetIndexParameters().Length == 0)
-                {
-                    var value = prop.GetValue(target);
-                    if (value is not null) return value;
-                }
-
-                var field = type.GetField(name, Public);
-                if (field is not null)
-                {
-                    var value = field.GetValue(target);
-                    if (value is not null) return value;
-                }
-            }
-            catch
-            {
-                // Accessor threw (dangling reference). Try the next candidate.
-            }
-        }
-
-        return null;
-    }
-
-    private static object? Invoke(object? target, string name)
-    {
-        if (target is null) return null;
-        try
-        {
-            var method = target.GetType().GetMethod(name, Public, binder: null, types: Type.EmptyTypes, modifiers: null);
-            return method?.Invoke(target, null);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static string? AsString(object? value)
-    {
-        if (value is null) return null;
-        var s = value.ToString();
-        return string.IsNullOrWhiteSpace(s) ? null : s;
-    }
-
-    private static int? AsInt(object? value) =>
-        value is null ? null : TryConvert(() => Convert.ToInt32(value));
-
-    private static double? AsDouble(object? value) =>
-        value is null ? null : TryConvert(() => Convert.ToDouble(value));
-
-    private static bool? AsBool(object? value) =>
-        value is bool b ? b : null;
-
-    private static T? TryConvert<T>(Func<T> convert) where T : struct
-    {
-        try
-        {
-            return convert();
-        }
-        catch
-        {
-            return null;
-        }
     }
 }

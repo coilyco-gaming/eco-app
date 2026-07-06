@@ -1881,7 +1881,8 @@ def _render_currency_card(payload: dict[str, Any]) -> str:
         minted=payload["minted"],
         personal=payload["personal"],
         counts=payload["counts"],
-        holders_deferred_note=payload["holders_deferred_note"],
+        holders_reachable=payload.get("holders_reachable", False),
+        holders_unavailable_note=payload.get("holders_unavailable_note", ""),
         available_currency_datasets=payload.get("available_currency_datasets") or [],
         warnings=payload.get("warnings") or [],
         fetched_at=fetched_at,
@@ -1918,7 +1919,19 @@ def _format_currency_markdown(payload: dict[str, Any]) -> str:
             )
         if selected.get("createdBy"):
             lines.append(f"- Created by: {selected['createdBy']}")
-        lines.append(f"- Top holders: _{selected['holders']['note']}_")
+        holders = selected["holders"]
+        if holders["reachable"] and holders["list"]:
+            lines.append(
+                f"- Top holders ({holders['accountsCounted']} accounts,"
+                f" total {holders['totalHoldings']:,.0f}):"
+            )
+            for h in holders["list"]:
+                who = f" ({h['holder']})" if h.get("holder") else ""
+                lines.append(f"  - {h['account']}{who} — {h['balance']:,.0f}")
+        elif holders["reachable"]:
+            lines.append("- Top holders: _no accounts hold this currency yet_")
+        else:
+            lines.append(f"- Top holders: _{holders['note']}_")
         return "\n".join(lines)
 
     lines = [f"**{server} — currency market**", "", payload["narrative"], ""]
@@ -1946,7 +1959,10 @@ def _format_currency_markdown(payload: dict[str, Any]) -> str:
     if not payload["currencies"]:
         lines.append("_No currencies created or traded yet._")
     lines.append("")
-    lines.append(f"_Top holders: {payload['holders_deferred_note']}_")
+    if payload.get("holders_reachable"):
+        lines.append("_Open a currency's report for its live top-holder balances._")
+    elif payload["currencies"]:
+        lines.append(f"_Top holders: {payload['holders_unavailable_note']}_")
     if not payload["admin_ok"]:
         lines.append("")
         lines.append("_Admin token unavailable — roster + money-supply series are empty._")
@@ -2590,9 +2606,11 @@ def build_server() -> Server:
                     "totals (player wealth + government holdings) and rolling trade "
                     "value. Meets DiscordLink's `Currencies` command. Pass "
                     "`currency` (a currency name) for the per-currency report "
-                    "matching `Currency <name>` — trade count, minted issuance, and "
-                    "type. Top-holder lists are not in Eco's export surface yet and "
-                    "are flagged as deferred rather than faked. Pulls "
+                    "matching `Currency <name>` — trade count, minted issuance, "
+                    "type, and the live top account holders (per-account balances "
+                    "from the stores/economy exporter mod, joined to citizen names; "
+                    "flagged unavailable rather than faked when the mod is not "
+                    "deployed). Pulls "
                     "/datasets/get + the action exporter (admin key); degrades to "
                     "the public /info headline when the key is absent. Defaults to "
                     "ECO_INFO_URL; pass `server` to target a different one."

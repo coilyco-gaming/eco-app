@@ -2,7 +2,7 @@
 
    Two modes off one payload:
      * list   - the roster split minted/backed vs personal/credit (Currencies).
-     * report - one currency's issuance + trade + holder note (Currency <name>).
+     * report - one currency's issuance + trade + live top holders (Currency <name>).
 
    Day-1 reality: every series and the whole roster can be empty. Each block
    guards its data and falls back to "—" / an empty-state line rather than
@@ -21,6 +21,8 @@
 }
 .cur-row-name { font-weight: 600; color: var(--fg); }
 .cur-row-meta { font-size: 12px; color: var(--fg-muted); text-align: right; }
+.cur-holder-meta { font-size: 12px; color: var(--fg-muted); }
+.cur-holder-bal { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--fg); }
 </style>
 <div class="banner-wrap">
   <a href="{{ steam_url }}" target="_blank" rel="noopener">
@@ -103,9 +105,29 @@
         </div>
       </div>
     </div>
-    <div class="about" style="margin-top:10px">
-      <b>Top holders:</b> unavailable. {{ selected.holders.note }}
+    {% if selected.holders.reachable and selected.holders.list %}
+    <div class="cur-section-label">
+      Top holders · {{ selected.holders.accountsCounted }} account{{ "" if selected.holders.accountsCounted == 1 else "s" }} · total {{ fmt(selected.holders.totalHoldings) }}
     </div>
+    <div class="cur-rows">
+      {% for h in selected.holders.list %}
+      <div class="cur-row">
+        <span class="cur-row-name">
+          {{ h.account }}{% if h.holder %} <span class="cur-holder-meta">· {{ h.holder }}</span>{% endif %}
+        </span>
+        <span class="cur-holder-bal">{{ fmt(h.balance) }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% elif selected.holders.reachable %}
+    <div class="about" style="margin-top:10px">
+      <b>Top holders:</b> no accounts hold this currency yet.
+    </div>
+    {% else %}
+    <div class="hint" style="margin-top:10px">
+      <b>Top holders:</b> {{ selected.holders.note }}
+    </div>
+    {% endif %}
   {% endif %}
 {% else %}
   {# List mode — minted then personal, each ranked by trade activity. #}
@@ -136,9 +158,15 @@
       {% endfor %}
     </div>
     {% endif %}
+    {% if holders_reachable %}
     <div class="hint" style="margin-top:10px">
-      Top holders per currency are not in Eco's export surface yet — {{ holders_deferred_note }}
+      Open a currency's report for its live top-holder balances.
     </div>
+    {% else %}
+    <div class="hint" style="margin-top:10px">
+      {{ holders_unavailable_note }}
+    </div>
+    {% endif %}
   {% else %}
     <div class="about" style="margin-top:10px">
       No currencies have been created or traded yet.

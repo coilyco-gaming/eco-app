@@ -38,3 +38,29 @@ public record StoreDto(
     [property: JsonPropertyName("currency"), JsonProperty("currency")] string? Currency,
     [property: JsonPropertyName("location"), JsonProperty("location")] LocationDto? Location,
     [property: JsonPropertyName("offers"), JsonProperty("offers")] OfferDto[] Offers);
+
+// One account's balance in a single currency, the row DiscordLink's
+// `Currency <name>` top-holders table shows. `Account` is the bank account's
+// display name (already human-readable in Eco); `Holder` is the resolved owner
+// citizen name (via the same UserManager join mods/jobs uses for
+// /api/v1/citizens), or null when the account has no single resolvable owner (a
+// government/company account, or a user the join missed). See docs/currency-holdings.md.
+public record HolderDto(
+    [property: JsonPropertyName("account"), JsonProperty("account")] string Account,
+    [property: JsonPropertyName("holder"), JsonProperty("holder")] string? Holder,
+    [property: JsonPropertyName("balance"), JsonProperty("balance")] double Balance);
+
+// Per-currency holdings: the top account balances plus the totals they sum
+// toward. `Backed` is best-effort (null when the currency's money-type could
+// not be read) - the Python side keeps its own minted/personal classification
+// from the MintCurrency action; this is supplementary. `AccountsCounted` and
+// `TotalHoldings` are over ALL accounts holding the currency, not just the
+// truncated `TopHolders` list, so the report can say "top 20 of N". This is the
+// surface eco-app#58 adds: the one piece of `Currency <name>` history cannot
+// reconstruct, read live from CurrencyManager in-process.
+public record CurrencyHoldingsDto(
+    [property: JsonPropertyName("currency"), JsonProperty("currency")] string Currency,
+    [property: JsonPropertyName("backed"), JsonProperty("backed")] bool? Backed,
+    [property: JsonPropertyName("accountsCounted"), JsonProperty("accountsCounted")] int AccountsCounted,
+    [property: JsonPropertyName("totalHoldings"), JsonProperty("totalHoldings")] double TotalHoldings,
+    [property: JsonPropertyName("topHolders"), JsonProperty("topHolders")] HolderDto[] TopHolders);
