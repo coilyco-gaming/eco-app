@@ -42,10 +42,13 @@ from starlette.routing import BaseRoute, Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from .admin import build_admin_server
+from .items import fetch_item_index, fetch_item_pivot
 from .livereload import DEBUG, livereload_route
 from .map import build_map_payload, fetch_map_bundle
 from .server import (
+    ADMIN_API_KEY_ENV,
     HTMX_PREFIX,
+    _get_admin_token,
     build_server,
     fetch_eco_info,
     redact,
@@ -450,6 +453,42 @@ def create_app() -> Starlette:
             return JSONResponse({"error": "no JSON block from eco_trade_watchers"}, status_code=502)
         return JSONResponse(payload)
 
+    def _resolve_admin_key() -> str | None:
+        # Same precedence the MCP tool handlers use (env override, then SSM).
+        return os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
+
+    async def preview_items_json(request: Request) -> JSONResponse:
+        """`/preview/items.json` — the SPA's `/items` list-page data plane.
+
+        The union of every item ever bought / sold / crafted, built over the
+        trades ledger + crafting atlas. A dedicated route (not the generic
+        `/preview/<tool>.json`) so `?server=` passes straight through and the
+        admin key is resolved server-side (eco-app#81).
+        """
+        server_arg = request.query_params.get("server")
+        try:
+            index = await fetch_item_index(base_url=server_arg, api_key=_resolve_admin_key())
+        except httpx.HTTPError as e:
+            return JSONResponse({"error": str(e)}, status_code=502)
+        return JSONResponse(index.to_dict())
+
+    async def preview_item_json(request: Request) -> JSONResponse:
+        """`/preview/item.json?item=<id>` — the SPA's per-item pivot data plane.
+
+        Every trade + crafting event that pivots on one item id, newest first
+        (eco-app#81). `?server=` passes through; the admin key is resolved
+        server-side.
+        """
+        item = request.query_params.get("item", "").strip()
+        if not item:
+            return JSONResponse({"error": "item query param is required"}, status_code=400)
+        server_arg = request.query_params.get("server")
+        try:
+            pivot = await fetch_item_pivot(item, base_url=server_arg, api_key=_resolve_admin_key())
+        except httpx.HTTPError as e:
+            return JSONResponse({"error": str(e)}, status_code=502)
+        return JSONResponse(pivot.to_dict())
+
     def _extract_json_block(call_result: mt.CallToolResult) -> Any:
         # Each tool emits markdown + JSON TextContent blocks (see
         # server.call_tool). Find the JSON one by skipping any HTMX-prefixed
@@ -529,6 +568,8 @@ def create_app() -> Starlette:
         Route("/preview/social.json", preview_social_json, methods=["GET"]),
         Route("/preview/world.json", preview_world_json, methods=["GET"]),
         Route("/preview/watchers.json", preview_watchers_json, methods=["GET"]),
+        Route("/preview/items.json", preview_items_json, methods=["GET"]),
+        Route("/preview/item.json", preview_item_json, methods=["GET"]),
         Route("/preview/{tool}", preview_tool, methods=["GET"]),
         Mount("/mcp", app=handle_mcp),
         Mount("/jobs/api", app=jobs_app),

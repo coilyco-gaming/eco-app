@@ -6,6 +6,8 @@ import Crafting from "./pages/Crafting"
 import Ecoregion from "./pages/Ecoregion"
 import Economy from "./pages/Economy"
 import Home from "./pages/Home"
+import Item from "./pages/Item"
+import Items from "./pages/Items"
 import Jobs from "./pages/Jobs"
 import Progression from "./pages/Progression"
 import Replay from "./pages/Replay"
@@ -31,6 +33,8 @@ export default function App() {
         <Route path="/trade" element={<Trade />} />
         <Route path="/trades" element={<Trades />} />
         <Route path="/crafting" element={<Crafting />} />
+        <Route path="/items" element={<Items />} />
+        <Route path="/item" element={<Item />} />
         <Route path="/civics" element={<Civics />} />
         <Route path="/social" element={<Social />} />
         <Route path="/world" element={<World />} />

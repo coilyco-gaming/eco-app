@@ -82,6 +82,11 @@ export default function Home() {
           <p>What the world is making — top items and stations, deep-linkable.</p>
         </Link>
 
+        <Link className="dir-card" to="/items" data-testid="dir-items">
+          <h3>Item directory</h3>
+          <p>Every item ever bought, sold, or crafted — click through to its full history.</p>
+        </Link>
+
         <Link className="dir-card" to="/civics" data-testid="dir-civics">
           <h3>Civics &amp; governance</h3>
           <p>Elections, turnout, demographics, and new settlements over time.</p>
