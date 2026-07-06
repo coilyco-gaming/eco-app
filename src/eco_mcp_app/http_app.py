@@ -392,9 +392,10 @@ def create_app() -> Starlette:
         return JSONResponse({"ok": page_auth.verify_password(str(candidate))})
 
     # The `/preview*.json` family is the SPA's data plane: the React pages
-    # (/server, /economy, /crafting, /climate) fetch these. The HTML `/preview`
-    # cards that used to share these handlers were removed — product UX lives
-    # in the SPA, the Jinja cards live only on MCP `_meta.ui` for in-chat hosts.
+    # (/info, /trade, /crafting, /jobs, the World map) fetch these. The HTML
+    # `/preview` cards that used to share these handlers were removed — product
+    # UX lives in the SPA, the Jinja cards live only on MCP `_meta.ui` for in-chat
+    # hosts.
     async def preview_json(request: Request) -> JSONResponse:
         server_arg = request.query_params.get("server")
         try:
@@ -579,7 +580,7 @@ def create_app() -> Starlette:
         return JSONResponse(payload)
 
     async def preview_world_json(request: Request) -> JSONResponse:
-        """`/preview/world.json` — the SPA's `/world` route data plane.
+        """`/preview/world.json` — the SPA's World map (`/map`) data plane.
 
         Dispatches `get_eco_world` and returns its JSON block. A dedicated route
         (rather than the generic `/preview/<tool>.json`) so the SPA hits the

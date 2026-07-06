@@ -48,8 +48,9 @@ The two DiscordLink semantics both fall out of one pass over the ledger:
     Needs an admin API key server-side (`ECO_ADMIN_API_KEY`, SSM in the homelab
     deploy) to reach the exporter, same as `get_eco_trades`.
   Each verb returns a markdown summary plus a structured JSON block.
-- **`/trades` SPA sidebar** - `frontend/src/pages/Trades.tsx` consuming
-  `/preview/watchers.json`. The endpoint evaluates in **peek** mode
+- **`/trade` SPA sidebar** - `frontend/src/pages/Trade.tsx` consuming
+  `/preview/watchers.json` (the watchers sidebar moved to `/trade` when the
+  `/trades` ledger folded in, [#90](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/90)). The endpoint evaluates in **peek** mode
   (`advance=false`), so loading the page shows each watcher's current matching
   state and a "+N new" feed badge without consuming the feed - only the MCP
   `evaluate` verb advances the marks. The sidebar is read-only: watchers are

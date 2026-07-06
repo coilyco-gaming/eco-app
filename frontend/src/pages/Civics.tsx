@@ -121,7 +121,7 @@ export default function Civics() {
         <p className="hero-tagline">
           The history and trend of civic life on the server — who ran, who voted, who moved
           in, and where new settlements rose. For the current title chart and active laws, see{" "}
-          <Link to="/server">Server</Link>.
+          <Link to="/info">Info</Link>.
         </p>
         {report && report.totalEvents > 0 && (
           <p className="hero-pill" data-testid="civics-pill">
@@ -296,8 +296,8 @@ export default function Civics() {
           )}
 
           <section className="dir-cards">
-            <Link className="dir-card" to="/server" data-testid="link-server">
-              <h3>Server →</h3>
+            <Link className="dir-card" to="/info" data-testid="link-info">
+              <h3>Info →</h3>
               <p>The live snapshot — elected titles, active laws, and the world at a glance.</p>
             </Link>
           </section>

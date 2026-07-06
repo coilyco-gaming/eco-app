@@ -1,13 +1,13 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
-import Server from "./Server"
+import Info from "./Info"
 import { SAMPLE_STATUS } from "../test/fixtures"
 
 function renderServer() {
   return render(
-    <MemoryRouter initialEntries={["/server"]}>
-      <Server />
+    <MemoryRouter initialEntries={["/info"]}>
+      <Info />
     </MemoryRouter>,
   )
 }
@@ -22,7 +22,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe("Server", () => {
+describe("Info", () => {
   it("renders the live snapshot from /preview.json", async () => {
     vi.stubGlobal(
       "fetch",

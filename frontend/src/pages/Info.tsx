@@ -7,9 +7,10 @@ import StatGrid from "../components/StatGrid"
 
 const STEAM_URL = "https://store.steampowered.com/app/382310/Eco/"
 
-// The live world snapshot: everything the old landing page carried,
-// now one level down so the homepage stays a thin directory.
-export default function Server() {
+// The live world snapshot: everything the old landing page carried, now one
+// level down so the homepage stays a thin directory. Formerly "/server";
+// renamed to "/info" in the eco-app#90 IA cleanup (the old path redirects here).
+export default function Info() {
   const { status, error, loading } = useEcoStatus()
   const discordUrl = safeHttpUrl(status?.server.discord)
 

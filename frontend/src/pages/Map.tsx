@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import Layout from "../components/Layout"
 import Loading from "../components/Loading"
+import { type ClimateSnapshot, fetchClimate } from "../lib/climateApi"
 import { type DriftRow, type EcoregionSnapshot, fetchEcoregion } from "../lib/ecoregionApi"
 import { formatCount, prettifyEcoName } from "../lib/format"
 import { type MapPayload, fetchMap } from "../lib/mapApi"
@@ -270,6 +271,141 @@ function RankList({
 }
 
 // ---------------------------------------------------------------------------
+// Atmosphere & climate — folded in from the former /climate page as the world
+// page's environmental overlay (eco-app#90). The map shows what the world *is*;
+// this shows what the air is doing to it. Same CO2 / temperature / sea-level
+// read and CO2 source/sink breakdown, condensed to sit inside the world page.
+// ---------------------------------------------------------------------------
+
+// Signed integer ppm with thousands separators, e.g. "+12,687" / "−28,989".
+function signedPpm(n: number): string {
+  const sign = n > 0 ? "+" : n < 0 ? "−" : ""
+  return `${sign}${new Intl.NumberFormat("en-US").format(Math.round(Math.abs(n)))}`
+}
+
+function signed(n: number, digits = 2): string {
+  const sign = n > 0 ? "+" : n < 0 ? "−" : ""
+  return `${sign}${Math.abs(n).toFixed(digits)}`
+}
+
+interface ClimateStat {
+  label: string
+  value: string
+  detail?: string
+  tone?: "add" | "remove"
+}
+
+function ClimateSection({ snap }: { snap: ClimateSnapshot }) {
+  const atmosphere: ClimateStat[] = [
+    {
+      label: "CO₂",
+      value: snap.co2.current != null ? `${Math.round(snap.co2.current)} ppm` : "—",
+      detail:
+        snap.co2.change_pct != null ? `${signed(snap.co2.change_pct)}% since cycle start` : undefined,
+    },
+    {
+      label: "Avg temperature",
+      value: snap.temperature.current != null ? `${snap.temperature.current.toFixed(1)} °C` : "—",
+      detail:
+        snap.temperature.risen != null && snap.temperature.risen !== 0
+          ? `${signed(snap.temperature.risen)} °C this cycle`
+          : undefined,
+    },
+    {
+      label: "Sea level",
+      value: snap.sea_level.current != null ? `${snap.sea_level.current.toFixed(2)} m` : "—",
+      detail:
+        snap.effects.sea_level.risen_m != null && snap.effects.sea_level.risen_m !== 0
+          ? `${signed(snap.effects.sea_level.risen_m)} m this cycle`
+          : undefined,
+    },
+    {
+      label: "Ground pollution",
+      value: snap.pollution.current != null ? `${snap.pollution.current.toFixed(1)}%` : "—",
+      detail: snap.pollution.source !== "none" ? `source: ${snap.pollution.source}` : undefined,
+    },
+  ]
+
+  const b = snap.breakdown
+  const sources: ClimateStat[] =
+    b?.has_data && b.pollution && b.animals && b.plants && b.net_per_day != null
+      ? [
+          {
+            label: "From pollution",
+            value: `${signedPpm(b.pollution.lifetime)} ppm`,
+            detail: `${signed(b.pollution.per_day)} ppm/day`,
+            tone: "add",
+          },
+          {
+            label: "From animals",
+            value: `${signedPpm(b.animals.lifetime)} ppm`,
+            detail: `${signed(b.animals.per_day)} ppm/day`,
+            tone: "add",
+          },
+          {
+            label: "From plants",
+            value: `${signedPpm(b.plants.lifetime)} ppm`,
+            detail: `${signed(b.plants.per_day)} ppm/day`,
+            tone: "remove",
+          },
+          {
+            label: "Net change",
+            value: `${signed(b.net_per_day)} ppm/day`,
+            detail: b.net_per_day < 0 ? "CO₂ falling" : b.net_per_day > 0 ? "CO₂ rising" : "steady",
+            tone: b.net_per_day <= 0 ? "remove" : "add",
+          },
+        ]
+      : []
+
+  const warnTone = snap.status !== "stable" && snap.status !== "unknown"
+
+  return (
+    <section data-testid="climate">
+      <h2 className="section-title">Atmosphere &amp; climate</h2>
+      <p className={`hero-pill${warnTone ? " hero-pill-warn" : ""}`} data-testid="climate-pill">
+        <span className="pulse-dot" aria-hidden="true" />
+        {snap.narrative}
+      </p>
+      <div className="stats">
+        {atmosphere.map((s) => (
+          <div className="stat" key={s.label}>
+            <p className="stat-value">{s.value}</p>
+            <p className="stat-label">{s.label}</p>
+            {s.detail && <p className="stat-detail">{s.detail}</p>}
+          </div>
+        ))}
+      </div>
+      {sources.length > 0 && (
+        <>
+          <p className="intro">
+            <span>
+              Where the atmosphere's CO₂ comes from and goes — lifetime totals with each source's
+              current daily push. Pollution and animals add CO₂, plants remove it.
+            </span>
+          </p>
+          <div className="stats">
+            {sources.map((s) => (
+              <div className={`stat stat-${s.tone}`} key={s.label}>
+                <p className="stat-value">{s.value}</p>
+                <p className="stat-label">{s.label}</p>
+                {s.detail && <p className="stat-detail">{s.detail}</p>}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      {snap.explainer.length > 0 && (
+        <ul className="explainer" data-testid="climate-explainer">
+          {snap.explainer.map((line, i) => (
+            <li key={i}>{line}</li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // The map itself — base preview + per-biome highlight rasters + deed polygons
 // + activity-hotspot overlay, all in one renderSize-space SVG frame (#82).
 // ---------------------------------------------------------------------------
@@ -378,6 +514,7 @@ export default function MapPage() {
   const [snap, setSnap] = useState<EcoregionSnapshot | null>(null)
   const [world, setWorld] = useState<WorldActivity | null>(null)
   const [map, setMap] = useState<MapPayload | null>(null)
+  const [climate, setClimate] = useState<ClimateSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
   const [hoveredBiome, setHoveredBiome] = useState<string | null>(null)
 
@@ -386,12 +523,14 @@ export default function MapPage() {
     const guard = (fn: () => void) => {
       if (!controller.signal.aborted) fn()
     }
-    // Three independent planes; a failure in any one degrades that section
-    // rather than the page. The shared loading state clears once all settle.
+    // Four independent planes; a failure in any one degrades that section
+    // rather than the page. Climate joined the set when it folded into the world
+    // page (eco-app#90). The shared loading state clears once all settle.
     Promise.allSettled([
       fetchEcoregion(controller.signal).then((d) => guard(() => setSnap(d))),
       fetchWorld(controller.signal).then((d) => guard(() => setWorld(d))),
       fetchMap(controller.signal).then((d) => guard(() => setMap(d))),
+      fetchClimate(controller.signal).then((d) => guard(() => setClimate(d))),
     ]).finally(() => guard(() => setLoading(false)))
     return () => controller.abort()
   }, [])
@@ -408,7 +547,7 @@ export default function MapPage() {
   return (
     <Layout fetchedAtISO={world?.fetchedAtISO}>
       <section className="hero hero-compact">
-        <p className="hero-kicker">World map &amp; ecoregion</p>
+        <p className="hero-kicker">World</p>
         <h1 className="hero-title">
           The world, <span className="accent">mapped and classified</span>
         </h1>
@@ -502,6 +641,11 @@ export default function MapPage() {
               )}
             </section>
           )}
+
+          {/* Climate as the environmental overlay on the world's physical
+              composition (eco-app#90) — sits with the biomes it acts on, not as
+              a tacked-on trailer. */}
+          {climate && <ClimateSection snap={climate} />}
 
           {snap && (
             <section>
@@ -637,13 +781,13 @@ export default function MapPage() {
           )}
 
           <section className="dir-cards">
-            <Link className="dir-card" to="/climate" data-testid="link-climate">
-              <h3>Climate →</h3>
-              <p>What CO₂, temperature, and sea level are doing to the world these species live in.</p>
-            </Link>
             <Link className="dir-card" to="/crafting" data-testid="link-crafting">
               <h3>Crafting atlas →</h3>
               <p>The production side of this activity — what all this digging and chopping becomes.</p>
+            </Link>
+            <Link className="dir-card" to="/jobs" data-testid="link-jobs">
+              <h3>Jobs →</h3>
+              <p>Who is shaping the world — the citizens behind all this construction and industry.</p>
             </Link>
           </section>
         </>

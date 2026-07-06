@@ -294,6 +294,70 @@ const WATCHERS_REPORT = {
   ],
 }
 
+// The trades ledger folded into /trade (eco-app#90): its totalCurrencyVolume
+// (4907) and totalTrades (335) are the hero pill's authoritative volume + count.
+const TRADES = {
+  fetchedAtISO: "2026-06-12T13:00:00+00:00",
+  sourceBaseUrl: "http://x:3001",
+  totalTrades: 335,
+  perTypeCounts: { CurrencyTrade: 335 },
+  trades: [
+    {
+      tradeType: "CurrencyTrade",
+      time: 1000,
+      day: 12,
+      buyer: "onix",
+      seller: "ekans",
+      shopOwner: "ekans",
+      item: "IronIngotItem",
+      quantity: 5,
+      currency: "Credit",
+      currencyAmount: 120,
+      unitPrice: 24,
+      store: "Iron Emporium",
+      location: "1,2,3",
+      direction: "sell",
+    },
+    {
+      tradeType: "CurrencyTrade",
+      time: 900,
+      day: 11,
+      buyer: "geodude",
+      seller: "coilysiren",
+      shopOwner: "coilysiren",
+      item: "WheatItem",
+      quantity: 10,
+      currency: "Credit",
+      currencyAmount: 50,
+      unitPrice: 5,
+      store: "Wheat Stand",
+      location: "4,5,6",
+      direction: "sell",
+    },
+  ],
+  totalCurrencyVolume: 4907,
+  byItem: [
+    ["IronIngotItem", 20, 480],
+    ["WheatItem", 12, 60],
+  ],
+  byCurrency: [["Credit", 4907]],
+  topBuyers: [
+    ["onix", 300],
+    ["geodude", 120],
+  ],
+  topSellers: [
+    ["ekans", 400],
+    ["coilysiren", 200],
+  ],
+  priceSeries: {
+    IronIngotItem: [
+      [11, 22],
+      [12, 24],
+    ],
+  },
+  warnings: [],
+}
+
 const NOT_FOUND = Symbol("404")
 
 function jsonResponse(payload: unknown): Response {
@@ -311,6 +375,7 @@ function stub(
     stores?: unknown
     currency?: unknown
     logistics?: unknown
+    trades?: unknown
     watchers?: unknown
   } = {},
 ) {
@@ -319,6 +384,7 @@ function stub(
     "stores.json": overrides.stores ?? STORES,
     "currency.json": overrides.currency ?? CURRENCY,
     "logistics.json": overrides.logistics ?? LOGISTICS,
+    "get_eco_trades.json": overrides.trades ?? TRADES,
     "watchers.json": overrides.watchers ?? { hits: [] },
   }
   vi.stubGlobal(
@@ -356,6 +422,9 @@ describe("Trade", () => {
     await waitFor(() => {
       expect(screen.getByTestId("trade-pill")).toHaveTextContent("3 markets")
     })
+    // Volume + trade count come from the folded-in ledger, not the market plane.
+    expect(screen.getByTestId("trade-pill")).toHaveTextContent("4,907 volume")
+    expect(screen.getByTestId("trade-pill")).toHaveTextContent("335 trades")
     expect(screen.getByTestId("currency-strip")).toHaveTextContent("2 currencies")
     // Rising / falling movers land in their own lists.
     expect(within(screen.getByTestId("risers")).getByText("Iron Ingot")).toBeInTheDocument()
@@ -363,8 +432,22 @@ describe("Trade", () => {
     // Default drill is the busiest market (Iron Ingot), charted.
     const drill = screen.getByTestId("drill")
     expect(within(drill).getByTestId("price-chart")).toBeInTheDocument()
-    expect(screen.getByTestId("link-items")).toHaveAttribute("href", "/items")
     expect(screen.getByTestId("link-crafting")).toHaveAttribute("href", "/crafting")
+    expect(screen.getByTestId("link-jobs")).toHaveAttribute("href", "/jobs")
+  })
+
+  it("folds the row-level trades ledger and party leaderboards into the page", async () => {
+    stub()
+    renderTrade()
+
+    await waitFor(() => {
+      expect(screen.getByTestId("ledger")).toBeInTheDocument()
+    })
+    // Newest-first row-level trades.
+    expect(screen.getAllByTestId("trade-row").length).toBeGreaterThan(0)
+    expect(screen.getByTestId("trades-table")).toHaveTextContent("ekans")
+    // Top sellers / buyers leaderboards ride along.
+    expect(screen.getAllByTestId("party-row").length).toBeGreaterThan(0)
   })
 
   it("deep-links a drill target via ?q=", async () => {
@@ -448,6 +531,7 @@ describe("Trade", () => {
       stores: NOT_FOUND,
       currency: NOT_FOUND,
       logistics: NOT_FOUND,
+      trades: NOT_FOUND,
       watchers: NOT_FOUND,
     })
     renderTrade()
@@ -457,6 +541,7 @@ describe("Trade", () => {
     })
     // No panels, but the shell and cross-links survive — no hard crash.
     expect(screen.queryByTestId("drill")).not.toBeInTheDocument()
-    expect(screen.getByTestId("link-items")).toBeInTheDocument()
+    expect(screen.queryByTestId("ledger")).not.toBeInTheDocument()
+    expect(screen.getByTestId("link-crafting")).toBeInTheDocument()
   })
 })

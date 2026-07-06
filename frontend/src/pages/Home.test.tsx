@@ -36,18 +36,21 @@ describe("Home", () => {
 
     renderHome()
 
-    expect(screen.getByTestId("dir-server")).toHaveAttribute("href", "/server")
+    expect(screen.getByTestId("dir-info")).toHaveAttribute("href", "/info")
     expect(screen.getByTestId("dir-jobs")).toHaveAttribute("href", "/jobs")
     // The eco-gnome calculator is a homepage card that links out to the gnome
     // service, not a /calculator route anymore (eco-app#90).
     expect(screen.getByTestId("dir-gnome")).toHaveAttribute("href", "https://eco-gnome.com")
-    // /economy is gone entirely (eco-app#90) — no economy card.
+    // /economy is gone entirely (eco-app#90) — no economy card. The standalone
+    // trades and climate cards folded into Trade and World respectively.
     expect(screen.queryByTestId("dir-economy")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("dir-trades")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("dir-climate")).not.toBeInTheDocument()
 
     await waitFor(() => {
-      expect(screen.getByTestId("server-badges")).toHaveTextContent("3d to meteor")
+      expect(screen.getByTestId("info-badges")).toHaveTextContent("3d to meteor")
     })
-    expect(screen.getByTestId("server-badges")).toHaveTextContent("1 online")
+    expect(screen.getByTestId("info-badges")).toHaveTextContent("1 online")
     expect(screen.getByRole("link", { name: "Join the Discord" })).toHaveAttribute(
       "href",
       "https://discord.gg/example",
@@ -59,6 +62,7 @@ describe("Home", () => {
       "/preview.json": SAMPLE_STATUS,
       "/preview/get_eco_trades.json": {
         totalTrades: 1341,
+        totalCurrencyVolume: 4907,
         byItem: [["BunWulfRawMeatItem", 90, 400]],
       },
       "/preview/get_eco_crafting_atlas.json": {
@@ -96,19 +100,25 @@ describe("Home", () => {
 
     renderHome()
 
+    // Trade + trades ledger are one card now (eco-app#90): volume and the trade
+    // count come from the ledger's totalCurrencyVolume / totalTrades, and
+    // markets falls back to a graceful 0 when the market plane is empty.
     await waitFor(() => {
-      expect(screen.getByTestId("trades-badges")).toHaveTextContent("1,341 trades")
+      expect(screen.getByTestId("trade-badges")).toHaveTextContent("1,341 trades")
     })
-    expect(screen.getByTestId("trades-badges")).toHaveTextContent("top: Bun Wulf Raw Meat")
+    expect(screen.getByTestId("trade-badges")).toHaveTextContent("4,907 volume")
+    expect(screen.getByTestId("trade-badges")).toHaveTextContent("0 markets")
+    expect(screen.getByTestId("trade-badges")).toHaveTextContent("top: Bun Wulf Raw Meat")
     expect(screen.getByTestId("crafting-badges")).toHaveTextContent("512 crafts")
     expect(screen.getByTestId("crafting-badges")).toHaveTextContent("top: Wooden Chair")
-    expect(screen.getByTestId("climate-badges")).toHaveTextContent("warming")
-    expect(screen.getByTestId("climate-badges")).toHaveTextContent("620 ppm CO₂")
-    // World + ecoregion merged into the one /map card (eco-app#82): its badge
-    // strip carries world events, the busiest category, and the dominant biome.
+    // World + ecoregion merged into the one /map card (eco-app#82) and climate
+    // folded in (eco-app#90): its badge strip carries world events, the busiest
+    // category, the dominant biome, and the climate headline + CO₂.
     expect(screen.getByTestId("world-badges")).toHaveTextContent("421 events")
     expect(screen.getByTestId("world-badges")).toHaveTextContent("Construction")
     expect(screen.getByTestId("world-badges")).toHaveTextContent("Grassland")
+    expect(screen.getByTestId("world-badges")).toHaveTextContent("warming")
+    expect(screen.getByTestId("world-badges")).toHaveTextContent("620 ppm CO₂")
   })
 
   it("renders the full directory even when the snapshot fetch fails", async () => {
@@ -119,7 +129,7 @@ describe("Home", () => {
     await waitFor(() => {
       expect(screen.getByTestId("dir-jobs")).toBeInTheDocument()
     })
-    expect(screen.getByTestId("dir-server")).toBeInTheDocument()
-    expect(screen.queryByTestId("server-badges")).not.toBeInTheDocument()
+    expect(screen.getByTestId("dir-info")).toBeInTheDocument()
+    expect(screen.queryByTestId("info-badges")).not.toBeInTheDocument()
   })
 })

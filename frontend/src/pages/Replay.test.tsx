@@ -78,7 +78,7 @@ describe("Replay", () => {
     expect(screen.getAllByTestId("replay-row")).toHaveLength(3)
     expect(screen.getByText("PlaceBlock")).toBeInTheDocument()
     expect(screen.getByTestId("link-jobs")).toHaveAttribute("href", "/jobs")
-    expect(screen.getByTestId("link-trades")).toHaveAttribute("href", "/trades")
+    expect(screen.getByTestId("link-trade")).toHaveAttribute("href", "/trade")
   })
 
   it("honors a ?q= deep link by filtering the timeline", async () => {

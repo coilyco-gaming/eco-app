@@ -5,7 +5,7 @@ DiscordLink ships `WatchTradeFeed` (an event stream to a Discord DM) and
 and `ListTradeWatchers`. The epic thesis (eco-app#37) is that this read-only
 info belongs on **the website**, not a Discord DM. This module meets those
 verbs and exceeds them by being host-agnostic: watchers are surfaced on the SPA
-`/trades` route and queryable over MCP, so a URL-connected host like claude.ai
+`/trade` route and queryable over MCP, so a URL-connected host like claude.ai
 can ask "what did my watchers catch." No Discord dependency.
 
 ## No-reset spine
