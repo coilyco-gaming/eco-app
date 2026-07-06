@@ -345,9 +345,9 @@ export default function Trades() {
           )}
 
           <section className="dir-cards">
-            <Link className="dir-card" to="/economy" data-testid="link-economy">
-              <h3>Economy →</h3>
-              <p>The aggregate view — trades per day, contracts, loans, and the treasury.</p>
+            <Link className="dir-card" to="/trade" data-testid="link-trade">
+              <h3>Trade &amp; logistics →</h3>
+              <p>The aggregate view — movers, price history, stores, and what to trade next.</p>
             </Link>
             <Link className="dir-card" to="/crafting" data-testid="link-crafting">
               <h3>Crafting atlas →</h3>

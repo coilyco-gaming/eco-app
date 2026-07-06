@@ -182,11 +182,10 @@ async def test_explain_eco_item_tool_wraps_card() -> None:
     assert isinstance(blocks[1], mt.TextContent)
     md = blocks[0].text
     payload = json.loads(blocks[1].text)
-    assert result.root.meta is not None
-    fragment = result.root.meta["ui"]["fragment"]
     assert "iron" in md.lower()
     assert payload["title"].lower() == "iron"
-    assert "Atomic number" in fragment
+    # Just-data per eco-app#87: explain_eco_item no longer emits a widget.
+    assert result.root.meta is None
 
 
 @pytest.mark.asyncio

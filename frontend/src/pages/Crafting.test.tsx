@@ -54,7 +54,7 @@ afterEach(() => {
 })
 
 describe("Crafting", () => {
-  it("renders totals, prettified rank rows, and the economy cross-link", async () => {
+  it("renders totals, prettified rank rows, and the item-directory cross-link", async () => {
     stubAtlasFetch()
     renderCrafting()
 
@@ -64,7 +64,7 @@ describe("Crafting", () => {
     expect(screen.getByTestId("atlas-pill")).toHaveTextContent("8,261 crafted")
     expect(screen.getByText("Flax Seed")).toBeInTheDocument()
     expect(screen.getByText("Greenhouse")).toBeInTheDocument()
-    expect(screen.getByTestId("link-economy")).toHaveAttribute("href", "/economy")
+    expect(screen.getByTestId("link-items")).toHaveAttribute("href", "/items")
   })
 
   it("ranks citizens by production with names shown verbatim", async () => {

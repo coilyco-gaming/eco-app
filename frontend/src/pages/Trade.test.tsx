@@ -363,7 +363,7 @@ describe("Trade", () => {
     // Default drill is the busiest market (Iron Ingot), charted.
     const drill = screen.getByTestId("drill")
     expect(within(drill).getByTestId("price-chart")).toBeInTheDocument()
-    expect(screen.getByTestId("link-economy")).toHaveAttribute("href", "/economy")
+    expect(screen.getByTestId("link-items")).toHaveAttribute("href", "/items")
     expect(screen.getByTestId("link-crafting")).toHaveAttribute("href", "/crafting")
   })
 
@@ -457,6 +457,6 @@ describe("Trade", () => {
     })
     // No panels, but the shell and cross-links survive — no hard crash.
     expect(screen.queryByTestId("drill")).not.toBeInTheDocument()
-    expect(screen.getByTestId("link-economy")).toBeInTheDocument()
+    expect(screen.getByTestId("link-items")).toBeInTheDocument()
   })
 })

@@ -4,11 +4,11 @@ Baseline inventory of headline features. Use to evaluate scope changes.
 
 ## What this app is
 
-MCP server exposing live data from Eco game servers as Claude Desktop widget cards. Reference implementation of MCP Apps spec in pure Python (no React, no bundler). Production: `https://eco-mcp.coilysiren.me/mcp/`.
+MCP server exposing live data from Eco game servers. Reference implementation of MCP Apps spec in pure Python (no React, no bundler). Production: `https://eco-mcp.coilysiren.me/mcp/`. The MCP-app visual widget is **scoped to the world/region view only** ([#87](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/87)): only `get_eco_world`, `get_eco_map`, and `get_eco_ecoregion` (the SPA's `/map` surface) render an inline widget card; every other tool returns "just data" (markdown + structured JSON, no widget).
 
 ## MCP tools
 
-Defined in [src/eco_mcp_app/server.py](../../src/eco_mcp_app/server.py). All accept optional `server` arg.
+Defined in [src/eco_mcp_app/server.py](../../src/eco_mcp_app/server.py). All accept optional `server` arg. Only the **world/region** tools (`get_eco_world`, `get_eco_map`, `get_eco_ecoregion`) emit the MCP-app widget; the rest are data-only ([#87](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/87)).
 
 - **get_eco_server_status** - Meteor countdown, players, world dims, cycle progress, version, economy summary.
 - **get_eco_economy** - Trades/day, contract completion, loan defaults, wages, tax flow, volatility sparklines. Admin `/datasets/get`.
@@ -29,10 +29,10 @@ Defined in [src/eco_mcp_app/server.py](../../src/eco_mcp_app/server.py). All acc
 
 ## MCP resources
 
-- **ui://eco/status.html** - Main MCP Apps shell document hosts load in their sandboxed iframe; per-tool Jinja cards swap into it via `_meta.ui.fragment`.
-- **ui://eco/economy.html** - Economy dashboard shell.
-- **ui://eco/climate.html** - Climate dashboard shell.
-- **ui://eco/currency.html** - Currency & money-supply dashboard shell.
+- **ui://eco/status.html** - Main MCP Apps shell document hosts load in their sandboxed iframe; per-tool Jinja cards swap into it via `_meta.ui.fragment`. This is the shell the world/region widget tools (`get_eco_world` / `get_eco_map` / `get_eco_ecoregion`) point at.
+- **ui://eco/economy.html** - Economy dashboard shell. Retained but no longer referenced by any tool since the widget was scoped to the world/region view ([#87](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/87)).
+- **ui://eco/climate.html** - Climate dashboard shell. Retained, unreferenced (see #87).
+- **ui://eco/currency.html** - Currency & money-supply dashboard shell. Retained, unreferenced (see #87).
 
 ## Runtime surfaces
 
@@ -44,7 +44,7 @@ Defined in [src/eco_mcp_app/server.py](../../src/eco_mcp_app/server.py). All acc
 
 ## UI rendering
 
-- **Jinja2 server-side** at [src/eco_mcp_app/templates/](../../src/eco_mcp_app/templates/), rendered only into the MCP `_meta.ui` card fragment for in-chat hosts. The web UI is the React SPA (`frontend/`); the server renders no browser-facing HTML.
+- **Jinja2 server-side** at [src/eco_mcp_app/templates/](../../src/eco_mcp_app/templates/), rendered only into the MCP `_meta.ui` card fragment for in-chat hosts, and only for the world/region widget tools ([#87](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/87)). The web UI is the React SPA (`frontend/`); the server renders no browser-facing HTML.
 - **Main shell** `eco.html` (~5KB). Hand-rolled MCP Apps handshake. Steam banner data URI for CSP.
 - **CSS** `eco.css` (~26KB). Responsive, animated starfield, cycle ring.
 - **22 partial templates** for per-card fragments.

@@ -38,6 +38,11 @@ describe("Home", () => {
 
     expect(screen.getByTestId("dir-server")).toHaveAttribute("href", "/server")
     expect(screen.getByTestId("dir-jobs")).toHaveAttribute("href", "/jobs")
+    // The eco-gnome calculator is a homepage card that links out to the gnome
+    // service, not a /calculator route anymore (eco-app#90).
+    expect(screen.getByTestId("dir-gnome")).toHaveAttribute("href", "https://eco-gnome.com")
+    // /economy is gone entirely (eco-app#90) — no economy card.
+    expect(screen.queryByTestId("dir-economy")).not.toBeInTheDocument()
 
     await waitFor(() => {
       expect(screen.getByTestId("server-badges")).toHaveTextContent("3d to meteor")
@@ -52,9 +57,6 @@ describe("Home", () => {
   it("renders per-surface sub-card badges from the live pulse endpoints", async () => {
     const byUrl: Record<string, unknown> = {
       "/preview.json": SAMPLE_STATUS,
-      "/preview/get_eco_economy.json": {
-        kpis: { trades_total: 1341, trades_per_day: 24, contracts_posted: 8 },
-      },
       "/preview/get_eco_trades.json": {
         totalTrades: 1341,
         byItem: [["BunWulfRawMeatItem", 90, 400]],
@@ -95,10 +97,8 @@ describe("Home", () => {
     renderHome()
 
     await waitFor(() => {
-      expect(screen.getByTestId("economy-badges")).toHaveTextContent("24 trades/day")
+      expect(screen.getByTestId("trades-badges")).toHaveTextContent("1,341 trades")
     })
-    expect(screen.getByTestId("economy-badges")).toHaveTextContent("8 contracts")
-    expect(screen.getByTestId("trades-badges")).toHaveTextContent("1,341 trades")
     expect(screen.getByTestId("trades-badges")).toHaveTextContent("top: Bun Wulf Raw Meat")
     expect(screen.getByTestId("crafting-badges")).toHaveTextContent("512 crafts")
     expect(screen.getByTestId("crafting-badges")).toHaveTextContent("top: Wooden Chair")

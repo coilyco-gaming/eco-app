@@ -12,7 +12,7 @@ Covers:
   - Missing-endpoint (401 / connect error) becomes a non-fatal warning.
   - Empty CSVs produce a clean "no social activity" surface.
   - The /preview/social.json data plane is always redacted.
-  - Tool wiring returns markdown + JSON blocks + a `_meta.ui` fragment.
+  - Tool wiring returns markdown + JSON blocks and no widget (just-data per eco-app#87).
 """
 
 from __future__ import annotations
@@ -292,8 +292,8 @@ async def test_tool_call_returns_text_blocks_and_fragment(
     assert len(blocks) == 2
     assert isinstance(blocks[0], mt.TextContent)
     assert "Social" in blocks[0].text
-    assert result.root.meta is not None
-    assert "Social" in result.root.meta["ui"]["fragment"]
+    # Just-data per eco-app#87: get_eco_social no longer emits a widget.
+    assert result.root.meta is None
     # Even through the tool, redaction holds by default (no names env gate).
     assert "ekans" not in json.dumps([b.text for b in blocks])
 

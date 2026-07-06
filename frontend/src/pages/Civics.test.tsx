@@ -83,7 +83,6 @@ describe("Civics", () => {
     })
     expect(screen.getByTestId("civics-pill")).toHaveTextContent("75% turnout")
     expect(screen.getByTestId("civics-stats")).toHaveTextContent("Turnout")
-    expect(screen.getByTestId("link-economy")).toHaveAttribute("href", "/economy")
     expect(screen.getByTestId("link-server")).toHaveAttribute("href", "/server")
   })
 

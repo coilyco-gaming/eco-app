@@ -8,7 +8,7 @@ Covers:
     max-rows safety valve or blowing peak memory. (We bound it via
     MAX_ROWS_PER_ACTION, which the test sets low to exercise the cap.)
   - Empty CSVs produce a Day-3-safe "no events" atlas.
-  - The tool wiring returns three TextContent blocks + _meta.ui.
+  - The tool wiring returns three TextContent blocks and no widget (just-data per eco-app#87).
   - SQLite cache is per (base, api-key) and hits within TTL.
 """
 
@@ -420,9 +420,8 @@ async def test_tool_call_returns_three_text_blocks(
     md = blocks[0].text
     assert "Crafting atlas" in md
     assert "Adobe" in md  # prettified AdobeItem
-    # HTML fragment ships in `_meta.ui.fragment`.
-    assert result.root.meta is not None
-    assert "crafting-atlas" in result.root.meta["ui"]["fragment"]
+    # Just-data per eco-app#87: get_eco_crafting_atlas no longer emits a widget.
+    assert result.root.meta is None
 
 
 @pytest.mark.asyncio

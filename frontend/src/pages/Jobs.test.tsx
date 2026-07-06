@@ -127,18 +127,31 @@ describe("Jobs", () => {
     expect(screen.getAllByText("coilysiren").length).toBe(before + 1)
   })
 
-  it("renders the skill-history lane and per-player timeline from progression", async () => {
+  it("folds the server-wide progression layer and leaderboards into the page", async () => {
     stubJobsFetch()
     renderJobs()
 
     await waitFor(() => {
-      expect(screen.getByTestId("jobs-history-lane")).toBeInTheDocument()
+      expect(screen.getByTestId("jobs-progression")).toBeInTheDocument()
     })
-    // The lane links to the full progression view.
-    expect(screen.getByRole("link", { name: /progression history/i })).toHaveAttribute(
-      "href",
-      "/progression",
-    )
+    // The merged trajectory layer carries the server-wide trends + leaderboards
+    // that used to live on the standalone /progression page.
+    expect(screen.getByText("How the world got here")).toBeInTheDocument()
+    expect(screen.getByTestId("trend-grid")).toBeInTheDocument()
+    expect(screen.getByText("Most-gained specialties")).toBeInTheDocument()
+    expect(screen.getByText("Busiest levelers")).toBeInTheDocument()
+    expect(screen.getAllByTestId("rank-row").length).toBeGreaterThan(0)
+    // There is no standalone progression page to link out to anymore.
+    expect(screen.queryByRole("link", { name: /progression history/i })).not.toBeInTheDocument()
+  })
+
+  it("renders the per-player skill timeline from progression", async () => {
+    stubJobsFetch()
+    renderJobs()
+
+    await waitFor(() => {
+      expect(screen.getByTestId("jobs-progression")).toBeInTheDocument()
+    })
     // coilysiren has a trajectory → the per-player history toggle appears; ekans
     // has none, so exactly one toggle renders.
     const toggles = screen.getAllByTestId("player-history-toggle")
@@ -148,7 +161,7 @@ describe("Jobs", () => {
     expect(screen.getByText(/specialty level-ups: Basic Carpentry/)).toBeInTheDocument()
   })
 
-  it("hides the history lane when progression is unavailable", async () => {
+  it("hides the progression layer when progression is unavailable", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((input: RequestInfo | URL) => {
@@ -177,7 +190,7 @@ describe("Jobs", () => {
     await waitFor(() => {
       expect(screen.getByText("Professions")).toBeInTheDocument()
     })
-    expect(screen.queryByTestId("jobs-history-lane")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("jobs-progression")).not.toBeInTheDocument()
     expect(screen.queryByTestId("player-history-toggle")).not.toBeInTheDocument()
   })
 

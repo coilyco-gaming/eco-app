@@ -14,7 +14,7 @@ biggest remaining DiscordLink-parity gap under the epic
 
 ## Surfaces
 
-- **`get_eco_civics` MCP tool** - `src/eco_mcp_app/civics.py` + `server.py` wiring. Returns a markdown summary + the structured `CivicsReport.to_dict()` JSON, plus an `_meta.ui` Jinja card (`templates/partials/civics.html`) for MCP Apps hosts. Requires an admin API key server-side (`ECO_ADMIN_API_KEY`, SSM in the homelab deploy).
+- **`get_eco_civics` MCP tool** - `src/eco_mcp_app/civics.py` + `server.py` wiring. Returns a markdown summary + the structured `CivicsReport.to_dict()` JSON. Civics is a "just data" tool - it emits no MCP-app widget ([#87](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/87); the widget is scoped to the world/region view). Requires an admin API key server-side (`ECO_ADMIN_API_KEY`, SSM in the homelab deploy).
 - **`/preview/civics.json` data plane** - `http_app.py` dispatches the tool and returns its JSON block, the short stable path the SPA consumes.
 - **`/civics` SPA page** - `frontend/src/pages/Civics.tsx`. Product UX lives here (the Jinja card is only the in-chat fragment): a civic stat grid, a two-series turnout-over-time chart, recent elections, a most-active-voter leaderboard, new settlements, and recent arrivals/departures. Cross-links `/economy` and `/server`, with a live homepage badge (`useCivicsPulse`).
 

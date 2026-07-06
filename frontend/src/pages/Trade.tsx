@@ -609,9 +609,9 @@ export default function Trade() {
       {/* Cross-links. */}
       {loaded && (
         <section className="dir-cards">
-          <Link className="dir-card" to="/economy" data-testid="link-economy">
-            <h3>Economy →</h3>
-            <p>The aggregate view — trades per day, contracts, loans, and the treasury.</p>
+          <Link className="dir-card" to="/items" data-testid="link-items">
+            <h3>Item directory →</h3>
+            <p>Every item bought, sold, or crafted — click through to its full history.</p>
           </Link>
           <Link className="dir-card" to="/trades" data-testid="link-trades">
             <h3>Trades ledger →</h3>

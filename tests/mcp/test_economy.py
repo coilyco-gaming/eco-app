@@ -21,7 +21,6 @@ from eco_mcp_app import server as eco_server
 from eco_mcp_app.server import (
     DEFAULT_ECO_INFO_URL,
     ECONOMY_DATASETS,
-    UI_META,
     build_server,
     compute_economy_payload,
     fetch_economy,
@@ -320,8 +319,8 @@ async def test_call_get_eco_economy_returns_htmx_fragment() -> None:
     result = await handler(req)
     blocks = result.root.content
     assert len(blocks) == 2
-    # Block 0: markdown fallback. Block 1: JSON. HTML fragment now lives on
-    # `_meta.ui.fragment` so the LLM never sees the inlined-image bytes.
+    # Block 0: markdown fallback. Block 1: JSON. Just-data per eco-app#87:
+    # get_eco_economy no longer emits a widget, so there is no HTML fragment.
     assert isinstance(blocks[0], mt.TextContent)
     assert isinstance(blocks[1], mt.TextContent)
 
@@ -333,12 +332,8 @@ async def test_call_get_eco_economy_returns_htmx_fragment() -> None:
     assert payload["health"] in {"healthy", "booming", "stressed"}
     assert payload["kpis"]["trades_total"] == 524
 
-    # MCP Apps iframe reads the rendered card from `_meta.ui.fragment`.
-    meta = result.root.meta
-    assert meta is not None
-    assert meta["ui"]["resourceUri"] == UI_META["ui"]["resourceUri"]
-    assert meta["ui/resourceUri"] == UI_META["ui/resourceUri"]
-    assert "Economic health" in meta["ui"]["fragment"]
+    # Just-data per eco-app#87: get_eco_economy no longer emits a widget.
+    assert result.root.meta is None
 
 
 @pytest.mark.asyncio
@@ -353,10 +348,8 @@ async def test_call_get_eco_economy_handles_info_failure() -> None:
         params=mt.CallToolRequestParams(name="get_eco_economy", arguments={}),
     )
     result = await handler(req)
-    # Error path: isError=True, still emits an HTML error partial via _meta.
+    # Error path: isError=True, plain-text error block, and no widget
+    # (just-data per eco-app#87).
     assert result.root.isError is True
-    meta = result.root.meta
-    assert meta is not None
-    assert meta["ui"]["resourceUri"] == UI_META["ui"]["resourceUri"]
-    assert isinstance(meta["ui"]["fragment"], str)
-    assert meta["ui"]["fragment"]
+    assert "unreachable" in result.root.content[0].text.lower()
+    assert result.root.meta is None

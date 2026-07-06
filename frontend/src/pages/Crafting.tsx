@@ -175,9 +175,9 @@ export default function Crafting() {
               <h3>Trades ledger →</h3>
               <p>Where this production goes — every individual trade, and price over time.</p>
             </Link>
-            <Link className="dir-card" to="/economy" data-testid="link-economy">
-              <h3>Economy →</h3>
-              <p>The trading side of this production — trades per day, contracts, treasury.</p>
+            <Link className="dir-card" to="/items" data-testid="link-items">
+              <h3>Item directory →</h3>
+              <p>Every item this production touches — click through to its full history.</p>
             </Link>
           </section>
         </>
