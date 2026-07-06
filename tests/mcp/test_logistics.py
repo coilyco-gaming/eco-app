@@ -205,6 +205,24 @@ def test_supply_gap_no_supply() -> None:
     assert g["demandQty"] == pytest.approx(500)
 
 
+def test_supply_gap_names_who_needs_it() -> None:
+    # A supply gap folds its buy-side orders into per-citizen demand rows,
+    # biggest want first, so the SPA can answer "who needs it" (eco-app#77).
+    offers = [
+        _offer("StoreA", "NailItem", "buy", 1.0, quantity=100, owner="geodude"),
+        _offer("StoreB", "NailItem", "buy", 1.2, quantity=250, owner="onix"),
+        _offer("StoreC", "NailItem", "buy", 0.9, quantity=50, owner="onix"),
+    ]
+    report = build_logistics(offers)
+    g = report.supply_gaps[0]
+    buyers = g["buyers"]
+    # onix folds across two stores (250 + 50 = 300) and outranks geodude (100).
+    assert [b["owner"] for b in buyers] == ["onix", "geodude"]
+    assert buyers[0]["quantity"] == pytest.approx(300)
+    assert buyers[0]["price"] == pytest.approx(1.2)  # best (highest) price onix offers
+    assert buyers[1]["quantity"] == pytest.approx(100)
+
+
 def test_supply_gap_thin_supply() -> None:
     # Demand with a single monopolist seller → thin-supply gap (seed max = 1).
     offers = [

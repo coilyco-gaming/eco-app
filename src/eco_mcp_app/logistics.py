@@ -385,7 +385,46 @@ def _supply_gap_row(
         "cheapestSell": round(cheapest_sell, 4) if cheapest_sell is not None else None,
         "median": round(median, 4) if median is not None else None,
         "overMedianPct": round(over_pct, 1) if over_pct is not None else None,
+        # Who needs it — the buy-side owners folded per citizen with the amount
+        # each still wants, biggest demand first. This is the "who should I sell
+        # to" half of a supply gap: a gap is only actionable if you know who is
+        # asking (eco-app#77).
+        "buyers": _gap_buyers(buys),
     }
+
+
+def _gap_buyers(buys: list[ShelfOffer], *, top: int = 8) -> list[dict[str, Any]]:
+    """Fold buy-side offers into per-citizen demand rows, biggest want first.
+
+    One citizen can post buy orders at more than one store, so demand folds by
+    owner (falling back to the store label when a shop has no named owner) and
+    sums the wanted quantity across their orders. The best (highest) price that
+    citizen is offering rides along so the SPA can show what the demand pays.
+    """
+    folded: dict[str, dict[str, Any]] = {}
+    for o in buys:
+        key = o.owner or o.store_label
+        row = folded.get(key)
+        if row is None:
+            folded[key] = {
+                "owner": o.owner,
+                "store": o.store_label,
+                "quantity": o.quantity,
+                "price": o.price,
+            }
+        else:
+            row["quantity"] += o.quantity
+            row["price"] = max(row["price"], o.price)
+    ranked = sorted(folded.values(), key=lambda r: r["quantity"], reverse=True)
+    return [
+        {
+            "owner": r["owner"],
+            "store": r["store"],
+            "quantity": round(r["quantity"], 2),
+            "price": round(r["price"], 4),
+        }
+        for r in ranked[:top]
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -675,10 +714,16 @@ def logistics_markdown(report: LogisticsReport) -> str:
                     f"{g['median']:,.2f} (+{g['overMedianPct']:.0f}%)"
                 )
             else:
+                who = ", ".join(
+                    f"{b['owner'] or b['store']} ({b['quantity']:,.0f})"
+                    for b in g.get("buyers", [])[:3]
+                )
                 detail = (
                     f"{g['buyerCount']} buyer(s), {g['sellerCount']} seller(s), "
                     f"demand {g['demandQty']:,.0f}"
                 )
+                if who:
+                    detail += f" — wanted by {who}"
             lines.append(f"- {g['itemPretty']} — {label}: {detail}")
         lines.append("")
     for w in report.warnings:

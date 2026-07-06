@@ -654,6 +654,75 @@ a.dir-card:hover {
   white-space: nowrap;
 }
 
+/* Supply gaps (/trade logistics). Each gap is a small card, not a cramped
+   rank-row: the item + reason tag sit on one line, then the demand summary, then
+   a "who needs it" line that can wrap freely. The old layout stuffed a prose
+   note into the narrow green count column, which clipped and crowded — the point
+   of eco-app#77's spacing fix. */
+.gap-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.gap-row {
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--leaf-dim);
+  border-radius: 8px;
+  background: var(--leaf-wash);
+}
+
+.gap-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.gap-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.gap-tag {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.gap-summary {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.gap-who {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+.gap-who-label {
+  color: var(--ink-faint);
+  font-weight: 600;
+}
+
+.gap-buyer {
+  white-space: nowrap;
+}
+
+.gap-buyer-qty {
+  color: var(--leaf);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 /* --- CTAs & footer ---------------------------------------------------- */
 
 .cta-row {

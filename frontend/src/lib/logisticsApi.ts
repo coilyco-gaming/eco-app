@@ -1,54 +1,95 @@
 // Typed client for the logistics board (/preview/logistics.json).
 //
-// This is the "what should I do" plane: cheapest-source lookups, cross-store
-// arbitrage spreads, and supply gaps folded out of the live store offers. The
-// backend logistics sibling may not have landed yet — this route can 404 — so
+// This is the "what should I do" plane: cheapest-source lookups, best-resale,
+// cross-store arbitrage spreads, and supply gaps folded out of the live store
+// offers (and history-derived shelf). The backend is `logistics.py`'s
+// `LogisticsReport.to_dict()` — this client mirrors that shape exactly. An
+// earlier draft of this file guessed a flatter contract (`cheapestSources`,
+// `arbitrage.buyPrice`, `supplyGaps.note`) the backend never emitted, so every
+// logistics row rendered as `NaN`; it now tracks the real payload (eco-app#77).
+//
+// The backend sibling may still 404 (reset-gated live shelf, empty history), so
 // fetchLogistics resolves to null on a miss and normalises every array so a
 // partial payload never crashes the panel (eco-app#54).
-//
-// Documented contract (frozen here so the SPA can scaffold ahead of the
-// backend). All money fields are in the row's own `currency`:
-//   cheapestSources[]  { item, itemPretty, store, owner, unitPrice, currency, location }
-//   arbitrage[]        { item, itemPretty, currency, buyPrice, buyStore, sellPrice, sellStore, spread, spreadPct }
-//   supplyGaps[]       { item, itemPretty, note, demand?, supply? }
 
 import { fetchJsonOrNull } from "./api"
 
-export interface CheapestSource {
-  item: string
-  itemPretty: string
+// One store's offer for one item on one side — `ShelfOffer.to_dict()`.
+export interface ShelfOffer {
   store: string
   owner: string
-  unitPrice: number
+  storeKey: string
+  item: string
+  itemPretty: string
   currency: string
-  location: string
+  side: string // "sell" | "buy"
+  price: number
+  quantity: number
+  source: string // "live" | "history"
+  lastDay: number | null
+}
+
+// Cheapest-source / best-resale row: a market with its ranked offers. `cheapest`
+// is the lowest sell price; `best` the highest buy price.
+export interface PricedBoardRow {
+  item: string
+  itemPretty: string
+  currency: string
+  sellerCount?: number
+  buyerCount?: number
+  cheapest?: number
+  best?: number
+  offers: ShelfOffer[]
 }
 
 export interface ArbitrageSpread {
   item: string
   itemPretty: string
   currency: string
-  buyPrice: number
-  buyStore: string
-  sellPrice: number
-  sellStore: string
   spread: number
   spreadPct: number
+  volume: number
+  opportunity: number
+  storeCount: number
+  buyFrom: ShelfOffer
+  sellTo: ShelfOffer
 }
+
+// Who needs a supply-gap item — one citizen's folded demand.
+export interface GapBuyer {
+  owner: string
+  store: string
+  quantity: number
+  price: number
+}
+
+export type GapReason = "no_supply" | "thin_supply" | "overpriced"
 
 export interface SupplyGap {
   item: string
   itemPretty: string
-  note: string
-  demand?: number
-  supply?: number
+  currency: string
+  reason: GapReason
+  sellerCount: number
+  buyerCount: number
+  demandQty: number
+  supplyQty: number
+  buyPrice: number | null
+  cheapestSell: number | null
+  median: number | null
+  overMedianPct: number | null
+  buyers: GapBuyer[]
 }
 
 export interface LogisticsBoard {
   view: string
   fetchedAtISO: string
   sourceBaseUrl: string
-  cheapestSources: CheapestSource[]
+  live: boolean
+  totalOffers: number
+  totalStores: number
+  cheapest: PricedBoardRow[]
+  resale: PricedBoardRow[]
   arbitrage: ArbitrageSpread[]
   supplyGaps: SupplyGap[]
   warnings: string[]
@@ -65,9 +106,16 @@ export async function fetchLogistics(signal?: AbortSignal): Promise<LogisticsBoa
     view: body.view ?? "logistics",
     fetchedAtISO: body.fetchedAtISO ?? "",
     sourceBaseUrl: body.sourceBaseUrl ?? "",
-    cheapestSources: asArray<CheapestSource>(body.cheapestSources),
+    live: Boolean(body.live),
+    totalOffers: body.totalOffers ?? 0,
+    totalStores: body.totalStores ?? 0,
+    cheapest: asArray<PricedBoardRow>(body.cheapest),
+    resale: asArray<PricedBoardRow>(body.resale),
     arbitrage: asArray<ArbitrageSpread>(body.arbitrage),
-    supplyGaps: asArray<SupplyGap>(body.supplyGaps),
+    supplyGaps: asArray<SupplyGap>(body.supplyGaps).map((g) => ({
+      ...g,
+      buyers: asArray<GapBuyer>(g.buyers),
+    })),
     warnings: asArray<string>(body.warnings),
   }
 }
