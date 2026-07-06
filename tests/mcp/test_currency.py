@@ -374,6 +374,56 @@ def test_compute_list_view_splits_and_ranks() -> None:
     assert "3 active" in payload["narrative"] or "3 active currencies" in payload["narrative"]
 
 
+def test_compute_list_view_carries_series_and_holders() -> None:
+    """List mode surfaces the money/trade time series and per-currency holders.
+
+    The website /economy page charts the trend and renders wealth distribution
+    from the roster view, so both the series block and each currency's holder
+    block have to ride along with the list payload (eco-app#78).
+    """
+    sirens = CurrencyRecord(
+        "Sirens", is_minted=True, minted_amount=1500, trade_count=2, trade_volume=100
+    )
+    sirens.holders_reachable = True
+    sirens.accounts_counted = 2
+    sirens.total_holdings = 8500.0
+    sirens.top_holders = [
+        CurrencyHolder("Treasury", None, 6000.0),
+        CurrencyHolder("Kai's Personal Account", "Kai", 2500.0),
+    ]
+    snap = _snapshot_with(
+        [sirens, CurrencyRecord("Kai", is_minted=False, trade_count=1, trade_volume=5)],
+        personal=[(0.0, 8000.0), (86400.0, 9000.0)],
+        gov=[(0.0, 1000.0), (86400.0, 1500.0)],
+        active=[(0.0, 2.0), (86400.0, 2.0)],
+        trades7d=[(0.0, 500.0), (86400.0, 1200.0)],
+    )
+    snap.holders_reachable = True
+    payload = compute_currency_payload(snap)
+
+    # Series ride along as [time, value] pairs for the trend charts.
+    series = payload["series"]
+    assert series["personalWealth"] == [[0.0, 8000.0], [86400.0, 9000.0]]
+    assert series["trades7d"] == [[0.0, 500.0], [86400.0, 1200.0]]
+    assert series["governmentHoldings"][-1] == [86400.0, 1500.0]
+
+    # Each roster entry carries its own holders block for wealth distribution.
+    top = payload["currencies"][0]
+    assert top["name"] == "Sirens"
+    assert top["holders"]["reachable"] is True
+    assert top["holders"]["accountsCounted"] == 2
+    assert top["holders"]["totalHoldings"] == 8500.0
+    assert top["holders"]["list"][0] == {
+        "account": "Treasury",
+        "holder": None,
+        "balance": 6000.0,
+    }
+    # A currency the mod never reported degrades to reachable=False, not a fake list.
+    kai = next(c for c in payload["currencies"] if c["name"] == "Kai")
+    assert kai["holders"]["reachable"] is False
+    assert kai["holders"]["list"] == []
+
+
 def test_compute_report_view_selects_currency_with_live_holders() -> None:
     sirens = CurrencyRecord(
         "Sirens", is_minted=True, minted_amount=1500, mint_events=2, trade_count=2
