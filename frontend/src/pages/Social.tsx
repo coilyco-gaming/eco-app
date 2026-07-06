@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import Layout from "../components/Layout"
+import Loading from "../components/Loading"
 import { fetchSocial, type ReputationEdge, type SocialSurface } from "../lib/socialApi"
 import { formatCount } from "../lib/format"
 
@@ -275,6 +276,8 @@ export default function Social() {
           </p>
         )}
       </section>
+
+      {!surface && !error && <Loading label="Reading the room…" testid="social-loading" />}
 
       {surface && isEmpty && (
         <section>

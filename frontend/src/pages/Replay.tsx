@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import Layout from "../components/Layout"
+import Loading from "../components/Loading"
 import { fetchReplayData, type ReplayEvent } from "../lib/replayApi"
 import { formatCount } from "../lib/format"
 
@@ -84,6 +85,8 @@ export default function Replay() {
           </p>
         )}
       </section>
+
+      {!events && !error && <Loading label="Reading the chronicle…" testid="replay-loading" />}
 
       {events && total === 0 && (
         <section>

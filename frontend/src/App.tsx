@@ -1,4 +1,5 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom"
+import PagePassword from "./components/PagePassword"
 import Calculator from "./pages/Calculator"
 import Civics from "./pages/Civics"
 import Climate from "./pages/Climate"
@@ -19,6 +20,10 @@ import World from "./pages/World"
 // per-feature pages (economy, map, species, milestones) join /server and
 // /jobs here as they grow out of the design pass. The /jobs/* wildcard
 // swallows the old server-rendered sub-paths (/jobs/professions etc.).
+//
+// /social and /replay are URL-only: dropped from the nav and the homepage
+// directory, and wrapped in PagePassword so they sit behind a soft password
+// gate (eco-app#73). Everything else is open.
 export default function App() {
   return (
     <BrowserRouter>
@@ -32,12 +37,26 @@ export default function App() {
         <Route path="/trades" element={<Trades />} />
         <Route path="/crafting" element={<Crafting />} />
         <Route path="/civics" element={<Civics />} />
-        <Route path="/social" element={<Social />} />
+        <Route
+          path="/social"
+          element={
+            <PagePassword>
+              <Social />
+            </PagePassword>
+          }
+        />
         <Route path="/world" element={<World />} />
         <Route path="/climate" element={<Climate />} />
         <Route path="/ecoregion" element={<Ecoregion />} />
         <Route path="/calculator" element={<Calculator />} />
-        <Route path="/replay" element={<Replay />} />
+        <Route
+          path="/replay"
+          element={
+            <PagePassword>
+              <Replay />
+            </PagePassword>
+          }
+        />
       </Routes>
     </BrowserRouter>
   )
