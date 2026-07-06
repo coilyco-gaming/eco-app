@@ -50,6 +50,14 @@ CRAFT_ACTION_TYPES = (
     "DigOrMine",
 )
 
+# Only ItemCraftedAction carries a Count that means "units of item produced".
+# For the gather actions (HarvestOrHunt / ChopTree / DigOrMine) the Count column
+# is a harvest *magnitude* — biomass / weight, hundreds-of-thousands per chop —
+# not a unit count, so summing it across action types buries real crafting under
+# plant biomass. We therefore keep two separate item boards: crafted counts
+# units, gathered counts *events*. See eco-app#70.
+CRAFTED_ACTION_TYPE = "ItemCraftedAction"
+
 DEFAULT_BASE_URL = os.environ.get("ECO_ADMIN_BASE_URL", "http://eco.coilysiren.me:3001")
 DEFAULT_CACHE_TTL_S = float(os.environ.get("ECO_CRAFTING_CACHE_TTL", "300"))
 
@@ -178,10 +186,21 @@ class CraftingAtlas:
     fetched_at_iso: str
     source_base_url: str
     total_events: int = 0
-    by_item: list[tuple[str, float]] = field(default_factory=list)
+    # Crafted items: unit counts summed from ItemCraftedAction.Count — a real
+    # "how many units were made" number.
+    by_crafted: list[tuple[str, float]] = field(default_factory=list)
+    # Gathered resources: gather *events* per species/block from HarvestOrHunt /
+    # ChopTree / DigOrMine. Their Count is a biomass magnitude, not a unit count,
+    # so we count events (comparable across resources) rather than sum it.
+    # See eco-app#70.
+    by_gathered: list[tuple[str, int]] = field(default_factory=list)
     by_station: list[tuple[str, int]] = field(default_factory=list)
-    by_citizen: list[tuple[str, float]] = field(default_factory=list)
-    # Sankey edges: (source_station, target_item, total_count)
+    # Ranked by production *events* (crafts + gathers), not summed Count, so a
+    # plant harvester's biomass can't dominate the leaderboard. See eco-app#70.
+    by_citizen: list[tuple[str, int]] = field(default_factory=list)
+    # Sankey edges: (source_station, target_item, event_count). Event-weighted
+    # for the same reason — a single 200k-biomass chop would otherwise swamp the
+    # diagram. See eco-app#70.
     flows: list[tuple[str, str, float]] = field(default_factory=list)
     # Per-action-type row count, so the UI can say "4 types fed the atlas".
     per_action_counts: dict[str, int] = field(default_factory=dict)
@@ -193,7 +212,8 @@ class CraftingAtlas:
             "fetchedAtISO": self.fetched_at_iso,
             "sourceBaseUrl": self.source_base_url,
             "totalEvents": self.total_events,
-            "byItem": [[n, c] for n, c in self.by_item],
+            "byCrafted": [[n, c] for n, c in self.by_crafted],
+            "byGathered": [[n, c] for n, c in self.by_gathered],
             "byStation": [[n, c] for n, c in self.by_station],
             "byCitizen": [[n, c] for n, c in self.by_citizen],
             "flows": [[s, t, c] for s, t, c in self.flows],
@@ -243,9 +263,10 @@ def _cache_get(base_url: str, api_key: str | None, ttl_s: float) -> CraftingAtla
         fetched_at_iso=data["fetchedAtISO"],
         source_base_url=data["sourceBaseUrl"],
         total_events=int(data["totalEvents"]),
-        by_item=[(n, float(c)) for n, c in data.get("byItem", [])],
+        by_crafted=[(n, float(c)) for n, c in data.get("byCrafted", [])],
+        by_gathered=[(n, int(c)) for n, c in data.get("byGathered", [])],
         by_station=[(n, int(c)) for n, c in data.get("byStation", [])],
-        by_citizen=[(n, float(c)) for n, c in data.get("byCitizen", [])],
+        by_citizen=[(n, int(c)) for n, c in data.get("byCitizen", [])],
         flows=[(s, t, float(c)) for s, t, c in data.get("flows", [])],
         per_action_counts=dict(data.get("perActionCounts", {})),
         warnings=list(data.get("warnings", [])),
@@ -338,6 +359,13 @@ def aggregate_rows(
 
     The exporter occasionally gives us slightly different column orders per
     action type, so we key off the header row instead of fixed positions.
+
+    Count semantics differ by action class, so we fold them differently
+    (eco-app#70): a craft's Count is a real unit count and feeds `by_crafted`;
+    a gather's Count is a biomass magnitude, so it never gets summed — each
+    gather row contributes one *event* to `by_gathered`. Station utilization,
+    the citizen leaderboard, and the sankey are all event-weighted so no board
+    is dominated by harvest magnitude.
     """
     it = iter(rows)
     try:
@@ -358,12 +386,17 @@ def aggregate_rows(
 
     # Accumulators live on the atlas's per-pass dicts; we store them on the
     # call-side via closure-like bags so each call can fold into shared totals.
-    by_item: dict[str, float] = dict(atlas.by_item)
+    by_crafted: dict[str, float] = dict(atlas.by_crafted)
+    by_gathered: dict[str, int] = dict(atlas.by_gathered)
     by_station: dict[str, int] = dict(atlas.by_station)
     # by_citizen holds raw numeric ids here; fetch_atlas resolves them to names
     # once, after every action has folded. See eco-app#5.
-    by_citizen: dict[str, float] = dict(atlas.by_citizen)
+    by_citizen: dict[str, int] = dict(atlas.by_citizen)
     flows: dict[tuple[str, str], float] = {(s, t): c for s, t, c in atlas.flows}
+
+    # Only crafts contribute a meaningful unit Count; everything else is
+    # event-counted so biomass magnitude can't swamp the boards (eco-app#70).
+    is_crafted = action_name == CRAFTED_ACTION_TYPE
 
     consumed = 0
     for row in it:
@@ -408,18 +441,22 @@ def aggregate_rows(
             station = ""
 
         if item:
-            by_item[item] = by_item.get(item, 0.0) + count
+            if is_crafted:
+                by_crafted[item] = by_crafted.get(item, 0.0) + count
+            else:
+                by_gathered[item] = by_gathered.get(item, 0) + 1
         if station:
             by_station[station] = by_station.get(station, 0) + 1
         if station and item:
-            flows[(station, item)] = flows.get((station, item), 0.0) + count
+            flows[(station, item)] = flows.get((station, item), 0.0) + 1.0
         if citizen and _INT_RE.match(citizen):
-            by_citizen[citizen] = by_citizen.get(citizen, 0.0) + count
+            by_citizen[citizen] = by_citizen.get(citizen, 0) + 1
         consumed += 1
 
     atlas.total_events += consumed
     atlas.per_action_counts[action_name] = atlas.per_action_counts.get(action_name, 0) + consumed
-    atlas.by_item = sorted(by_item.items(), key=lambda kv: kv[1], reverse=True)
+    atlas.by_crafted = sorted(by_crafted.items(), key=lambda kv: kv[1], reverse=True)
+    atlas.by_gathered = sorted(by_gathered.items(), key=lambda kv: kv[1], reverse=True)
     atlas.by_station = sorted(by_station.items(), key=lambda kv: kv[1], reverse=True)
     atlas.by_citizen = sorted(by_citizen.items(), key=lambda kv: kv[1], reverse=True)
     atlas.flows = sorted(
@@ -485,7 +522,7 @@ def _apply_citizen_names(atlas: CraftingAtlas, name_map: dict[str, str]) -> None
     """
     if not atlas.by_citizen:
         return
-    resolved: dict[str, float] = {}
+    resolved: dict[str, int] = {}
     matched = 0
     for cid, count in atlas.by_citizen:
         name = name_map.get(cid)
@@ -494,7 +531,7 @@ def _apply_citizen_names(atlas: CraftingAtlas, name_map: dict[str, str]) -> None
         else:
             label = name
             matched += 1
-        resolved[label] = resolved.get(label, 0.0) + count
+        resolved[label] = resolved.get(label, 0) + count
     atlas.by_citizen = sorted(resolved.items(), key=lambda kv: kv[1], reverse=True)
     if matched == 0 and CITIZEN_NAMES_UNAVAILABLE_WARNING not in atlas.warnings:
         atlas.warnings.append(CITIZEN_NAMES_UNAVAILABLE_WARNING)
@@ -610,14 +647,16 @@ def atlas_template_context(
     top_flows: int = 30,
 ) -> dict[str, Any]:
     """Shape for the Jinja2 partial. All SVG is rendered server-side."""
-    items = atlas.by_item[:top_items]
+    crafted = atlas.by_crafted[:top_items]
+    gathered = atlas.by_gathered[:top_items]
     stations = atlas.by_station[:top_stations]
     citizens = atlas.by_citizen[:top_citizens]
     flows = atlas.flows[:top_flows]
 
-    max_item = max((c for _, c in items), default=0.0) or 1.0
+    max_crafted = max((c for _, c in crafted), default=0.0) or 1.0
+    max_gathered = max((c for _, c in gathered), default=0) or 1
     max_station = max((c for _, c in stations), default=0) or 1
-    max_citizen = max((c for _, c in citizens), default=0.0) or 1.0
+    max_citizen = max((c for _, c in citizens), default=0) or 1
 
     sankey = _build_sankey_layout(flows, width=720, height=420) if flows else None
 
@@ -629,14 +668,23 @@ def atlas_template_context(
         "per_action_counts": [
             (name, count) for name, count in atlas.per_action_counts.items() if count
         ],
-        "top_items": [
+        "top_crafted": [
             {
                 "name": name,
                 "pretty": prettify_eco_name(name),
                 "count": count,
-                "pct": (count / max_item) * 100.0,
+                "pct": (count / max_crafted) * 100.0,
             }
-            for name, count in items
+            for name, count in crafted
+        ],
+        "top_gathered": [
+            {
+                "name": name,
+                "pretty": prettify_eco_name(name),
+                "count": count,
+                "pct": (count / max_gathered) * 100.0,
+            }
+            for name, count in gathered
         ],
         "top_stations": [
             {

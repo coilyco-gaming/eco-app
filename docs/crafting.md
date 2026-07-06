@@ -32,10 +32,11 @@ from "never fetched".
 
 ## What the atlas computes
 
-- **Top items produced** - `Count` summed by output item (`ItemUsed` for crafts, `Species` for harvests/chops, the block for mining). Top 20 on the MCP card, top 25 on the SPA.
+- **Top items crafted** - `Count` summed by output item, `ItemCraftedAction` only. This is a real unit count ("how many were made"). Top 20 on the MCP card, top 25 on the SPA.
+- **Top resources gathered** - `HarvestOrHunt` / `ChopTree` / `DigOrMine` output (`Species` for harvests/chops, the block for mining), counted by **event**, not by `Count`. Their `Count` is a harvest *magnitude* (biomass / weight, hundreds-of-thousands per chop), so summing it across action types buried real crafting under plant biomass - the two boards are kept separate for exactly that reason ([#70](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/70)).
 - **Crafting-station utilization** - event count per `WorldObjectItem` (Campfire, Workbench, Carpentry Table...), ranked hot to cold. Hand/tool-driven actions record the tool or `(hand)`.
-- **"Flows into what" sankey** - edges `WorldObjectItem -> ItemUsed`, thickness = summed `Count`. Rendered as a **static server-side SVG** (see the deviation note below).
-- **Per-citizen leaderboard** - top crafters by total `Count` across all four action types.
+- **"Flows into what" sankey** - edges `WorldObjectItem -> output`, thickness = **event count** (event-weighted so a single 200k-biomass chop can't swamp the diagram - [#70](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/70)). Rendered as a **static server-side SVG** (see the deviation note below).
+- **Per-citizen leaderboard** - top producers by total production **events** (crafts + gathers) across all four action types, so a plant harvester's biomass can't dominate ([#70](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/70)).
 
 ## Messy bits handled
 
