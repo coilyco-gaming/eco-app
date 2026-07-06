@@ -18,6 +18,7 @@ hosts.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from collections.abc import AsyncIterator
@@ -41,11 +42,15 @@ from starlette.responses import (
 from starlette.routing import BaseRoute, Mount, Route
 from starlette.staticfiles import StaticFiles
 
+from . import users as users_mod
 from .admin import build_admin_server
 from .livereload import DEBUG, livereload_route
 from .map import build_map_payload, fetch_map_bundle
 from .server import (
+    ADMIN_API_KEY_ENV,
+    DEFAULT_ECO_INFO_URL,
     HTMX_PREFIX,
+    _get_admin_token,
     build_server,
     fetch_eco_info,
     redact,
@@ -127,6 +132,131 @@ def _env_flag(name: str) -> bool:
 # Feature flag: the privileged /admin MCP is off unless explicitly enabled, so
 # the public eco-mcp.coilysiren.me deploy never exposes on-disk state tools.
 ADMIN_ENABLED_ENV = "ECO_ADMIN_ENABLED"
+
+
+async def _gather_user_sources(server_arg: str | None) -> dict[str, Any]:
+    """Fan out concurrently to every per-user surface for one server.
+
+    Returns a ``{source_key: payload_or_None}`` dict shaped for
+    ``users.build_user_dossier`` / ``build_roster``: each exporter's
+    ``to_dict()`` payload, the jobs surface pre-shaped to
+    ``{name, active, lastSeenISO, specialties}`` rows, and the currency
+    snapshot's raw dict (which carries every currency's top-holders, unlike the
+    currency *card* payload). A surface that raises degrades to ``None`` — the
+    dossier renders panel-by-panel, so one dead exporter never sinks the page.
+    Fetch functions are imported lazily so the stdio entrypoint stays lean, the
+    same pattern the jobs/replay mounts use.
+    """
+    api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
+
+    from eco_spec_tracker import mock_data, upstream
+
+    from .civics import fetch_civics
+    from .crafting import fetch_atlas
+    from .currency import fetch_currency
+    from .progression import fetch_history
+    from .trades import fetch_ledger
+    from .world import fetch_world
+
+    async def _jobs() -> list[dict[str, Any]]:
+        rows = await upstream.fetch_rows()
+        out: list[dict[str, Any]] = []
+        for player in mock_data.players(rows):
+            seen = [s.last_seen for s in player.specialties if s.last_seen is not None]
+            out.append(
+                {
+                    "name": player.name,
+                    "active": player.active,
+                    "lastSeenISO": max(seen).isoformat() if seen else None,
+                    "specialties": [
+                        {"specialty": s.specialty, "level": s.level, "active": s.active}
+                        for s in player.specialties
+                    ],
+                }
+            )
+        return out
+
+    async def _currency() -> dict[str, Any]:
+        # Currency is the odd fetcher out: it needs /info (cycle day) and the
+        # admin token, mirroring the get_eco_currency tool dispatch in server.py.
+        info = await fetch_eco_info(server_arg)
+        days_elapsed = int(info.get("DaysRunning") or 0)
+        if days_elapsed <= 0:
+            tss: Any = info.get("TimeSinceStart")
+            try:
+                days_elapsed = max(1, int(float(tss) / 3600.0))
+            except (TypeError, ValueError):
+                days_elapsed = 1
+        admin_token = os.environ.get("ECO_ADMIN_TOKEN") or _get_admin_token()
+        default_admin_base = DEFAULT_ECO_INFO_URL.rsplit("/info", 1)[0]
+        snapshot = await fetch_currency(
+            server_arg,
+            info=info,
+            days_elapsed=days_elapsed,
+            admin_token=admin_token,
+            default_admin_base=default_admin_base,
+        )
+        return snapshot.to_dict()
+
+    tasks: dict[str, Any] = {
+        "jobs": _jobs(),
+        "trades": fetch_ledger(base_url=server_arg, api_key=api_key),
+        "crafting": fetch_atlas(base_url=server_arg, api_key=api_key),
+        "civics": fetch_civics(base_url=server_arg, api_key=api_key),
+        "progression": fetch_history(base_url=server_arg, api_key=api_key),
+        "world": fetch_world(base_url=server_arg, api_key=api_key),
+        "currency": _currency(),
+    }
+    results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+
+    sources: dict[str, Any] = {}
+    for key, result in zip(tasks.keys(), results, strict=True):
+        if isinstance(result, BaseException):
+            sources[key] = None
+        elif key in ("jobs", "currency"):
+            sources[key] = result  # already a plain list / dict
+        else:
+            sources[key] = result.to_dict()
+    return sources
+
+
+async def preview_user_json(request: Request) -> JSONResponse:
+    """`/preview/user.json?name=<username>` — the hidden `/users/<hex>` page's
+    data plane (eco-app#80).
+
+    The SPA base16-decodes the `/users/<hex>` path segment to the username and
+    passes it here as `?name=`. Fans out to every per-user surface and pivots
+    them into a single dossier — every field the exporters carry about that one
+    player.
+    """
+    username = request.query_params.get("name")
+    if not username:
+        return JSONResponse(
+            {"error": "missing ?name= (base16-decode the /users/<hex> segment first)"},
+            status_code=400,
+        )
+    server_arg = request.query_params.get("server")
+    sources = await _gather_user_sources(server_arg)
+    dossier = users_mod.build_user_dossier(username, sources)
+    dossier["fetchedAtISO"] = datetime.now(UTC).isoformat()
+    return JSONResponse(dossier)
+
+
+async def preview_users_json(request: Request) -> JSONResponse:
+    """`/preview/users.json` — every username seen across all exporters.
+
+    The "list every user, never a truncated top-N" index (eco-app#80): a union
+    over each surface's complete per-user lists. Backs the `/users` directory.
+    """
+    server_arg = request.query_params.get("server")
+    sources = await _gather_user_sources(server_arg)
+    return JSONResponse(
+        {
+            "fetchedAtISO": datetime.now(UTC).isoformat(),
+            "users": users_mod.build_roster(sources),
+            "available": {key: sources.get(key) is not None for key in users_mod.SOURCE_KEYS},
+        }
+    )
 
 
 def create_app() -> Starlette:
@@ -529,6 +659,8 @@ def create_app() -> Starlette:
         Route("/preview/social.json", preview_social_json, methods=["GET"]),
         Route("/preview/world.json", preview_world_json, methods=["GET"]),
         Route("/preview/watchers.json", preview_watchers_json, methods=["GET"]),
+        Route("/preview/user.json", preview_user_json, methods=["GET"]),
+        Route("/preview/users.json", preview_users_json, methods=["GET"]),
         Route("/preview/{tool}", preview_tool, methods=["GET"]),
         Mount("/mcp", app=handle_mcp),
         Mount("/jobs/api", app=jobs_app),

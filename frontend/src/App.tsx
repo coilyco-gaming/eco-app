@@ -13,6 +13,8 @@ import Server from "./pages/Server"
 import Social from "./pages/Social"
 import Trade from "./pages/Trade"
 import Trades from "./pages/Trades"
+import User from "./pages/User"
+import Users from "./pages/Users"
 import World from "./pages/World"
 
 // Route table for the SPA. The homepage is a thin directory of surfaces;
@@ -38,6 +40,11 @@ export default function App() {
         <Route path="/ecoregion" element={<Ecoregion />} />
         <Route path="/calculator" element={<Calculator />} />
         <Route path="/replay" element={<Replay />} />
+        {/* Hidden per-user surfaces (eco-app#80): no nav link, not password-
+            protected. /users lists every user; /users/<hex> is one user's
+            dossier, keyed by the base16 of their username. */}
+        <Route path="/users" element={<Users />} />
+        <Route path="/users/:hex" element={<User />} />
       </Routes>
     </BrowserRouter>
   )
