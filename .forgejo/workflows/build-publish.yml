@@ -137,6 +137,30 @@ jobs:
           done
           echo "build-mods failed after 3 attempts - check the preflight for egress vs toolchain" >&2
           exit 1
+      # Run the replay mod's C# unit tests. The compile gate above only proves
+      # the mods *build*; it never exercises BodySerializer's bounded-snapshot
+      # logic, so a behavioural regression (issue #67: a summarized property
+      # serialized to `{}` instead of its name) failed silently outside CI. This
+      # step makes those tests a gated signal. It restores from NuGet like the
+      # compile (EcoReplay.Tests pulls Newtonsoft + the xunit stack), so it rides
+      # the SAME retry loop to stay green through the runner's flaky egress; a
+      # genuine test failure still fails all 3 attempts deterministically.
+      - name: Run replay mod unit tests (test-mod-replay gate)
+        run: |
+          set -eu
+          for attempt in 1 2 3; do
+            echo "::group::test-mod-replay attempt ${attempt}/3"
+            if ward exec test-mod-replay; then
+              echo "::endgroup::"
+              echo "replay tests passed on attempt ${attempt}"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "attempt ${attempt} failed; backing off before retry" >&2
+            sleep $((attempt * 15))
+          done
+          echo "test-mod-replay failed after 3 attempts - check the preflight for egress vs toolchain" >&2
+          exit 1
 
   publish:
     runs-on: docker

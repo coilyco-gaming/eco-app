@@ -123,6 +123,15 @@ internal sealed class ShallowResolver : DefaultContractResolver
         if (declared == null || !BodySerializer.IsSafeScalar(declared))
         {
             prop.ValueProvider = new SummaryValueProvider(prop.ValueProvider!);
+
+            // Retype the property to object so Newtonsoft resolves the contract
+            // from the *runtime* value our provider returns (a summary string or
+            // boxed scalar), not the declared type. This matters when the
+            // declared type is sealed: Newtonsoft treats a sealed property
+            // contract as final and skips the runtime re-resolution, which would
+            // otherwise serialize our summary string against the sealed entity's
+            // object contract and emit `{}` instead of the name. (issue #67)
+            prop.PropertyType = typeof(object);
         }
         return prop;
     }
