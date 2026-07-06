@@ -21,12 +21,4 @@ describe("Calculator", () => {
     expect(screen.getByTestId("calc-open")).toHaveAttribute("href", "https://eco-gnome.com")
     expect(screen.getByTestId("calc-attribution")).toHaveTextContent("MIT-licensed")
   })
-
-  it("spells out the self-host + Sirens-data roadmap", () => {
-    renderCalculator()
-
-    const roadmap = screen.getByTestId("calc-roadmap")
-    expect(roadmap).toHaveTextContent(/self-host/i)
-    expect(roadmap).toHaveTextContent(/DataExporter/i)
-  })
 })

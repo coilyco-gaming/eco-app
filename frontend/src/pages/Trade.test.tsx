@@ -175,35 +175,99 @@ const CURRENCY = {
   warnings: [],
 }
 
+// Mirrors the real backend `LogisticsReport.to_dict()` (logistics.py): boards
+// carry nested `offers` / `buyFrom` / `sellTo`, and supply gaps carry a
+// structured `reason` plus the per-citizen `buyers` demand (eco-app#77).
 const LOGISTICS = {
   view: "logistics",
   fetchedAtISO: "2026-06-12T13:00:00+00:00",
   sourceBaseUrl: "http://x:3001",
-  cheapestSources: [
+  live: false,
+  totalOffers: 5,
+  totalStores: 3,
+  cheapest: [
     {
       item: "IronIngotItem",
       itemPretty: "Iron Ingot",
-      store: "Iron Emporium",
-      owner: "ekans",
-      unitPrice: 24,
       currency: "Credit",
-      location: "1,2,3",
+      sellerCount: 1,
+      cheapest: 24,
+      offers: [
+        {
+          store: "Iron Emporium",
+          owner: "ekans",
+          storeKey: "iron|ekans",
+          item: "IronIngotItem",
+          itemPretty: "Iron Ingot",
+          currency: "Credit",
+          side: "sell",
+          price: 24,
+          quantity: 10,
+          source: "history",
+          lastDay: 12,
+        },
+      ],
     },
   ],
+  resale: [],
   arbitrage: [
     {
       item: "WheatItem",
       itemPretty: "Wheat",
       currency: "Credit",
-      buyPrice: 4,
-      buyStore: "Wheat Stand",
-      sellPrice: 7,
-      sellStore: "Iron Emporium",
       spread: 3,
       spreadPct: 75,
+      volume: 20,
+      opportunity: 60,
+      storeCount: 2,
+      buyFrom: {
+        store: "Wheat Stand",
+        owner: "onix",
+        storeKey: "wheat|onix",
+        item: "WheatItem",
+        itemPretty: "Wheat",
+        currency: "Credit",
+        side: "sell",
+        price: 4,
+        quantity: 20,
+        source: "history",
+        lastDay: 11,
+      },
+      sellTo: {
+        store: "Iron Emporium",
+        owner: "ekans",
+        storeKey: "iron|ekans",
+        item: "WheatItem",
+        itemPretty: "Wheat",
+        currency: "Credit",
+        side: "buy",
+        price: 7,
+        quantity: 30,
+        source: "history",
+        lastDay: 12,
+      },
     },
   ],
-  supplyGaps: [{ item: "BoardItem", itemPretty: "Board", note: "high demand, no sellers" }],
+  supplyGaps: [
+    {
+      item: "BoardItem",
+      itemPretty: "Board",
+      currency: "Credit",
+      reason: "no_supply",
+      sellerCount: 0,
+      buyerCount: 2,
+      demandQty: 45,
+      supplyQty: 0,
+      buyPrice: 6,
+      cheapestSell: null,
+      median: null,
+      overMedianPct: null,
+      buyers: [
+        { owner: "geodude", store: "Geodude's Yard", quantity: 30, price: 6 },
+        { owner: "onix", store: "Onix's Depot", quantity: 15, price: 5 },
+      ],
+    },
+  ],
   warnings: [],
 }
 
@@ -347,7 +411,12 @@ describe("Trade", () => {
     })
     expect(screen.getByTestId("arbitrage-row")).toHaveTextContent("Wheat Stand")
     expect(screen.getByTestId("cheapest-list")).toHaveTextContent("Iron Emporium")
-    expect(screen.getByTestId("gaps-list")).toHaveTextContent("high demand, no sellers")
+    // Supply gap now names the reason and WHO needs it, not a prose note.
+    const gaps = screen.getByTestId("gaps-list")
+    expect(gaps).toHaveTextContent("Board")
+    expect(gaps).toHaveTextContent("no supply")
+    expect(within(gaps).getByTestId("gap-who")).toHaveTextContent("geodude")
+    expect(within(gaps).getByTestId("gap-who")).toHaveTextContent("onix")
   })
 
   it("shows the watcher panel with a feed badge when watchers exist", async () => {

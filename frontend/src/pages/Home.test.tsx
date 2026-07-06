@@ -49,6 +49,61 @@ describe("Home", () => {
     )
   })
 
+  it("renders per-surface sub-card badges from the live pulse endpoints", async () => {
+    const byUrl: Record<string, unknown> = {
+      "/preview.json": SAMPLE_STATUS,
+      "/preview/get_eco_economy.json": {
+        kpis: { trades_total: 1341, trades_per_day: 24, contracts_posted: 8 },
+      },
+      "/preview/get_eco_trades.json": {
+        totalTrades: 1341,
+        byItem: [["BunWulfRawMeatItem", 90, 400]],
+      },
+      "/preview/get_eco_crafting_atlas.json": {
+        totalEvents: 512,
+        byCrafted: [["WoodenChairItem", 40]],
+      },
+      "/preview/get_eco_climate.json": {
+        status: "warming",
+        co2: { current: 620 },
+      },
+      "/preview/get_eco_ecoregion.json": {
+        biomes: [{ display: "Grassland" }],
+        ecoregionMatches: [{ name: "Serengeti" }],
+      },
+    }
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString()
+        const key = Object.keys(byUrl).find((u) => url.includes(u))
+        const body = key ? byUrl[key] : {}
+        return Promise.resolve(
+          new Response(JSON.stringify(body), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        )
+      }),
+    )
+
+    renderHome()
+
+    await waitFor(() => {
+      expect(screen.getByTestId("economy-badges")).toHaveTextContent("24 trades/day")
+    })
+    expect(screen.getByTestId("economy-badges")).toHaveTextContent("8 contracts")
+    expect(screen.getByTestId("trades-badges")).toHaveTextContent("1,341 trades")
+    expect(screen.getByTestId("trades-badges")).toHaveTextContent("top: Bun Wulf Raw Meat")
+    expect(screen.getByTestId("crafting-badges")).toHaveTextContent("512 crafts")
+    expect(screen.getByTestId("crafting-badges")).toHaveTextContent("top: Wooden Chair")
+    expect(screen.getByTestId("climate-badges")).toHaveTextContent("warming")
+    expect(screen.getByTestId("climate-badges")).toHaveTextContent("620 ppm CO₂")
+    expect(screen.getByTestId("ecoregion-badges")).toHaveTextContent("Grassland")
+    expect(screen.getByTestId("ecoregion-badges")).toHaveTextContent("≈ Serengeti")
+  })
+
   it("renders the full directory even when the snapshot fetch fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("boom")))
 

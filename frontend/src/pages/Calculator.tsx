@@ -54,23 +54,6 @@ export default function Calculator() {
         , so the numbers match <em>this</em> server rather than the vanilla defaults.
       </p>
 
-      <h2 className="section-title">The road to server-accurate prices</h2>
-      <ul className="explainer" data-testid="calc-roadmap">
-        <li>
-          <strong>Phase 1 - live on our domain.</strong> Self-host the MIT Eco Gnome calculator,
-          unchanged, so there is a working calculator on the site fast. The deploy slot is built
-          (a Blazor Server + Postgres service in coilyco-bridge/deploy, pinning the upstream image,
-          not baked into the fused Python image); once rolled out on kai-server it serves at{" "}
-          <strong>eco-gnome.coilysiren.me</strong>.
-        </li>
-        <li>
-          <strong>Phase 2 - Sirens' own numbers.</strong> Export Sirens' modded recipes, skills,
-          and items from the kai-server Eco with the DataExporter mod and feed the self-hosted
-          instance. That is the differentiator the public site cannot offer - server-accurate
-          pricing. It waits on the eco mod-ops pipeline.
-        </li>
-      </ul>
-
       <p className="intro" data-testid="calc-attribution">
         Eco Gnome is <strong>MIT-licensed</strong>, built by the Eco-Gnome project (Zangdar and
         Joridan). eco-app self-hosts their work with attribution and license preserved - it does

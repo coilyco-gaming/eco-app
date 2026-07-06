@@ -1053,10 +1053,15 @@ def _format_crafting_markdown(ctx: dict[str, Any]) -> str:
     lines = [
         f"**Crafting atlas** — {ctx['total_events']:,} events (`{ctx['source_base_url']}`)",
         "",
-        "**Top items produced:**",
+        "**Top items crafted (units):**",
     ]
-    for i, item in enumerate(ctx["top_items"][:10], 1):
+    for i, item in enumerate(ctx["top_crafted"][:10], 1):
         lines.append(f"{i}. {item['pretty']} — {item['count']:,.0f}")
+    if ctx["top_gathered"]:
+        lines.append("")
+        lines.append("**Top resources gathered (harvest/chop/dig events):**")
+        for i, item in enumerate(ctx["top_gathered"][:10], 1):
+            lines.append(f"{i}. {item['pretty']} — {item['count']:,} events")
     if ctx["top_stations"]:
         lines.append("")
         lines.append("**Station utilization:**")
@@ -2174,7 +2179,8 @@ def build_server() -> Server:
                 description=(
                     "Reconstruct a live picture of crafting / harvesting / "
                     "mining activity on an Eco server from its action-log "
-                    "exporter. Aggregates top items produced, crafting-station "
+                    "exporter. Aggregates top items crafted (by unit count), "
+                    "top resources gathered (by event count), crafting-station "
                     "utilization, and a per-citizen leaderboard across "
                     "ItemCraftedAction, HarvestOrHunt, ChopTree, DigOrMine. "
                     "Requires an admin API key configured server-side "

@@ -8,6 +8,9 @@
 
 export interface ChatSample {
   day: number
+  // Event time in in-game seconds (exporter `Time`). Rendered as age relative to
+  // the surface's `latestTimeS`, so the feed reads "1 hour ago" not "day 3".
+  timeS: number
   author: string
   channel: string
   message: string
@@ -29,6 +32,9 @@ export interface SocialSurface {
   fetchedAtISO: string
   sourceBaseUrl: string
   redacted: boolean
+  // Newest event time (in-game seconds) across the surface — the reference the
+  // chat feed measures each message's age against.
+  latestTimeS: number
   perTypeCounts: Record<string, number>
   totalChat: number
   totalReputationTransfers: number

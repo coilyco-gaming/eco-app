@@ -4,7 +4,7 @@ import Layout from "../components/Layout"
 import { fetchMarket, type ItemMarket, type MarketIntelligence, type MarketTrend } from "../lib/marketApi"
 import { fetchStores, type StoreDirectory } from "../lib/storesApi"
 import { fetchCurrency, type CurrencySnapshot } from "../lib/currencyApi"
-import { fetchLogistics, type LogisticsBoard } from "../lib/logisticsApi"
+import { fetchLogistics, type GapReason, type LogisticsBoard, type SupplyGap } from "../lib/logisticsApi"
 import { fetchWatchers, type WatcherHit } from "../lib/watchersApi"
 import { formatCount } from "../lib/format"
 
@@ -39,6 +39,55 @@ function TrendTag({ trend, delta }: { trend: MarketTrend; delta: number | null }
       <span aria-hidden="true">{t.glyph}</span> {t.label}
       {pct}
     </span>
+  )
+}
+
+// Supply-gap severity, encoded glyph + label + colour (never colour alone, per
+// the dataviz non-negotiables): an unmet buy order is the loudest (meteor
+// amber), a lone monopolist is thin supply (bark), a merely over-priced shelf
+// stays muted ink.
+const GAP: Record<GapReason, { glyph: string; label: string; color: string }> = {
+  no_supply: { glyph: "✖", label: "no supply", color: "var(--meteor)" },
+  thin_supply: { glyph: "◐", label: "thin supply", color: "var(--meteor-deep)" },
+  overpriced: { glyph: "▲", label: "over-priced", color: "var(--ink-faint)" },
+}
+
+// One supply gap: the item, a reason tag, and — the point of eco-app#77 — WHO
+// needs it. A gap is only actionable if you know who is asking, so the buy-side
+// citizens and how much each still wants get their own line rather than being
+// crushed into the narrow count column.
+function SupplyGapRow({ gap, onPick }: { gap: SupplyGap; onPick: (item: string) => void }) {
+  const g = GAP[gap.reason]
+  const summary =
+    gap.reason === "overpriced"
+      ? `cheapest ${fmtPrice(gap.cheapestSell ?? 0)} vs median ${fmtPrice(gap.median ?? 0)}` +
+        (gap.overMedianPct !== null ? ` (+${Math.round(gap.overMedianPct)}%)` : "")
+      : `${formatCount(gap.demandQty)} wanted · ${formatCount(gap.buyerCount)} buyer${
+          gap.buyerCount === 1 ? "" : "s"
+        } · ${formatCount(gap.sellerCount)} seller${gap.sellerCount === 1 ? "" : "s"}`
+  return (
+    <li className="gap-row" data-testid="gap-row">
+      <div className="gap-head">
+        <button className="linklike gap-name" onClick={() => onPick(gap.itemPretty)}>
+          {gap.itemPretty}
+        </button>
+        <span className="gap-tag" style={{ color: g.color }} data-testid="gap-tag">
+          <span aria-hidden="true">{g.glyph}</span> {g.label}
+        </span>
+      </div>
+      <p className="gap-summary">{summary}</p>
+      {gap.buyers.length > 0 && (
+        <p className="gap-who" data-testid="gap-who">
+          <span className="gap-who-label">Who needs it:</span>{" "}
+          {gap.buyers.map((b, i) => (
+            <span key={`${b.owner}-${b.store}-${i}`} className="gap-buyer">
+              {b.owner || b.store} <span className="gap-buyer-qty">{formatCount(b.quantity)}</span>
+              {i < gap.buyers.length - 1 ? ", " : ""}
+            </span>
+          ))}
+        </p>
+      )}
+    </li>
   )
 }
 
@@ -232,9 +281,12 @@ export default function Trade() {
   )
   const drillSource = useMemo(() => {
     if (!drill || !logistics) return null
-    return logistics.cheapestSources.find(
+    const row = logistics.cheapest.find(
       (c) => c.item === drill.item || c.itemPretty.toLowerCase() === drill.itemPretty.toLowerCase(),
     )
+    const best = row?.offers[0]
+    if (!row || !best) return null
+    return { unitPrice: best.price, currency: row.currency, store: best.store, owner: best.owner }
   }, [drill, logistics])
 
   const topStores = useMemo(
@@ -407,7 +459,7 @@ export default function Trade() {
 
       {/* Logistics board — the headline "what should I do" panel. */}
       {logistics &&
-        (logistics.cheapestSources.length > 0 ||
+        (logistics.cheapest.length > 0 ||
           logistics.arbitrage.length > 0 ||
           logistics.supplyGaps.length > 0) && (
           <section data-testid="logistics">
@@ -428,17 +480,20 @@ export default function Trade() {
                   </thead>
                   <tbody>
                     {logistics.arbitrage.slice(0, LOGI_ROWS).map((a) => (
-                      <tr key={`${a.item}-${a.buyStore}-${a.sellStore}`} data-testid="arbitrage-row">
+                      <tr
+                        key={`${a.item}-${a.buyFrom.storeKey}-${a.sellTo.storeKey}`}
+                        data-testid="arbitrage-row"
+                      >
                         <td>
                           <button className="linklike" onClick={() => setQuery(a.itemPretty)}>
                             {a.itemPretty}
                           </button>
                         </td>
                         <td>
-                          {fmtPrice(a.buyPrice)} — {a.buyStore}
+                          {fmtPrice(a.buyFrom.price)} — {a.buyFrom.store}
                         </td>
                         <td>
-                          {fmtPrice(a.sellPrice)} — {a.sellStore}
+                          {fmtPrice(a.sellTo.price)} — {a.sellTo.store}
                         </td>
                         <td className="num">
                           +{fmtPrice(a.spread)} {a.currency} ({Math.round(a.spreadPct)}%)
@@ -449,34 +504,35 @@ export default function Trade() {
                 </table>
               </>
             )}
-            {logistics.cheapestSources.length > 0 && (
+            {logistics.cheapest.length > 0 && (
               <>
                 <h3 className="card-title">Cheapest source</h3>
                 <ul className="rank-rows" data-testid="cheapest-list">
-                  {logistics.cheapestSources.slice(0, LOGI_ROWS).map((c) => (
-                    <li key={`${c.item}-${c.store}`}>
-                      <div className="rank-row">
-                        <span className="rank-name">{c.itemPretty}</span>
-                        <span className="rank-count">
-                          {fmtPrice(c.unitPrice)} {c.currency} · {c.store} ({c.owner})
-                        </span>
-                      </div>
-                    </li>
-                  ))}
+                  {logistics.cheapest.slice(0, LOGI_ROWS).map((c) => {
+                    const best = c.offers[0]
+                    return (
+                      <li key={`${c.item}-${c.currency}`}>
+                        <div className="rank-row">
+                          <span className="rank-name">{c.itemPretty}</span>
+                          <span className="rank-count">
+                            {fmtPrice(c.cheapest ?? best?.price ?? 0)} {c.currency}
+                            {best ? ` · ${best.store} (${best.owner})` : ""}
+                          </span>
+                        </div>
+                      </li>
+                    )
+                  })}
                 </ul>
               </>
             )}
             {logistics.supplyGaps.length > 0 && (
               <>
-                <h3 className="card-title">Supply gaps</h3>
-                <ul className="rank-rows" data-testid="gaps-list">
+                <h3 className="card-title">
+                  Supply gaps <span className="section-sub">(what to stock — and who needs it)</span>
+                </h3>
+                <ul className="gap-list" data-testid="gaps-list">
                   {logistics.supplyGaps.slice(0, LOGI_ROWS).map((g) => (
-                    <li key={g.item}>
-                      <div className="rank-row">
-                        <span className="rank-name">{g.itemPretty}</span>
-                        <span className="rank-count">{g.note}</span>
-                      </div>
-                    </li>
+                    <SupplyGapRow key={`${g.item}-${g.currency}`} gap={g} onPick={setQuery} />
                   ))}
                 </ul>
               </>

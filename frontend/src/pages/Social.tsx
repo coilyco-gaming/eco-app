@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import Layout from "../components/Layout"
+import Loading from "../components/Loading"
 import { fetchSocial, type ReputationEdge, type SocialSurface } from "../lib/socialApi"
-import { formatCount } from "../lib/format"
+import { formatCount, formatRelativeTime } from "../lib/format"
 
 const TOP_N = 12
 // Cap the reputation graph to the busiest nodes so the circular layout stays
@@ -276,6 +277,8 @@ export default function Social() {
         )}
       </section>
 
+      {!surface && !error && <Loading label="Reading the room…" testid="social-loading" />}
+
       {surface && isEmpty && (
         <section>
           <p className="empty-note" data-testid="social-empty">
@@ -352,7 +355,7 @@ export default function Social() {
             <h2 className="section-title">
               Recent chat{" "}
               <span className="section-sub">
-                (newest {surface.recentChat.length}
+                (every message · {formatCount(surface.recentChat.length)}
                 {surface.redacted ? " · redacted" : ""})
               </span>
             </h2>
@@ -362,7 +365,7 @@ export default function Social() {
               <table className="ledger-table" data-testid="chat-feed">
                 <thead>
                   <tr>
-                    <th>Day</th>
+                    <th>When</th>
                     <th>Author</th>
                     <th>Channel</th>
                     <th>Message</th>
@@ -370,8 +373,10 @@ export default function Social() {
                 </thead>
                 <tbody>
                   {surface.recentChat.map((m, i) => (
-                    <tr key={`${m.day}-${i}`} data-testid="chat-row">
-                      <td>{m.day}</td>
+                    <tr key={`${m.timeS}-${i}`} data-testid="chat-row">
+                      <td className="chat-when" title={`in-game day ${m.day}`}>
+                        {formatRelativeTime(m.timeS, surface.latestTimeS)}
+                      </td>
                       <td>{m.author}</td>
                       <td>{m.channel}</td>
                       <td className="chat-msg">{m.message}</td>
