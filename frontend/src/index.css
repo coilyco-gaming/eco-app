@@ -1194,6 +1194,13 @@ a.dir-card:hover {
   overflow-wrap: anywhere;
 }
 
+/* Relative-time cell in the chat feed — keep "1 hour ago" on one line and
+   muted, so the message body stays the row's focus (eco-app#74). */
+.chat-when {
+  white-space: nowrap;
+  color: var(--ink-soft);
+}
+
 /* --- Ecoregion / biodiversity ---------------------------------------- */
 
 /* Donut + legend sit side by side, stacking on narrow viewports. */

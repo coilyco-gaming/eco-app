@@ -76,9 +76,17 @@ DEFAULT_CACHE_TTL_S = float(os.environ.get("ECO_SOCIAL_CACHE_TTL", "60"))
 # ~50 MB of CSV, well past the late-cycle estimate and still sub-second to fold.
 MAX_ROWS_PER_ACTION = int(os.environ.get("ECO_SOCIAL_MAX_ROWS", "500000"))
 
-# How many recent chat messages ship as redacted samples. The card + SPA want a
-# feel for the room, not the whole log; newest wins the cap.
+# How many recent chat messages ship in the MCP `_meta.ui` card / markdown, where
+# space is tight and a card wants a feel for the room. The SPA feed is *not*
+# capped — it lists every message (eco-app#74); this only bounds the compact card.
 MAX_CHAT_SAMPLES = int(os.environ.get("ECO_SOCIAL_CHAT_SAMPLES", "40"))
+
+# Chat whose channel/tag starts with this prefix is dropped from the surface.
+# On the live server the `#`-prefixed tags are noise (auto/system channels), not
+# the human rooms the page is about; the operator asked for them filtered out
+# (eco-app#74). The filter is applied once, at fold time, so a hidden channel
+# never reaches a count, a chart, the channel/chatter ranks, or the feed.
+HIDDEN_CHANNEL_PREFIX = "#"
 
 # How many new arrivals (FirstLogin) ship in the payload, newest first.
 MAX_NEW_ARRIVALS = int(os.environ.get("ECO_SOCIAL_ARRIVALS", "60"))
@@ -188,6 +196,11 @@ class SocialSurface:
     fetched_at_iso: str
     source_base_url: str
     redacted: bool = True
+    # Newest event time (in-game seconds) seen across every folded action. The
+    # feed renders each message's age *relative to this*, so "1 hour ago" reads
+    # off the last known server activity rather than wall-clock (the exporter's
+    # `Time` is server seconds, not epoch). 0 when nothing was folded.
+    latest_time_s: float = 0.0
     per_type_counts: dict[str, int] = field(default_factory=dict)
     total_chat: int = 0
     total_reputation_transfers: int = 0
@@ -217,6 +230,7 @@ class SocialSurface:
             "fetchedAtISO": self.fetched_at_iso,
             "sourceBaseUrl": self.source_base_url,
             "redacted": self.redacted,
+            "latestTimeS": self.latest_time_s,
             "perTypeCounts": dict(self.per_type_counts),
             "totalChat": self.total_chat,
             "totalReputationTransfers": self.total_reputation_transfers,
@@ -468,12 +482,31 @@ def build_surface(
     red = _Redactor(name_map, show_names)
     surface.redacted = not show_names
 
+    # Newest event time across every action — the feed's "N ago" reference point.
+    surface.latest_time_s = max(
+        (
+            *(m.time_s for m in chat),
+            *(r.time_s for r in edges),
+            *(e.time_s for e in activity),
+        ),
+        default=0.0,
+    )
+
     # --- Chat ---
-    surface.total_chat = len(chat)
+    # Drop `#`-prefixed channels (system/noise) before anything counts them, so a
+    # hidden room never lands in a total, a chart, a rank, or the feed (eco-app#74).
+    visible_chat = [m for m in chat if not m.channel.startswith(HIDDEN_CHANNEL_PREFIX)]
+    hidden_chat = len(chat) - len(visible_chat)
+    if hidden_chat:
+        surface.warnings.append(
+            f"{CHAT_ACTION}: hid {hidden_chat:,} message(s) in "
+            f"'{HIDDEN_CHANNEL_PREFIX}'-prefixed channels (system/noise, eco-app#74)"
+        )
+    surface.total_chat = len(visible_chat)
     chat_day: dict[int, int] = defaultdict(int)
     chat_channel: dict[str, int] = defaultdict(int)
     chatter: dict[str, int] = defaultdict(int)
-    for m in chat:
+    for m in visible_chat:
         chat_day[int(m.day)] += 1
         chat_channel[m.channel] += 1
         if m.author_id:
@@ -481,11 +514,14 @@ def build_surface(
     surface.chat_by_day = sorted(chat_day.items())
     surface.chat_by_channel = sorted(chat_channel.items(), key=lambda kv: kv[1], reverse=True)
     surface.top_chatters = sorted(chatter.items(), key=lambda kv: kv[1], reverse=True)
-    # Newest chat first for the sample feed; body scrubbed, author handled.
-    newest_chat = sorted(chat, key=lambda m: m.time_s, reverse=True)[:MAX_CHAT_SAMPLES]
+    # Every message ships in the feed, newest first (eco-app#74 — a ~20-row sample
+    # was near useless). Body scrubbed, author handled, raw `time_s` carried so the
+    # SPA can render age relative to `latest_time_s`.
+    newest_chat = sorted(visible_chat, key=lambda m: m.time_s, reverse=True)
     surface.recent_chat = [
         {
             "day": int(m.day),
+            "timeS": m.time_s,
             "author": red.label(m.author_id) or "—",
             "channel": m.channel,
             "message": red.message(m.message),
@@ -529,6 +565,20 @@ def build_surface(
         edge_cnt[(g, t)] += 1
         given[g] += r.amount
         received[t] += r.amount
+    # Self-diagnose the "empty graph despite N transfers" case (eco-app#74): if
+    # rows were folded but every one lost its giver or receiver, the graph reads
+    # empty for no visible reason. Name which party column failed to resolve so
+    # the fix is a one-line candidate-list edit against a live capture, not a hunt.
+    if edges and not edge_amt:
+        no_giver = sum(1 for r in edges if not r.giver_id)
+        no_receiver = sum(1 for r in edges if not r.receiver_id)
+        missing = "giver" if no_giver >= no_receiver else "receiver"
+        cols = _REP_GIVER if missing == "giver" else _REP_RECEIVER
+        surface.warnings.append(
+            f"{REPUTATION_ACTION}: {len(edges):,} transfer(s) parsed but the "
+            f"{missing} column was not recognized (tried {', '.join(cols)}); "
+            f"graph is empty until the header is confirmed (eco-app#74)"
+        )
     surface.reputation_edges = sorted(
         (
             {"source": s, "target": tgt, "amount": edge_amt[(s, tgt)], "count": edge_cnt[(s, tgt)]}
@@ -648,6 +698,7 @@ def _surface_from_dict(data: dict[str, Any]) -> SocialSurface:
         fetched_at_iso=data["fetchedAtISO"],
         source_base_url=data["sourceBaseUrl"],
         redacted=bool(data.get("redacted", True)),
+        latest_time_s=float(data.get("latestTimeS", 0.0)),
         per_type_counts=dict(data.get("perTypeCounts", {})),
         total_chat=int(data.get("totalChat", 0)),
         total_reputation_transfers=int(data.get("totalReputationTransfers", 0)),

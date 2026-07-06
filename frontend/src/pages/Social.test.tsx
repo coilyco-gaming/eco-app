@@ -7,6 +7,7 @@ const SURFACE = {
   fetchedAtISO: "2026-06-12T13:00:00+00:00",
   sourceBaseUrl: "http://x:3001",
   redacted: true,
+  latestTimeS: 300000,
   perTypeCounts: { ChatSent: 4, ReputationTransfer: 2, FirstLogin: 1, Play: 3 },
   totalChat: 4,
   totalReputationTransfers: 2,
@@ -22,8 +23,8 @@ const SURFACE = {
   ],
   firstLoginsByDay: [[1, 1]],
   chatByChannel: [
-    ["#general", 3],
-    ["#trade", 1],
+    ["General", 3],
+    ["Trade", 1],
   ],
   topChatters: [
     ["player-aaaa1111", 3],
@@ -43,8 +44,8 @@ const SURFACE = {
     ["player-bbbb2222", 5],
   ],
   recentChat: [
-    { day: 2, author: "player-aaaa1111", channel: "#general", message: "selling iron, ping player-bbbb2222" },
-    { day: 1, author: "player-bbbb2222", channel: "#trade", message: "anyone need wood" },
+    { day: 2, timeS: 290000, author: "player-aaaa1111", channel: "General", message: "selling iron, ping player-bbbb2222" },
+    { day: 1, timeS: 100000, author: "player-bbbb2222", channel: "Trade", message: "anyone need wood" },
   ],
   warnings: [],
 }

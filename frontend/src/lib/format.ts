@@ -22,6 +22,29 @@ export function formatFetchedAt(iso: string): string {
   return `${hh}:${mm} UTC`
 }
 
+// Age of an event as coarse relative time, e.g. "1 hour ago", "3 days ago".
+// Both args are the exporter's `Time` (in-game seconds; one in-game day = 86400s,
+// the species-CSV convention social.py folds by), so the gap is a real elapsed
+// span. `latest` is the newest event on the surface — the reference "now", since
+// `Time` is server seconds, not epoch. Clamped at 0 so clock skew never reads as
+// the future. Mirrors the day = Time / 86400 scale used across the social feed.
+export function formatRelativeTime(timeS: number, latest: number): string {
+  const sec = Math.max(0, Math.round(latest - timeS))
+  if (sec < 45) return "just now"
+  const units: Array<[number, string]> = [
+    [86400, "day"],
+    [3600, "hour"],
+    [60, "minute"],
+  ]
+  for (const [size, name] of units) {
+    if (sec >= size) {
+      const n = Math.round(sec / size)
+      return `${n} ${name}${n === 1 ? "" : "s"} ago`
+    }
+  }
+  return `${sec} seconds ago`
+}
+
 // "BunWulfRawMeatItem" -> "Bun Wulf Raw Meat", "OakSpecies" -> "Oak".
 // Mirrors prettify_eco_name in eco_mcp_app/crafting.py.
 export function prettifyEcoName(raw: string): string {
