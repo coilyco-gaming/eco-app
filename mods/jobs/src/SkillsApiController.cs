@@ -26,17 +26,34 @@ public class SkillsApiController : ControllerBase
                     skill.MaxLevel))
                 .ToArray();
 
-            // user.LogoutTime is Eco WorldTime seconds. Anchor to wall-clock as
-            // nowUtc minus elapsed game-seconds. The active-in-N-days bucket absorbs it.
+            // Anchor "last seen" to wall-clock. Eco stores per-user times in
+            // WorldTime seconds (the TimeUtil.Seconds domain), so convert the
+            // elapsed game-seconds back to real time. The active-in-N-days bucket
+            // the Python tracker derives absorbs the sub-day rounding.
+            //
+            // Use LastOnlineTime, which Eco persists across server restarts, as
+            // the anchor. LogoutTime is only populated for a logout that happened
+            // in the current server session, so after a restart it reads 0 for
+            // every player not currently connected - which collapsed all offline
+            // players to "never seen" and left only currently-online players
+            // counting as active. That is the "online, not active" bug in
+            // eco-app#76. LogoutTime stays as a secondary anchor in case a build
+            // reports it but not LastOnlineTime; we take whichever is newer.
             string? lastSeen = null;
             if (user.LoggedIn)
             {
                 lastSeen = nowUtc.ToString("yyyy-MM-ddTHH:mm:ssZ");
             }
-            else if (user.LogoutTime > 0)
+            else
             {
-                var ago = TimeSpan.FromSeconds(nowGameSeconds - user.LogoutTime);
-                lastSeen = (nowUtc - ago).ToString("yyyy-MM-ddTHH:mm:ssZ");
+                var seenGameSeconds = Math.Max(user.LastOnlineTime, user.LogoutTime);
+                if (seenGameSeconds > 0)
+                {
+                    // Clamp to >= 0: a slightly-ahead persisted stamp must never
+                    // yield a future lastSeen (which would read as trivially active).
+                    var ago = TimeSpan.FromSeconds(Math.Max(0, nowGameSeconds - seenGameSeconds));
+                    lastSeen = (nowUtc - ago).ToString("yyyy-MM-ddTHH:mm:ssZ");
+                }
             }
 
             return new PlayerSkillsDto(user.Name, lastSeen, specialties);
