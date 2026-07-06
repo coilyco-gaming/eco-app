@@ -25,6 +25,7 @@ Coordinate system — caveats worth internalizing before touching this module:
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import math
@@ -32,6 +33,8 @@ import os
 from typing import Any, cast
 
 import httpx
+
+from .ecoregion import BIOME_COLORS, BIOME_DISPLAY, BIOME_LAYERS
 
 ECO_BASE_URL_DEFAULT = os.environ.get("ECO_MAP_BASE_URL", "http://eco.coilysiren.me:3001").rstrip(
     "/"
@@ -55,7 +58,29 @@ def _world_base_url(server: str | None) -> str:
     return s.rstrip("/")
 
 
-async def fetch_map_bundle(server: str | None = None) -> dict[str, Any]:
+async def _fetch_biome_raster(
+    client: httpx.AsyncClient, base: str, layer: str
+) -> tuple[str, bytes] | None:
+    """Best-effort GET of one biome layer's raster (`/Layers/<Layer>.gif`).
+
+    Eco exposes each world layer as its own raster. We use these for the SPA's
+    biome hover-highlight (eco-app#82): hovering a biome name overlays its
+    raster so you can see *where* that biome is. Individual rasters can be
+    disabled (401/404) or the flaky preview server can time one out — any
+    failure just drops that biome's highlight, never the whole map.
+    """
+    try:
+        r = await client.get(f"{base}/Layers/{layer}.gif")
+    except httpx.HTTPError:
+        return None
+    if r.status_code == 200 and r.content:
+        return (layer, r.content)
+    return None
+
+
+async def fetch_map_bundle(
+    server: str | None = None, *, include_biomes: bool = False
+) -> dict[str, Any]:
     """Fetch the upstream payloads needed to render the map card.
 
     Returns a dict with:
@@ -66,9 +91,13 @@ async def fetch_map_bundle(server: str | None = None) -> dict[str, Any]:
         ``/Layers/<Name>.gif``; the pollution layer isn't always exposed (the
         config can disable individual rasters), so 404 is normal — we just
         omit the overlay.
+      * `biome_rasters`: `{LayerName: bytes}` — only populated when
+        ``include_biomes`` is set (the SPA `/map` page); the compact MCP card
+        never fetches them, keeping the in-chat path lean.
       * `base_url`: the base URL used (for display).
     """
     base = _world_base_url(server)
+    biome_rasters: dict[str, bytes] = {}
     async with httpx.AsyncClient(timeout=10.0) as client:
         dim_r = await client.get(f"{base}/api/v1/map/dimension")
         dim_r.raise_for_status()
@@ -85,11 +114,19 @@ async def fetch_map_bundle(server: str | None = None) -> dict[str, Any]:
                 pollution_gif = pol_r.content
         except httpx.HTTPError:
             pollution_gif = None
+        # Per-biome rasters for the hover-highlight — fetched concurrently and
+        # best-effort so a slow/disabled layer never stalls the map.
+        if include_biomes:
+            results = await asyncio.gather(
+                *(_fetch_biome_raster(client, base, layer) for layer in BIOME_LAYERS)
+            )
+            biome_rasters = dict(r for r in results if r is not None)
     return {
         "dimension": dim_r.json(),
         "property": prop_r.json(),
         "preview_gif": gif_r.content,
         "pollution_gif": pollution_gif,
+        "biome_rasters": biome_rasters,
         "base_url": base,
     }
 
@@ -268,6 +305,19 @@ def build_map_payload(bundle: dict[str, Any]) -> dict[str, Any]:
     owner_strokes = {o: _owner_stroke(o) for o in owners}
     pollution_bytes = bundle.get("pollution_gif")
     pollution_data_uri = gif_to_data_uri(cast(bytes, pollution_bytes)) if pollution_bytes else None
+    # Biome rasters (SPA hover-highlight) — one entry per layer that came back,
+    # in the canonical BIOME_LAYERS order so the SPA legend and overlay agree.
+    biome_rasters = bundle.get("biome_rasters") or {}
+    biome_layers = [
+        {
+            "name": layer,
+            "display": BIOME_DISPLAY.get(layer, layer),
+            "color": BIOME_COLORS.get(layer, "#888888"),
+            "dataUri": gif_to_data_uri(biome_rasters[layer]),
+        }
+        for layer in BIOME_LAYERS
+        if layer in biome_rasters
+    ]
     return {
         "view": "eco_map",
         "sourceUrl": bundle.get("base_url"),
@@ -275,6 +325,7 @@ def build_map_payload(bundle: dict[str, Any]) -> dict[str, Any]:
         "renderSize": MAP_RENDER_SIZE,
         "gifDataUri": gif_to_data_uri(cast(bytes, bundle.get("preview_gif") or b"")),
         "pollutionDataUri": pollution_data_uri,
+        "biomeLayers": biome_layers,
         "polygons": polygons,
         "deedCount": len({p["deed"] for p in polygons}),
         "ownerCount": len(owners),

@@ -130,14 +130,20 @@ export default function Home() {
           )}
         </Link>
 
-        <Link className="dir-card" to="/world" data-testid="dir-world">
-          <h3>World &amp; industry</h3>
-          <p>Construction, roads, terraforming, explosions, and pollution — the mutation timeline.</p>
+        <Link className="dir-card" to="/map" data-testid="dir-map">
+          <h3>World map</h3>
+          <p>
+            The live map, biome &amp; water mix, closest real-world ecoregions, and the mutation
+            timeline — construction, terraforming, and activity hotspots.
+          </p>
           {worldPulse && (
             <p className="dir-badges" data-testid="world-badges">
               <span className="mini-pill">{formatCount(worldPulse.events)} events</span>
               {worldPulse.topCategory && (
                 <span className="mini-pill">{worldPulse.topCategory}</span>
+              )}
+              {ecoregionPulse?.topBiome && (
+                <span className="mini-pill">{ecoregionPulse.topBiome}</span>
               )}
             </p>
           )}
@@ -151,21 +157,6 @@ export default function Home() {
               <span className="mini-pill">{climatePulse.status}</span>
               {climatePulse.co2Ppm !== null && (
                 <span className="mini-pill">{formatCount(climatePulse.co2Ppm)} ppm CO₂</span>
-              )}
-            </p>
-          )}
-        </Link>
-
-        <Link className="dir-card" to="/ecoregion" data-testid="dir-ecoregion">
-          <h3>Ecoregion</h3>
-          <p>The world's biome mix, its closest real-world ecoregions, and which species are booming or busting.</p>
-          {ecoregionPulse && (
-            <p className="dir-badges" data-testid="ecoregion-badges">
-              {ecoregionPulse.topBiome && (
-                <span className="mini-pill">{ecoregionPulse.topBiome}</span>
-              )}
-              {ecoregionPulse.topMatch && (
-                <span className="mini-pill">≈ {ecoregionPulse.topMatch}</span>
               )}
             </p>
           )}

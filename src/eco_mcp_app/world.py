@@ -130,7 +130,13 @@ class WorldAccumulator:
     # Pollution-category events per citizen — the headline for the /climate
     # cross-link (who is filling the air), split out from the overall shaper board.
     by_polluter: dict[str, int] = field(default_factory=lambda: defaultdict(int))
-    by_object: dict[str, float] = field(default_factory=lambda: defaultdict(float))
+    # "Most-touched objects" is a count of *events* touching each object — how
+    # many times a block/object was placed, moved, dug, or chopped — NOT the
+    # summed `Count` column. `Count` is per-event quantity (blocks in a stack,
+    # units of ore, biomass of a felled tree), so summing it conflated units
+    # with touches and produced absurd headline numbers like "Dirt Ramp
+    # 19,516,641" (eco-app#82, the same harvest-biomass-vs-unit bug as #70).
+    by_object: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     # day → category → event count, the raw material for the SPA's timeline.
     timeline: dict[int, dict[str, int]] = field(default_factory=dict)
     # binned (x, z) → event count, the "where" of world activity.
@@ -221,7 +227,8 @@ def aggregate_world_rows(
         acc.category_events[category] += 1
         acc.category_volume[category] += volume
         if obj:
-            acc.by_object[obj] += volume
+            # One touch per event — see WorldAccumulator.by_object (eco-app#82).
+            acc.by_object[obj] += 1
         if citizen and _INT_RE.match(citizen):
             acc.by_citizen[citizen] += 1
             if category == "pollution":
@@ -276,7 +283,8 @@ class WorldActivity:
     timeline: list[tuple[int, dict[str, int]]] = field(default_factory=list)
     by_citizen: list[tuple[str, int]] = field(default_factory=list)
     by_polluter: list[tuple[str, int]] = field(default_factory=list)
-    by_object: list[tuple[str, float]] = field(default_factory=list)
+    # (object id, touch-event count) — see WorldAccumulator.by_object.
+    by_object: list[tuple[str, int]] = field(default_factory=list)
     # (x, z, events) coarse-binned, ranked by event count.
     hotspots: list[tuple[int, int, int]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -300,7 +308,7 @@ class WorldActivity:
             "timeline": [{"day": d, "counts": dict(c)} for d, c in self.timeline],
             "byCitizen": [[n, e] for n, e in self.by_citizen],
             "byPolluter": [[n, e] for n, e in self.by_polluter],
-            "byObject": [[n, round(v, 2)] for n, v in self.by_object],
+            "byObject": [[n, e] for n, e in self.by_object],
             "hotspots": [{"x": x, "z": z, "events": e} for x, z, e in self.hotspots],
             "warnings": list(self.warnings),
         }
@@ -321,7 +329,7 @@ class WorldActivity:
             ],
             by_citizen=[(n, int(e)) for n, e in data.get("byCitizen", [])],
             by_polluter=[(n, int(e)) for n, e in data.get("byPolluter", [])],
-            by_object=[(n, float(v)) for n, v in data.get("byObject", [])],
+            by_object=[(n, int(e)) for n, e in data.get("byObject", [])],
             hotspots=[
                 (int(h["x"]), int(h["z"]), int(h["events"])) for h in data.get("hotspots", [])
             ],
@@ -522,7 +530,7 @@ def world_template_context(activity: WorldActivity, *, top: int = 10) -> dict[st
     cat_events = {k: e for k, e, _ in activity.categories}
     max_cat = max((e for e in cat_events.values()), default=0) or 1
     max_builder = max((e for _, e in activity.by_citizen), default=0) or 1
-    max_object = max((v for _, v in activity.by_object), default=0.0) or 1.0
+    max_object = max((e for _, e in activity.by_object), default=0) or 1
     max_hot = max((e for _, _, e in activity.hotspots), default=0) or 1
     return {
         "empty": activity.total_events == 0,
@@ -547,10 +555,10 @@ def world_template_context(activity: WorldActivity, *, top: int = 10) -> dict[st
             {
                 "name": n,
                 "pretty": prettify_eco_name(n),
-                "volume": v,
-                "pct": (v / max_object) * 100.0,
+                "events": e,
+                "pct": (e / max_object) * 100.0,
             }
-            for n, v in activity.by_object[:top]
+            for n, e in activity.by_object[:top]
         ],
         "hotspots": [
             {"x": x, "z": z, "events": e, "pct": (e / max_hot) * 100.0}
@@ -583,8 +591,8 @@ def world_markdown(activity: WorldActivity) -> str:
     if activity.by_object:
         lines.append("")
         lines.append("**Most-touched objects:**")
-        for i, (name, vol) in enumerate(activity.by_object[:10], 1):
-            lines.append(f"{i}. {prettify_eco_name(name)} — {vol:,.0f}")
+        for i, (name, events) in enumerate(activity.by_object[:10], 1):
+            lines.append(f"{i}. {prettify_eco_name(name)} — {events:,} touches")
     if activity.hotspots:
         lines.append("")
         lines.append("**Activity hotspots (x, z):**")

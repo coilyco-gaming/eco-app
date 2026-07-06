@@ -68,6 +68,25 @@ BIOME_COLORS: dict[str, str] = {
     "IceBiome": "#e0eaf2",
 }
 
+# Water accounting — the missing 60% (eco-app#82). Eco's `Biome` category only
+# tags Ocean + DeepOcean (deep, open water) as biomes, so the raw biome percents
+# sum to ~39% and the old card showed ~61% as an undifferentiated grey
+# "unclassified" slice. But the `World` layer reports `SaltWater` (total salt
+# water, ~57%) and `Moisture` reports `FreshWater` (~5%): the bulk of that grey
+# gap is simply *water* the biome layers don't name. We reclassify it into two
+# synthetic slices so the donut reads honestly — coastal/shallow salt water
+# (SaltWater minus what's already tagged Ocean/DeepOcean biome) and fresh water —
+# leaving only genuine mountain/transitional terrain unclassified (~20%).
+_SALTWATER_KEY = "CoastalWater"
+_FRESHWATER_KEY = "FreshWater"
+_SALTWATER_DISPLAY = "Coastal & shallow sea"
+_FRESHWATER_DISPLAY = "Fresh water"
+_SALTWATER_COLOR = "#5fb0cf"
+_FRESHWATER_COLOR = "#7fc8bf"
+# The two `Biome`-category layers that already count as (deep) salt water, so we
+# don't double-count them when deriving the coastal remainder from World.SaltWater.
+_OCEAN_BIOME_KEYS: tuple[str, ...] = ("OceanBiome", "DeepOceanBiome")
+
 # Pretty labels for the card — these are what LayerDisplayName tends to be in
 # live data, but we don't depend on the upstream name so the card renders even
 # if the /worldlayers endpoint truncates one.
@@ -251,6 +270,45 @@ def extract_biome_percents(categories: list[dict[str, Any]]) -> dict[str, float]
     return out
 
 
+def _layer_percent(categories: list[dict[str, Any]], category: str, layer: str) -> float:
+    """Pull one layer's ``Summary`` percent from a named worldlayers category.
+
+    Returns 0.0 when the category or layer is absent, or the summary isn't a
+    percentage (some ``World`` layers report bare floats or "N meters"). Only
+    the leading number of a ``"57%"``-style summary is used.
+    """
+    for cat in categories:
+        if not isinstance(cat, dict) or cat.get("Category") != category:
+            continue
+        for entry in cat.get("List") or []:
+            if entry.get("LayerName") != layer:
+                continue
+            summary = str(entry.get("Summary") or "").strip()
+            if not summary.endswith("%"):
+                return 0.0
+            m = _PERCENT_RE.match(summary)
+            if m:
+                try:
+                    return float(m.group(1))
+                except ValueError:
+                    return 0.0
+    return 0.0
+
+
+def extract_water_percents(categories: list[dict[str, Any]]) -> dict[str, float]:
+    """Pull the world's salt- and fresh-water coverage from the non-biome layers.
+
+    ``World.SaltWater`` is the total salt-water fraction of the world (deep
+    ocean + coastline + shallow sea); ``Moisture.FreshWater`` is lakes/rivers.
+    Both are ``"NN%"`` summaries. Used to reclassify the biome-layer gap
+    (eco-app#82) — see ``_SALTWATER_KEY`` for the full rationale.
+    """
+    return {
+        "saltwater": _layer_percent(categories, "World", "SaltWater"),
+        "freshwater": _layer_percent(categories, "Moisture", "FreshWater"),
+    }
+
+
 def normalize_vector(raw: dict[str, float]) -> dict[str, float]:
     """Scale so the values sum to 1.0. All-zero input maps to all-zero output."""
     total = sum(raw.values())
@@ -400,30 +458,69 @@ def build_payload(
     species_with_drift: int,
     admin_available: bool,
     source_url: str,
+    saltwater_percent: float = 0.0,
+    freshwater_percent: float = 0.0,
 ) -> dict[str, Any]:
-    """Assemble the serializable payload used by both the Jinja card and JSON content."""
+    """Assemble the serializable payload used by both the Jinja card and JSON content.
+
+    ``saltwater_percent`` / ``freshwater_percent`` come from the non-biome
+    ``World`` / ``Moisture`` layers (see ``extract_water_percents``). They
+    reclassify most of the old grey "unclassified" gap into named water slices
+    (eco-app#82). Both default to 0.0, so a caller that passes only biome
+    percents keeps the pre-#82 behaviour (raw biome sum, everything else grey).
+    """
     raw_sum = sum(biome_percents.values())
-    unclassified = max(0.0, 100.0 - raw_sum)
-    # Rescale to "share of classified area" so the donut renders a full ring.
-    # Eco's worldlayers endpoint only sums to ~40% (transitional terrain
-    # isn't tagged) — showing that as a big grey slice drowned out signal.
     normalized = normalize_vector(biome_percents)
+
+    # Derive the coastal/shallow-water remainder: the salt water the biome
+    # layers *didn't* already tag as (deep) ocean. Clamp at zero so a server
+    # whose Ocean biomes exceed reported SaltWater never emits a negative slice.
+    ocean_biome = sum(biome_percents.get(k, 0.0) for k in _OCEAN_BIOME_KEYS)
+    coastal_water = max(0.0, saltwater_percent - ocean_biome)
+    fresh_water = max(0.0, freshwater_percent)
+    water_classified = coastal_water + fresh_water
+
+    # `rawSumPercent` stays the pure biome sum (the "% that is a named biome");
+    # `classifiedPercent` additionally credits the water slices, so the grey
+    # remainder shrinks to genuine mountain/transitional terrain.
+    classified = min(100.0, raw_sum + water_classified)
+    unclassified = max(0.0, 100.0 - classified)
+
+    biomes: list[dict[str, Any]] = [
+        {
+            "name": key,
+            "display": BIOME_DISPLAY.get(key, key),
+            "percent": biome_percents.get(key, 0.0),
+            "sharePercent": normalized.get(key, 0.0) * 100.0,
+            "color": BIOME_COLORS.get(key, "#888888"),
+        }
+        for key in BIOME_LAYERS
+    ]
+    # Append the derived water slices so the donut + legend render them as
+    # first-class classified area. They carry sharePercent 0 because they're
+    # not part of the WWF biome-shape vector the ecoregion matcher compares.
+    for key, display, color, pct in (
+        (_SALTWATER_KEY, _SALTWATER_DISPLAY, _SALTWATER_COLOR, coastal_water),
+        (_FRESHWATER_KEY, _FRESHWATER_DISPLAY, _FRESHWATER_COLOR, fresh_water),
+    ):
+        biomes.append(
+            {
+                "name": key,
+                "display": display,
+                "percent": pct,
+                "sharePercent": 0.0,
+                "color": color,
+                "isWater": True,
+            }
+        )
+
     return {
         "view": "eco_ecoregion",
         "sourceUrl": source_url,
-        "biomes": [
-            {
-                "name": key,
-                "display": BIOME_DISPLAY.get(key, key),
-                "percent": biome_percents.get(key, 0.0),
-                "sharePercent": normalized.get(key, 0.0) * 100.0,
-                "color": BIOME_COLORS.get(key, "#888888"),
-            }
-            for key in BIOME_LAYERS
-        ],
+        "biomes": biomes,
         "unclassifiedPercent": unclassified,
         "rawSumPercent": raw_sum,
-        "classifiedPercent": raw_sum,
+        "classifiedPercent": classified,
         "ecoregionMatches": [
             {
                 "name": m.name,
@@ -461,6 +558,7 @@ async def gather_ecoregion_payload(
 
     categories = await fetch_worldlayers(base_url)
     biomes_raw = extract_biome_percents(categories)
+    water = extract_water_percents(categories)
     normalized = normalize_vector(biomes_raw)
     matches = top_ecoregions(normalized, regions)
 
@@ -497,4 +595,6 @@ async def gather_ecoregion_payload(
         species_with_drift=species_with_drift,
         admin_available=admin_available,
         source_url=info_url,
+        saltwater_percent=water["saltwater"],
+        freshwater_percent=water["freshwater"],
     )

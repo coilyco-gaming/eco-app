@@ -71,6 +71,10 @@ describe("Home", () => {
         biomes: [{ display: "Grassland" }],
         ecoregionMatches: [{ name: "Serengeti" }],
       },
+      "/preview/world.json": {
+        totalEvents: 421,
+        categories: [{ key: "construction", label: "Construction", events: 300, volume: 1 }],
+      },
     }
 
     vi.stubGlobal(
@@ -100,8 +104,11 @@ describe("Home", () => {
     expect(screen.getByTestId("crafting-badges")).toHaveTextContent("top: Wooden Chair")
     expect(screen.getByTestId("climate-badges")).toHaveTextContent("warming")
     expect(screen.getByTestId("climate-badges")).toHaveTextContent("620 ppm CO₂")
-    expect(screen.getByTestId("ecoregion-badges")).toHaveTextContent("Grassland")
-    expect(screen.getByTestId("ecoregion-badges")).toHaveTextContent("≈ Serengeti")
+    // World + ecoregion merged into the one /map card (eco-app#82): its badge
+    // strip carries world events, the busiest category, and the dominant biome.
+    expect(screen.getByTestId("world-badges")).toHaveTextContent("421 events")
+    expect(screen.getByTestId("world-badges")).toHaveTextContent("Construction")
+    expect(screen.getByTestId("world-badges")).toHaveTextContent("Grassland")
   })
 
   it("renders the full directory even when the snapshot fetch fails", async () => {

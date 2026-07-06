@@ -260,7 +260,9 @@ def create_app() -> Starlette:
     async def preview_map_json(request: Request) -> JSONResponse:
         server_arg = request.query_params.get("server")
         try:
-            bundle = await fetch_map_bundle(server_arg)
+            # include_biomes: the SPA /map page overlays per-biome rasters for
+            # its hover-highlight (eco-app#82); the compact MCP card doesn't.
+            bundle = await fetch_map_bundle(server_arg, include_biomes=True)
         except httpx.HTTPError as e:
             return JSONResponse({"error": str(e)}, status_code=502)
         return JSONResponse(build_map_payload(bundle))

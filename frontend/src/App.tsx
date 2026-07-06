@@ -1,22 +1,21 @@
-import { BrowserRouter, Route, Routes } from "react-router-dom"
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom"
 import PagePassword from "./components/PagePassword"
 import Calculator from "./pages/Calculator"
 import Civics from "./pages/Civics"
 import Climate from "./pages/Climate"
 import Crafting from "./pages/Crafting"
-import Ecoregion from "./pages/Ecoregion"
 import Economy from "./pages/Economy"
 import Home from "./pages/Home"
 import Item from "./pages/Item"
 import Items from "./pages/Items"
 import Jobs from "./pages/Jobs"
+import MapPage from "./pages/Map"
 import Progression from "./pages/Progression"
 import Replay from "./pages/Replay"
 import Server from "./pages/Server"
 import Social from "./pages/Social"
 import Trade from "./pages/Trade"
 import Trades from "./pages/Trades"
-import World from "./pages/World"
 
 // Route table for the SPA. The homepage is a thin directory of surfaces;
 // per-feature pages (economy, map, species, milestones) join /server and
@@ -49,9 +48,11 @@ export default function App() {
             </PagePassword>
           }
         />
-        <Route path="/world" element={<World />} />
+        <Route path="/map" element={<MapPage />} />
         <Route path="/climate" element={<Climate />} />
-        <Route path="/ecoregion" element={<Ecoregion />} />
+        {/* /world + /ecoregion merged into /map (eco-app#82); keep old links alive. */}
+        <Route path="/world" element={<Navigate to="/map" replace />} />
+        <Route path="/ecoregion" element={<Navigate to="/map" replace />} />
         <Route path="/calculator" element={<Calculator />} />
         <Route
           path="/replay"

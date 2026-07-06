@@ -212,6 +212,52 @@ async def test_fetch_map_bundle_omits_pollution_on_404() -> None:
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_fetch_map_bundle_include_biomes_best_effort() -> None:
+    """include_biomes fetches per-biome rasters; disabled/failing layers drop out."""
+    from eco_mcp_app.ecoregion import BIOME_LAYERS
+
+    respx.get(f"{ECO_BASE_URL_DEFAULT}/api/v1/map/dimension").mock(
+        return_value=httpx.Response(200, json=_fake_dimension())
+    )
+    respx.get(f"{ECO_BASE_URL_DEFAULT}/api/v1/map/property").mock(
+        return_value=httpx.Response(200, json=_fake_property())
+    )
+    respx.get(f"{ECO_BASE_URL_DEFAULT}/Layers/WorldPreview.gif").mock(
+        return_value=httpx.Response(200, content=_TINY_GIF)
+    )
+    respx.get(f"{ECO_BASE_URL_DEFAULT}/Layers/Pollution.gif").mock(return_value=httpx.Response(404))
+    # Two biome rasters served, the rest 401 (disabled) — must not fail the map.
+    served = {"OceanBiome", "GrasslandBiome"}
+    for layer in BIOME_LAYERS:
+        status = 200 if layer in served else 401
+        respx.get(f"{ECO_BASE_URL_DEFAULT}/Layers/{layer}.gif").mock(
+            return_value=httpx.Response(status, content=_TINY_GIF if status == 200 else b"")
+        )
+
+    bundle = await eco_map.fetch_map_bundle(include_biomes=True)
+    assert set(bundle["biome_rasters"]) == served
+
+    payload = build_map_payload(bundle)
+    names = [b["name"] for b in payload["biomeLayers"]]
+    assert names == [layer for layer in BIOME_LAYERS if layer in served]
+    for b in payload["biomeLayers"]:
+        assert b["dataUri"].startswith("data:image/gif;base64,")
+        assert b["display"] and b["color"]
+
+
+def test_build_map_payload_biome_layers_absent_by_default() -> None:
+    """A bundle without biome_rasters (the MCP card path) yields an empty list."""
+    bundle = {
+        "dimension": _fake_dimension(),
+        "property": {},
+        "preview_gif": _TINY_GIF,
+        "base_url": None,
+    }
+    assert build_map_payload(bundle)["biomeLayers"] == []
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_fetch_map_bundle_respects_server_arg() -> None:
     base = "http://eco.example.com:5679"
     respx.get(f"{base}/api/v1/map/dimension").mock(

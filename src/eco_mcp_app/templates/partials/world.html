@@ -76,7 +76,7 @@
           <li>
             <span class="rank">{{ loop.index }}.</span>
             <span class="name" title="{{ o.name }}">{{ o.pretty }}</span>
-            <span class="count">{{ fmt(o.volume) }}</span>
+            <span class="count">{{ fmt(o.events) }}</span>
             <span class="bar-wrap"><span class="bar" style="--w:{{ '%.1f' % o.pct }}%"></span></span>
           </li>
         {% endfor %}
