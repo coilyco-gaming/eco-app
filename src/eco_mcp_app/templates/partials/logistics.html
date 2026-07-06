@@ -101,7 +101,7 @@
     <div class="crafting-section-label">Supply gaps — what a store should stock</div>
     <table class="trades-table">
       <thead>
-        <tr><th>Item</th><th>Gap</th><th class="num">Buyers</th><th class="num">Sellers</th><th class="num">Demand</th></tr>
+        <tr><th>Item</th><th>Gap</th><th>Who needs it</th><th class="num">Sellers</th><th class="num">Demand</th></tr>
       </thead>
       <tbody>
         {% for g in supply_gaps %}
@@ -110,7 +110,14 @@
           <td><span class="pill">{{ g.reasonLabel }}</span>
             {% if g.reason == 'overpriced' %}<span class="hint">+{{ '%.0f' % g.overMedianPct }}% vs median</span>{% endif %}
           </td>
-          <td class="num">{{ fmt(g.buyerCount) }}</td>
+          <td>
+            {% if g.buyers %}
+              {% for b in g.buyers[:3] %}{{ b.owner or b.store }} <span class="hint">{{ '%.0f' % b.quantity }}</span>{% if not loop.last %}, {% endif %}{% endfor %}
+              {% if g.buyerCount > 3 %}<span class="hint">+{{ g.buyerCount - 3 }} more</span>{% endif %}
+            {% else %}
+              <span class="hint">—</span>
+            {% endif %}
+          </td>
           <td class="num">{{ fmt(g.sellerCount) }}</td>
           <td class="num">{{ '%.0f' % g.demandQty }}</td>
         </tr>
