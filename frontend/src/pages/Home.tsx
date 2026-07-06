@@ -1,11 +1,15 @@
 import { Link } from "react-router-dom"
 import Layout from "../components/Layout"
 import { useCivicsPulse } from "../hooks/useCivicsPulse"
+import { useClimatePulse } from "../hooks/useClimatePulse"
+import { useCraftingPulse } from "../hooks/useCraftingPulse"
+import { useEconomyPulse } from "../hooks/useEconomyPulse"
+import { useEcoregionPulse } from "../hooks/useEcoregionPulse"
 import { useEcoStatus } from "../hooks/useEcoStatus"
-import { useSocialPulse } from "../hooks/useSocialPulse"
 import { useTradePulse } from "../hooks/useTradePulse"
+import { useTradesPulse } from "../hooks/useTradesPulse"
 import { useWorldPulse } from "../hooks/useWorldPulse"
-import { formatCount, safeHttpUrl } from "../lib/format"
+import { formatCount, prettifyEcoName, safeHttpUrl } from "../lib/format"
 
 const STEAM_URL = "https://store.steampowered.com/app/382310/Eco/"
 
@@ -15,8 +19,12 @@ export default function Home() {
   const { status } = useEcoStatus()
   const tradePulse = useTradePulse()
   const civicsPulse = useCivicsPulse()
-  const socialPulse = useSocialPulse()
   const worldPulse = useWorldPulse()
+  const economyPulse = useEconomyPulse()
+  const tradesPulse = useTradesPulse()
+  const craftingPulse = useCraftingPulse()
+  const climatePulse = useClimatePulse()
+  const ecoregionPulse = useEcoregionPulse()
   const discordUrl = safeHttpUrl(status?.server.discord)
 
   return (
@@ -59,6 +67,12 @@ export default function Home() {
         <Link className="dir-card" to="/economy" data-testid="dir-economy">
           <h3>Economy</h3>
           <p>Trades per day, contracts, loans, wages, and the treasury.</p>
+          {economyPulse && (
+            <p className="dir-badges" data-testid="economy-badges">
+              <span className="mini-pill">{formatCount(economyPulse.tradesPerDay)} trades/day</span>
+              <span className="mini-pill">{formatCount(economyPulse.contracts)} contracts</span>
+            </p>
+          )}
         </Link>
 
         <Link className="dir-card" to="/trade" data-testid="dir-trade">
@@ -75,11 +89,27 @@ export default function Home() {
         <Link className="dir-card" to="/trades" data-testid="dir-trades">
           <h3>Trades ledger</h3>
           <p>Every individual trade — who sold what to whom, and price over time.</p>
+          {tradesPulse && (
+            <p className="dir-badges" data-testid="trades-badges">
+              <span className="mini-pill">{formatCount(tradesPulse.trades)} trades</span>
+              {tradesPulse.topItem && (
+                <span className="mini-pill">top: {prettifyEcoName(tradesPulse.topItem)}</span>
+              )}
+            </p>
+          )}
         </Link>
 
         <Link className="dir-card" to="/crafting" data-testid="dir-crafting">
           <h3>Crafting atlas</h3>
           <p>What the world is making — top items and stations, deep-linkable.</p>
+          {craftingPulse && (
+            <p className="dir-badges" data-testid="crafting-badges">
+              <span className="mini-pill">{formatCount(craftingPulse.crafts)} crafts</span>
+              {craftingPulse.topItem && (
+                <span className="mini-pill">top: {prettifyEcoName(craftingPulse.topItem)}</span>
+              )}
+            </p>
+          )}
         </Link>
 
         <Link className="dir-card" to="/items" data-testid="dir-items">
@@ -100,17 +130,6 @@ export default function Home() {
           )}
         </Link>
 
-        <Link className="dir-card" to="/social" data-testid="dir-social">
-          <h3>Social &amp; chat</h3>
-          <p>Chat volume, the reputation graph, and new arrivals — names redacted.</p>
-          {socialPulse && (
-            <p className="dir-badges" data-testid="social-badges">
-              <span className="mini-pill">{formatCount(socialPulse.chat)} messages</span>
-              <span className="mini-pill">{formatCount(socialPulse.arrivals)} new</span>
-            </p>
-          )}
-        </Link>
-
         <Link className="dir-card" to="/world" data-testid="dir-world">
           <h3>World &amp; industry</h3>
           <p>Construction, roads, terraforming, explosions, and pollution — the mutation timeline.</p>
@@ -127,21 +146,34 @@ export default function Home() {
         <Link className="dir-card" to="/climate" data-testid="dir-climate">
           <h3>Climate</h3>
           <p>CO₂, temperature, sea level, and what the pollution is doing to the world.</p>
+          {climatePulse && (
+            <p className="dir-badges" data-testid="climate-badges">
+              <span className="mini-pill">{climatePulse.status}</span>
+              {climatePulse.co2Ppm !== null && (
+                <span className="mini-pill">{formatCount(climatePulse.co2Ppm)} ppm CO₂</span>
+              )}
+            </p>
+          )}
         </Link>
 
         <Link className="dir-card" to="/ecoregion" data-testid="dir-ecoregion">
           <h3>Ecoregion</h3>
           <p>The world's biome mix, its closest real-world ecoregions, and which species are booming or busting.</p>
+          {ecoregionPulse && (
+            <p className="dir-badges" data-testid="ecoregion-badges">
+              {ecoregionPulse.topBiome && (
+                <span className="mini-pill">{ecoregionPulse.topBiome}</span>
+              )}
+              {ecoregionPulse.topMatch && (
+                <span className="mini-pill">≈ {ecoregionPulse.topMatch}</span>
+              )}
+            </p>
+          )}
         </Link>
 
         <Link className="dir-card" to="/calculator" data-testid="dir-calculator">
           <h3>Calculator</h3>
           <p>Price your craft with Eco Gnome — optimal buy and sell prices from your recipes.</p>
-        </Link>
-
-        <Link className="dir-card" to="/replay" data-testid="dir-replay">
-          <h3>Replay</h3>
-          <p>The server chronicle — every recorded player action, logins to blocks, newest first.</p>
         </Link>
 
         <div className="dir-card dir-card-static">

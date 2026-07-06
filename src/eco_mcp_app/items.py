@@ -193,9 +193,15 @@ async def fetch_item_index(
         fetch_ledger(base_url=base_url, api_key=api_key, client=client),
         fetch_atlas(base_url=base_url, api_key=api_key, client=client),
     )
+    # The atlas splits production into crafted units (by_crafted) and gathered
+    # events (by_gathered) since eco-app#70; the item directory unions both — an
+    # item is "produced" whether it was bench-crafted or harvested/mined.
+    craft_totals: dict[str, float] = {}
+    for name, value in (*atlas.by_crafted, *atlas.by_gathered):
+        craft_totals[name] = craft_totals.get(name, 0.0) + value
     return build_item_index(
         ledger.by_item,
-        atlas.by_item,
+        list(craft_totals.items()),
         fetched_at_iso=_now_iso(),
         source_base_url=normalized,
         warnings=[*ledger.warnings, *atlas.warnings],

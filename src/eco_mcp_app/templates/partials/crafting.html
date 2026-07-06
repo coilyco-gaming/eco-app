@@ -80,10 +80,10 @@
 
   <div class="crafting-grid">
     <div class="crafting-panel">
-      <div class="crafting-section-label">Top items produced</div>
-      {% if top_items %}
+      <div class="crafting-section-label">Top items crafted <span class="hint">(units)</span></div>
+      {% if top_crafted %}
       <ol class="crafting-list">
-        {% for item in top_items %}
+        {% for item in top_crafted %}
           <li>
             <span class="rank">{{ loop.index }}.</span>
             <span class="name" title="{{ item.name }}">{{ item.pretty }}</span>
@@ -93,7 +93,25 @@
         {% endfor %}
       </ol>
       {% else %}
-        <div class="hint">No item output recorded.</div>
+        <div class="hint">No crafted output recorded.</div>
+      {% endif %}
+    </div>
+
+    <div class="crafting-panel">
+      <div class="crafting-section-label">Top resources gathered <span class="hint">(events)</span></div>
+      {% if top_gathered %}
+      <ol class="crafting-list">
+        {% for item in top_gathered %}
+          <li>
+            <span class="rank">{{ loop.index }}.</span>
+            <span class="name" title="{{ item.name }}">{{ item.pretty }}</span>
+            <span class="count">{{ fmt(item.count) }}</span>
+            <span class="bar-wrap"><span class="bar" style="--w:{{ '%.1f' % item.pct }}%"></span></span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+        <div class="hint">No harvest/chop/dig events recorded.</div>
       {% endif %}
     </div>
 

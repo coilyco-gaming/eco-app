@@ -31,7 +31,6 @@ export default function Layout({ children, fetchedAtISO }: LayoutProps) {
           <Link to="/climate">Climate</Link>
           <Link to="/ecoregion">Ecoregion</Link>
           <Link to="/calculator">Calculator</Link>
-          <Link to="/replay">Replay</Link>
         </nav>
       </header>
 
