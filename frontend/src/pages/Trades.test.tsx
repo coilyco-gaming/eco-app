@@ -160,7 +160,7 @@ describe("Trades", () => {
     expect(screen.getAllByTestId("trade-row")).toHaveLength(3)
     // Prettified item names show in the ledger.
     expect(screen.getAllByText("Iron Ingot").length).toBeGreaterThan(0)
-    expect(screen.getByTestId("link-economy")).toHaveAttribute("href", "/economy")
+    expect(screen.getByTestId("link-trade")).toHaveAttribute("href", "/trade")
     expect(screen.getByTestId("link-crafting")).toHaveAttribute("href", "/crafting")
   })
 

@@ -3,7 +3,6 @@ import Layout from "../components/Layout"
 import { useCivicsPulse } from "../hooks/useCivicsPulse"
 import { useClimatePulse } from "../hooks/useClimatePulse"
 import { useCraftingPulse } from "../hooks/useCraftingPulse"
-import { useEconomyPulse } from "../hooks/useEconomyPulse"
 import { useEcoregionPulse } from "../hooks/useEcoregionPulse"
 import { useEcoStatus } from "../hooks/useEcoStatus"
 import { useTradePulse } from "../hooks/useTradePulse"
@@ -12,6 +11,10 @@ import { useWorldPulse } from "../hooks/useWorldPulse"
 import { formatCount, prettifyEcoName, safeHttpUrl } from "../lib/format"
 
 const STEAM_URL = "https://store.steampowered.com/app/382310/Eco/"
+// Eco Gnome (MIT) is the crafting-cost calculator. It used to be its own
+// /calculator page; eco-app#90 demoted it to this homepage card that links out
+// to the gnome service. Roadmap (#40) self-hosts it at eco-gnome.coilysiren.me.
+const ECO_GNOME_URL = "https://eco-gnome.com"
 
 // The homepage is a thin directory: a short hero and one card per surface.
 // The heavy live content lives on the subpages it points at.
@@ -20,7 +23,6 @@ export default function Home() {
   const tradePulse = useTradePulse()
   const civicsPulse = useCivicsPulse()
   const worldPulse = useWorldPulse()
-  const economyPulse = useEconomyPulse()
   const tradesPulse = useTradesPulse()
   const craftingPulse = useCraftingPulse()
   const climatePulse = useClimatePulse()
@@ -60,17 +62,6 @@ export default function Home() {
           {status && (
             <p className="dir-badges">
               <span className="mini-pill">{formatCount(status.players.total)} settlers</span>
-            </p>
-          )}
-        </Link>
-
-        <Link className="dir-card" to="/economy" data-testid="dir-economy">
-          <h3>Economy</h3>
-          <p>Trades per day, contracts, loans, wages, and the treasury.</p>
-          {economyPulse && (
-            <p className="dir-badges" data-testid="economy-badges">
-              <span className="mini-pill">{formatCount(economyPulse.tradesPerDay)} trades/day</span>
-              <span className="mini-pill">{formatCount(economyPulse.contracts)} contracts</span>
             </p>
           )}
         </Link>
@@ -162,10 +153,19 @@ export default function Home() {
           )}
         </Link>
 
-        <Link className="dir-card" to="/calculator" data-testid="dir-calculator">
-          <h3>Calculator</h3>
-          <p>Price your craft with Eco Gnome — optimal buy and sell prices from your recipes.</p>
-        </Link>
+        <a
+          className="dir-card"
+          href={ECO_GNOME_URL}
+          target="_blank"
+          rel="noreferrer"
+          data-testid="dir-gnome"
+        >
+          <h3>Crafting calculator ↗</h3>
+          <p>
+            Price your craft with Eco Gnome (MIT) — optimal buy and sell prices from your
+            professions and recipes. Opens the gnome service.
+          </p>
+        </a>
 
         <div className="dir-card dir-card-static">
           <h3>Community</h3>

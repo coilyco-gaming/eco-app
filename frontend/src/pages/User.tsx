@@ -8,7 +8,7 @@ import {
   type UserDossier,
 } from "../lib/usersApi"
 
-// A labelled stat tile, mirroring the /world + /economy stat grids.
+// A labelled stat tile, mirroring the /map stat grids.
 function Stat({ value, label, detail }: { value: string; label: string; detail?: string }) {
   return (
     <div className="stat">

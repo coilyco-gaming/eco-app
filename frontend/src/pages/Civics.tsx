@@ -296,10 +296,6 @@ export default function Civics() {
           )}
 
           <section className="dir-cards">
-            <Link className="dir-card" to="/economy" data-testid="link-economy">
-              <h3>Economy →</h3>
-              <p>Where civic money moves — taxes, wages, treasury, and government funds.</p>
-            </Link>
             <Link className="dir-card" to="/server" data-testid="link-server">
               <h3>Server →</h3>
               <p>The live snapshot — elected titles, active laws, and the world at a glance.</p>

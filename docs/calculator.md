@@ -8,7 +8,7 @@ The calculator surface brings **Eco Gnome** (MIT) onto eco-app. Eco Gnome works 
 
 ## What ships now
 
-`frontend/src/pages/Calculator.tsx` is the `/calculator` SPA page: it introduces the tool, links out to the public Eco Gnome instance and the upstream repos, preserves the MIT attribution, and spells out the self-host roadmap. It is the seam the self-hosted instance slots into once the deploy lands. This is the product UX per the repo rule that the browser face is the SPA, not a server-rendered card.
+A **homepage card** on `/` (`frontend/src/pages/Home.tsx`, `data-testid="dir-gnome"`) links out to the public Eco Gnome instance with the MIT attribution kept. It used to be a dedicated `/calculator` SPA page (`frontend/src/pages/Calculator.tsx`), but the [#90](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/90) IA cleanup demoted the eco-gnome router to a compact homepage entry point rather than a full route - the old `/calculator` path redirects to `/`. The card is the seam the self-hosted instance slots into once the deploy lands: point it at `eco-gnome.coilysiren.me` instead of the public `eco-gnome.com`. This stays the product UX per the repo rule that the browser face is the SPA, not a server-rendered card.
 
 ## What self-hosting actually takes
 
