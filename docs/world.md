@@ -61,7 +61,7 @@ so a Count-less action still contributes.
 - **Top world-shapers** - events per citizen across every category (id→name
   joined).
 - **Top polluters** - events per citizen for the pollution category only, split
-  out as the headline for the `/climate` cross-link (who is filling the air).
+  out as the headline for the folded-in climate/atmosphere overlay (who is filling the air).
 - **Most-touched objects** - the block / world-object / species id per event,
   weighted by volume and prettified.
 - **Activity hotspots** - `ActionLocation` / `Position` floored to a 64-block x/z
@@ -86,8 +86,10 @@ artifact) are dropped rather than rendered, mirroring the crafting atlas.
   trivial) with a legend, a 2px surface gap between segments, and per-segment
   hover labels - the secondary encoding the categorical palette's CVD floor needs
   (hues are the dataviz skill's validated dark-mode theme, assigned by category
-  identity, never by rank). Cross-links `/climate` and `/crafting`, and carries a
-  live homepage badge, per the wave-0 SPA pattern.
+  identity, never by rank). The page is titled **World** and now carries the
+  climate/atmosphere content inline as an environmental overlay ([#90](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/90))
+  rather than cross-linking a separate `/climate` page; it cross-links `/crafting`
+  and `/jobs`, and carries a live homepage badge, per the wave-0 SPA pattern.
 
 ## Caching
 

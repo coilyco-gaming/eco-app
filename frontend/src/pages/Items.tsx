@@ -141,9 +141,9 @@ export default function Items() {
           )}
 
           <section className="dir-cards">
-            <Link className="dir-card" to="/trades" data-testid="link-trades">
-              <h3>Trades ledger →</h3>
-              <p>Every individual trade, row by row, with price over time.</p>
+            <Link className="dir-card" to="/trade" data-testid="link-trade">
+              <h3>Trade →</h3>
+              <p>The market and the full ledger — every individual trade, with price over time.</p>
             </Link>
             <Link className="dir-card" to="/crafting" data-testid="link-crafting">
               <h3>Crafting atlas →</h3>

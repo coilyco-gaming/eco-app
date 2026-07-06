@@ -7,9 +7,11 @@ interface LayoutProps {
   fetchedAtISO?: string
 }
 
-// One flat surface: every page shares this topbar, so /, /server, and the
-// server-rendered /jobs (which mirrors the same bar in Jinja) read as one
-// site rather than separate spheres.
+// One flat surface: every page shares this topbar, so /, /info, and /jobs read
+// as one site rather than separate spheres. The nav mirrors the collapsed page
+// set from the eco-app#90 IA cleanup — progression lives inside Jobs, the
+// trades ledger inside Trade, and climate inside World, so they get no nav
+// entry of their own; Server is renamed Info and Map is titled World.
 export default function Layout({ children, fetchedAtISO }: LayoutProps) {
   return (
     <div className="page">
@@ -19,14 +21,12 @@ export default function Layout({ children, fetchedAtISO }: LayoutProps) {
         </Link>
         <nav className="topnav" aria-label="primary">
           <Link to="/">Home</Link>
-          <Link to="/server">Server</Link>
+          <Link to="/info">Info</Link>
           <Link to="/jobs">Jobs</Link>
           <Link to="/trade">Trade</Link>
-          <Link to="/trades">Trades</Link>
           <Link to="/items">Items</Link>
           <Link to="/crafting">Crafting</Link>
-          <Link to="/map">Map</Link>
-          <Link to="/climate">Climate</Link>
+          <Link to="/map">World</Link>
         </nav>
       </header>
 

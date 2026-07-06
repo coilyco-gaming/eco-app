@@ -72,6 +72,38 @@ const MAP: MapPayload = {
   owner_strokes: { alice: "hsla(1,60%,35%,0.9)" },
 }
 
+// Climate folded into the world page as its environmental overlay (eco-app#90).
+const CLIMATE = {
+  server: { description: "Eco via Sirens", category: "Established", sourceUrl: "http://x/info" },
+  days_elapsed: 59,
+  admin_ok: true,
+  status: "warming",
+  narrative: "Climate is warming — CO2 at 325 ppm, sea level +3.05%.",
+  co2: { current: 325, change_pct: 0, dataset_name: "TotalCO2", series: [] },
+  sea_level: { current: 61.83, change_pct: 3.05, rate_per_day: 0.03, dataset_name: "SeaLevel", series: [] },
+  pollution: { current: 437.5, source: "TotalGroundPollution", dataset_name: "TotalGroundPollution", layer_summary: null, series: [] },
+  temperature: { current: 14.86, risen: 0.86, rate_per_day: 0.01, dataset_name: "AverageGlobalTemperature", series: [] },
+  breakdown: {
+    has_data: true,
+    pollution: { lifetime: 12687, per_day: 4.2 },
+    animals: { lifetime: 1450, per_day: 0.5 },
+    plants: { lifetime: -28989, per_day: -357.7 },
+    net_per_day: -353.0,
+  },
+  effects: {
+    co2_now: 325,
+    co2_peak: 520,
+    min_floor_ppm: 325,
+    at_floor: true,
+    source: "default",
+    temperature: { threshold_ppm: 400, ppm_per_degree: 25, headroom_ppm: 75, current_c: 14.86, risen_c: 0.86, peak_drives_c: 4.8 },
+    sea_level: { threshold_ppm: 400, ppm_per_meter: 25, headroom_ppm: 75, current_m: 61.83, risen_m: 1.83, peak_drives_m: 4.8 },
+  },
+  explainer: ["CO2 sits at 325 ppm — pinned to the simulation floor."],
+  earth_match: null,
+  fetched_at_iso: "2026-06-15T14:00:00+00:00",
+}
+
 function stubFetch() {
   vi.stubGlobal(
     "fetch",
@@ -80,6 +112,7 @@ function stubFetch() {
       if (url.includes("get_eco_ecoregion")) body = SNAP
       else if (url.includes("world.json")) body = WORLD
       else if (url.includes("preview-map.json")) body = MAP
+      else if (url.includes("get_eco_climate")) body = CLIMATE
       return Promise.resolve(
         new Response(JSON.stringify(body), {
           status: 200,
@@ -161,5 +194,16 @@ describe("Map page", () => {
     expect(screen.getByTestId("eco-matches")).toHaveTextContent("Indo-Pacific archipelago")
     expect(screen.getByTestId("mutation-timeline")).toBeInTheDocument()
     expect(screen.getByTestId("shapers")).toHaveTextContent("coilysiren")
+  })
+
+  it("folds the climate atmosphere overlay into the world page", async () => {
+    stubFetch()
+    renderPage()
+    await waitFor(() => expect(screen.getByTestId("climate")).toBeInTheDocument())
+    // The climate narrative pill and the CO2 atmosphere tile both render.
+    expect(screen.getByTestId("climate-pill")).toHaveTextContent("warming")
+    expect(screen.getByTestId("climate")).toHaveTextContent("325 ppm")
+    // The former standalone /climate cross-link card is gone — it's folded in.
+    expect(screen.queryByTestId("link-climate")).not.toBeInTheDocument()
   })
 })

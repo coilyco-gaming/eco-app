@@ -165,9 +165,9 @@ export default function Replay() {
               <h3>Jobs →</h3>
               <p>Who can make what — the professions and skills behind the people in this log.</p>
             </Link>
-            <Link className="dir-card" to="/trades" data-testid="link-trades">
-              <h3>Trades ledger →</h3>
-              <p>Every individual trade — who sold what to whom, and price over time.</p>
+            <Link className="dir-card" to="/trade" data-testid="link-trade">
+              <h3>Trade →</h3>
+              <p>The market and full ledger — every individual trade, who sold what to whom.</p>
             </Link>
           </section>
         </>

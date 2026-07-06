@@ -43,11 +43,11 @@ export default function Home() {
       </section>
 
       <section className="dir-cards" aria-label="site directory">
-        <Link className="dir-card" to="/server" data-testid="dir-server">
-          <h3>Server</h3>
+        <Link className="dir-card" to="/info" data-testid="dir-info">
+          <h3>Info</h3>
           <p>Meteor countdown, players, world stats, and the economy at a glance.</p>
           {status && (
-            <p className="dir-badges" data-testid="server-badges">
+            <p className="dir-badges" data-testid="info-badges">
               {status.cycle.hasMeteor && (
                 <span className="mini-pill">☄ {status.cycle.daysUntilMeteor}d to meteor</span>
               )}
@@ -66,24 +66,27 @@ export default function Home() {
           )}
         </Link>
 
+        {/* Trade + the trades ledger are one surface now (eco-app#90). The
+            badge strip fixes the old empty bubbles: markets falls back to a
+            graceful 0 (the market plane is empty on servers that trade but have
+            no priced markets), while volume and the trade count come from the
+            ledger's own totalCurrencyVolume / totalTrades. */}
         <Link className="dir-card" to="/trade" data-testid="dir-trade">
           <h3>Trade &amp; logistics</h3>
-          <p>Movers, price history, stores, and what to buy, sell, and ship next.</p>
-          {tradePulse && (
+          <p>
+            Movers, price history, the full trade ledger, stores, and what to buy, sell, and ship
+            next.
+          </p>
+          {(tradePulse || tradesPulse) && (
             <p className="dir-badges" data-testid="trade-badges">
-              <span className="mini-pill">{formatCount(tradePulse.markets)} markets</span>
-              <span className="mini-pill">{formatCount(tradePulse.totalVolume)} volume</span>
-            </p>
-          )}
-        </Link>
-
-        <Link className="dir-card" to="/trades" data-testid="dir-trades">
-          <h3>Trades ledger</h3>
-          <p>Every individual trade — who sold what to whom, and price over time.</p>
-          {tradesPulse && (
-            <p className="dir-badges" data-testid="trades-badges">
-              <span className="mini-pill">{formatCount(tradesPulse.trades)} trades</span>
-              {tradesPulse.topItem && (
+              <span className="mini-pill">{formatCount(tradePulse?.markets ?? 0)} markets</span>
+              {tradesPulse && (
+                <>
+                  <span className="mini-pill">{formatCount(tradesPulse.volume)} volume</span>
+                  <span className="mini-pill">{formatCount(tradesPulse.trades)} trades</span>
+                </>
+              )}
+              {tradesPulse?.topItem && (
                 <span className="mini-pill">top: {prettifyEcoName(tradesPulse.topItem)}</span>
               )}
             </p>
@@ -121,32 +124,29 @@ export default function Home() {
           )}
         </Link>
 
+        {/* Climate folded into the World card (eco-app#90): the map, biomes,
+            ecoregions, mutation timeline, and the atmosphere all live on one
+            page, so the badge strip carries world events, the busiest category,
+            the dominant biome, and the climate headline together. */}
         <Link className="dir-card" to="/map" data-testid="dir-map">
-          <h3>World map</h3>
+          <h3>World</h3>
           <p>
-            The live map, biome &amp; water mix, closest real-world ecoregions, and the mutation
-            timeline — construction, terraforming, and activity hotspots.
+            The live map, biome &amp; water mix, closest real-world ecoregions, the mutation
+            timeline, and the climate — CO₂, temperature, and sea level.
           </p>
-          {worldPulse && (
+          {(worldPulse || ecoregionPulse || climatePulse) && (
             <p className="dir-badges" data-testid="world-badges">
-              <span className="mini-pill">{formatCount(worldPulse.events)} events</span>
-              {worldPulse.topCategory && (
+              {worldPulse && (
+                <span className="mini-pill">{formatCount(worldPulse.events)} events</span>
+              )}
+              {worldPulse?.topCategory && (
                 <span className="mini-pill">{worldPulse.topCategory}</span>
               )}
               {ecoregionPulse?.topBiome && (
                 <span className="mini-pill">{ecoregionPulse.topBiome}</span>
               )}
-            </p>
-          )}
-        </Link>
-
-        <Link className="dir-card" to="/climate" data-testid="dir-climate">
-          <h3>Climate</h3>
-          <p>CO₂, temperature, sea level, and what the pollution is doing to the world.</p>
-          {climatePulse && (
-            <p className="dir-badges" data-testid="climate-badges">
-              <span className="mini-pill">{climatePulse.status}</span>
-              {climatePulse.co2Ppm !== null && (
+              {climatePulse && <span className="mini-pill">{climatePulse.status}</span>}
+              {climatePulse?.co2Ppm != null && (
                 <span className="mini-pill">{formatCount(climatePulse.co2Ppm)} ppm CO₂</span>
               )}
             </p>

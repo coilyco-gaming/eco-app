@@ -5,13 +5,16 @@ import { fetchMarket, type ItemMarket, type MarketIntelligence, type MarketTrend
 import { fetchStores, type StoreDirectory } from "../lib/storesApi"
 import { fetchCurrency, type CurrencySnapshot } from "../lib/currencyApi"
 import { fetchLogistics, type GapReason, type LogisticsBoard, type SupplyGap } from "../lib/logisticsApi"
+import { fetchTradesLedger, type Trade as TradeRow, type TradesLedger } from "../lib/tradesApi"
 import { fetchWatchers, type WatcherHit } from "../lib/watchersApi"
-import { formatCount } from "../lib/format"
+import { formatCount, prettifyEcoName } from "../lib/format"
 
 const TOP_MOVERS = 6
 const TOP_TRADED = 12
 const DIR_ROWS = 10
 const LOGI_ROWS = 8
+const TOP_PARTIES = 15
+const LEDGER_ROWS = 60
 
 // Prices carry fractional cents; formatCount rounds to whole units, so trade
 // surfaces get their own 2-dp formatter.
@@ -209,11 +212,42 @@ function WatcherList({ hits }: { hits: WatcherHit[] }) {
   )
 }
 
+// Ranked bar list of [name, currencyAmount] parties — top buyers / sellers from
+// the trades ledger. Names arrive already resolved from the server's id→name
+// join, so they show verbatim (no Eco-id prettifying).
+function TraderList({ rows }: { rows: Array<[string, number]> }) {
+  const top = rows.slice(0, TOP_PARTIES)
+  const max = Math.max(...top.map(([, amt]) => amt), 1)
+  if (top.length === 0) {
+    return <p className="empty-note">No currency movement recorded.</p>
+  }
+  return (
+    <ul className="rank-rows">
+      {top.map(([name, amt]) => (
+        <li key={name}>
+          <div className="rank-row" data-testid="party-row">
+            <span className="rank-name">{name}</span>
+            <span className="rank-count">{formatCount(amt)}</span>
+            <span className="rank-bar" style={{ width: `${(amt / max) * 100}%` }} />
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function matchesTrade(t: TradeRow, needle: string): boolean {
+  if (!needle) return true
+  const hay = [t.seller, t.buyer, prettifyEcoName(t.item), t.currency].join(" ").toLowerCase()
+  return hay.includes(needle)
+}
+
 export default function Trade() {
   const [market, setMarket] = useState<MarketIntelligence | null>(null)
   const [stores, setStores] = useState<StoreDirectory | null>(null)
   const [currency, setCurrency] = useState<CurrencySnapshot | null>(null)
   const [logistics, setLogistics] = useState<LogisticsBoard | null>(null)
+  const [ledger, setLedger] = useState<TradesLedger | null>(null)
   const [watchers, setWatchers] = useState<WatcherHit[]>([])
   const [loaded, setLoaded] = useState(false)
   const [params, setParams] = useSearchParams()
@@ -224,12 +258,16 @@ export default function Trade() {
     const s = controller.signal
     // Every plane is best-effort and independent: siblings land on their own
     // schedule, so one 404 must never take the page down. Each resolves to null
-    // (or [] for watchers) and its panel degrades in place.
+    // (or [] for watchers) and its panel degrades in place. The trades ledger
+    // (folded in from the former /trades page, eco-app#90) is one more such
+    // plane: the market plane carries the price-intelligence view, the ledger
+    // the row-level trades and their party leaderboards.
     Promise.all([
       fetchMarket(s).then(setMarket, () => setMarket(null)),
       fetchStores(s).then(setStores, () => setStores(null)),
       fetchCurrency(s).then(setCurrency, () => setCurrency(null)),
       fetchLogistics(s).then(setLogistics, () => setLogistics(null)),
+      fetchTradesLedger(s).then(setLedger, () => setLedger(null)),
       fetchWatchers(s).then(setWatchers, () => setWatchers([])),
     ]).finally(() => {
       if (!s.aborted) setLoaded(true)
@@ -262,6 +300,14 @@ export default function Trade() {
   )
   const mostTraded = useMemo(() => markets.slice(0, TOP_TRADED), [markets])
   const totalVolume = useMemo(() => markets.reduce((sum, m) => sum + m.totalVolume, 0), [markets])
+
+  // The ledger's own aggregates are the authoritative volume + trade count for
+  // the hero pill: the market plane's per-item volumes read empty on servers
+  // that trade but have no priced markets yet (eco-app#90).
+  const visibleTrades = useMemo(
+    () => (ledger ? ledger.trades.filter((t) => matchesTrade(t, needle)).slice(0, LEDGER_ROWS) : []),
+    [ledger, needle],
+  )
 
   // The drilled item: the ?q= match if there is one, else the busiest market.
   const drill = useMemo(() => {
@@ -299,7 +345,7 @@ export default function Trade() {
   )
 
   const nothing =
-    loaded && !market && !stores && !currency && !logistics && watchers.length === 0
+    loaded && !market && !stores && !currency && !logistics && !ledger && watchers.length === 0
 
   return (
     <Layout fetchedAtISO={market?.fetchedAtISO ?? stores?.fetchedAtISO}>
@@ -312,11 +358,12 @@ export default function Trade() {
           The whole market on one always-on page — movers, price history, every store, and the
           logistics of what to do next. The website answer to Discord's ephemeral DM embeds.
         </p>
-        {market && (
+        {(market || ledger) && (
           <p className="hero-pill" data-testid="trade-pill">
             <span className="pulse-dot" aria-hidden="true" />
-            {formatCount(markets.length)} markets · {formatCount(totalVolume)} volume ·{" "}
-            {formatCount(market.totalTrades)} trades
+            {formatCount(markets.length)} markets ·{" "}
+            {formatCount(ledger?.totalCurrencyVolume ?? totalVolume)} volume ·{" "}
+            {formatCount(ledger?.totalTrades ?? market?.totalTrades ?? 0)} trades
           </p>
         )}
         {nothing && (
@@ -450,9 +497,9 @@ export default function Trade() {
             </p>
           )}
           <p className="section-sub">
-            <Link className="linklike" to={`/trades?q=${encodeURIComponent(drill.itemPretty)}`}>
-              See every {drill.itemPretty} trade in the ledger →
-            </Link>
+            <button className="linklike" onClick={() => setQuery(drill.itemPretty)}>
+              Filter the ledger below to every {drill.itemPretty} trade →
+            </button>
           </p>
         </section>
       )}
@@ -595,6 +642,83 @@ export default function Trade() {
         </section>
       )}
 
+      {/* Row-level trades ledger — folded in from the former /trades page
+          (eco-app#90). The same ?q= filter drives both the market drill above
+          and this ledger, so drilling an item narrows the rows here too. */}
+      {ledger && ledger.totalTrades > 0 && (
+        <section id="trade-ledger" data-testid="ledger">
+          <h2 className="section-title">
+            Trades ledger {q ? `matching "${q}"` : ""}{" "}
+            <span className="section-sub">
+              (newest {visibleTrades.length}
+              {ledger.trades.length > visibleTrades.length
+                ? ` of ${formatCount(ledger.trades.length)}`
+                : ""}
+              )
+            </span>
+          </h2>
+          {visibleTrades.length === 0 ? (
+            <p className="empty-note">No trades match.</p>
+          ) : (
+            <table className="ledger-table" data-testid="trades-table">
+              <thead>
+                <tr>
+                  <th>Day</th>
+                  <th>Seller</th>
+                  <th>Buyer</th>
+                  <th>Item</th>
+                  <th className="num">Qty</th>
+                  <th className="num">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleTrades.map((t, i) => (
+                  <tr key={`${t.time}-${i}`} data-testid="trade-row">
+                    <td>{Math.floor(t.day)}</td>
+                    <td>{t.seller || "—"}</td>
+                    <td>{t.buyer || "—"}</td>
+                    <td>
+                      {t.item ? (
+                        <button className="linklike" onClick={() => setQuery(prettifyEcoName(t.item))}>
+                          {prettifyEcoName(t.item)}
+                        </button>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="num">{formatCount(t.quantity)}</td>
+                    <td className="num">
+                      {t.currencyAmount
+                        ? `${formatCount(t.currencyAmount)} ${t.currency}`.trim()
+                        : t.tradeType === "BarterTrade"
+                          ? "barter"
+                          : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <div className="atlas-columns">
+            <div>
+              <h3 className="card-title">Top sellers</h3>
+              <TraderList rows={ledger.topSellers} />
+            </div>
+            <div>
+              <h3 className="card-title">Top buyers</h3>
+              <TraderList rows={ledger.topBuyers} />
+            </div>
+          </div>
+          {ledger.warnings.length > 0 && (
+            <ul className="warn-list" data-testid="ledger-warnings">
+              {ledger.warnings.map((w) => (
+                <li key={w}>⚠ {w}</li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
       {/* Watchers panel. */}
       {watchers.length > 0 && (
         <section data-testid="watchers-section">
@@ -609,17 +733,13 @@ export default function Trade() {
       {/* Cross-links. */}
       {loaded && (
         <section className="dir-cards">
-          <Link className="dir-card" to="/items" data-testid="link-items">
-            <h3>Item directory →</h3>
-            <p>Every item bought, sold, or crafted — click through to its full history.</p>
-          </Link>
-          <Link className="dir-card" to="/trades" data-testid="link-trades">
-            <h3>Trades ledger →</h3>
-            <p>Every individual trade, row by row — who sold what to whom.</p>
-          </Link>
           <Link className="dir-card" to="/crafting" data-testid="link-crafting">
             <h3>Crafting atlas →</h3>
             <p>Where the traded goods come from — what's made, where, and from what.</p>
+          </Link>
+          <Link className="dir-card" to="/jobs" data-testid="link-jobs">
+            <h3>Jobs →</h3>
+            <p>Who can make the traded goods — professions, specialties, and skill history.</p>
           </Link>
         </section>
       )}

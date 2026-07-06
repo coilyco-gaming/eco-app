@@ -398,9 +398,9 @@ export default function Social() {
           )}
 
           <section className="dir-cards">
-            <Link className="dir-card" to="/economy" data-testid="link-economy">
-              <h3>Economy →</h3>
-              <p>The material side — trades per day, contracts, loans, and the treasury.</p>
+            <Link className="dir-card" to="/trade" data-testid="link-trade">
+              <h3>Trade →</h3>
+              <p>The material side — the market, the trade ledger, and money supply.</p>
             </Link>
             <Link className="dir-card" to="/jobs" data-testid="link-jobs">
               <h3>Jobs →</h3>

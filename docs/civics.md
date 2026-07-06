@@ -2,7 +2,7 @@
 
 The **history + trend** half of the governance surface, reconstructed from data
 the Eco server already exports - no game restart, no new C# mod. Where
-`get_eco_government` (the `/server` law/title card) is the *current-state*
+`get_eco_government` (the `/info` law/title card) is the *current-state*
 snapshot - who holds which title, which laws are active right now - this surface
 is the record of civic *events* over time: who ran, who voted, who moved in, and
 where new settlements rose. Filed as
@@ -16,7 +16,7 @@ biggest remaining DiscordLink-parity gap under the epic
 
 - **`get_eco_civics` MCP tool** - `src/eco_mcp_app/civics.py` + `server.py` wiring. Returns a markdown summary + the structured `CivicsReport.to_dict()` JSON. Civics is a "just data" tool - it emits no MCP-app widget ([#87](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/87); the widget is scoped to the world/region view). Requires an admin API key server-side (`ECO_ADMIN_API_KEY`, SSM in the homelab deploy).
 - **`/preview/civics.json` data plane** - `http_app.py` dispatches the tool and returns its JSON block, the short stable path the SPA consumes.
-- **`/civics` SPA page** - `frontend/src/pages/Civics.tsx`. Product UX lives here (the Jinja card is only the in-chat fragment): a civic stat grid, a two-series turnout-over-time chart, recent elections, a most-active-voter leaderboard, new settlements, and recent arrivals/departures. Cross-links `/economy` and `/server`, with a live homepage badge (`useCivicsPulse`).
+- **`/civics` SPA page** - `frontend/src/pages/Civics.tsx`. Product UX lives here (the Jinja card is only the in-chat fragment): a civic stat grid, a two-series turnout-over-time chart, recent elections, a most-active-voter leaderboard, new settlements, and recent arrivals/departures. Cross-links `/trade` and `/info` (the former `/economy` and `/server` cross-links were repointed in the [#90](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/90) IA cleanup), with a live homepage badge (`useCivicsPulse`).
 
 ## Data sources
 
@@ -41,7 +41,7 @@ Two planes, both already live on the server:
 - **Unknown civic headers** - the exact civic CSV column layouts weren't captured live this cycle ([#7](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/7) is inventory-only for the civics families). The parser keys off the header and scans a generous per-action candidate list (`_SUBJECT_CANDIDATES`, `_CITIZEN_CANDIDATES`) for the subject + actor; a miss just leaves that field blank, so the per-type counts and turnout still carry the report. When the live headers are probed, tighten the candidate lists.
 - **Time semantics** - integer seconds since cycle start, same convention as the species population CSV and the trades ledger: in-game day = `Time / 86400` (`SECONDS_PER_DAY`).
 - **Misalignment risk** - some exporter rows carry an undeclared extra tool column that shifts every later field. The report reuses `crafting._corrected_index` (scores candidate insertion points against per-column value shapes) so header-keyed picks stay aligned ([#5](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/5)).
-- **Laws-in-effect** - not derivable from the action stream (there is no per-law event). The surface points at `get_eco_government` / `/server` for the active-law list rather than fabricating one.
+- **Laws-in-effect** - not derivable from the action stream (there is no per-law event). The surface points at `get_eco_government` / `/info` for the active-law list rather than fabricating one.
 
 ## Streaming & caching
 
