@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest"
 import {
   formatCount,
+  formatDayHour,
   formatFetchedAt,
+  formatRelative,
   meteorProgressPercent,
   safeHttpUrl,
   stripEcoMarkup,
@@ -66,5 +68,34 @@ describe("meteorProgressPercent", () => {
   it("clamps degenerate inputs", () => {
     expect(meteorProgressPercent(0, 0)).toBe(0)
     expect(meteorProgressPercent(10, -20)).toBe(0)
+  })
+})
+
+describe("formatDayHour", () => {
+  it("folds world-clock seconds into an in-game day and hour", () => {
+    // 3600s = one in-game day; 150s = one in-game hour.
+    expect(formatDayHour(0)).toBe("day 0, 0h")
+    expect(formatDayHour(3600)).toBe("day 1, 0h")
+    expect(formatDayHour(3600 + 150)).toBe("day 1, 1h")
+    // 56 days + 12 in-game hours -> 56 * 3600 + 1800 = 203400.
+    expect(formatDayHour(203400)).toBe("day 56, 12h")
+  })
+
+  it("clamps negatives so skew never reads before the cycle start", () => {
+    expect(formatDayHour(-10)).toBe("day 0, 0h")
+  })
+})
+
+describe("formatRelative", () => {
+  it("reads the real elapsed gap in coarse units", () => {
+    expect(formatRelative(100, 100)).toBe("just now")
+    expect(formatRelative(0, 60)).toBe("1 minute ago")
+    expect(formatRelative(0, 3600)).toBe("1 hour ago")
+    expect(formatRelative(0, 7200)).toBe("2 hours ago")
+    expect(formatRelative(0, 86400)).toBe("1 day ago")
+  })
+
+  it("clamps a future timestamp to just now", () => {
+    expect(formatRelative(100, 50)).toBe("just now")
   })
 })

@@ -113,16 +113,10 @@ export default function Civics() {
 
   return (
     <Layout>
+      {/* One heading + the live pill as the single intro line (eco-app#97). The
+          old tagline's cross-link to Info survives as the dir-card below. */}
       <section className="hero hero-compact">
-        <p className="hero-kicker">Civics &amp; governance</p>
-        <h1 className="hero-title">
-          Elections, turnout, and a <span className="accent">changing populace</span>
-        </h1>
-        <p className="hero-tagline">
-          The history and trend of civic life on the server — who ran, who voted, who moved
-          in, and where new settlements rose. For the current title chart and active laws, see{" "}
-          <Link to="/info">Info</Link>.
-        </p>
+        <h1 className="hero-title">Civics &amp; governance</h1>
         {report && report.totalEvents > 0 && (
           <p className="hero-pill" data-testid="civics-pill">
             <span className="pulse-dot" aria-hidden="true" />

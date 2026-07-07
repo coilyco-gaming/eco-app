@@ -546,11 +546,9 @@ export default function MapPage() {
 
   return (
     <Layout fetchedAtISO={world?.fetchedAtISO}>
+      {/* One heading + the live pill as the single intro line (eco-app#97). */}
       <section className="hero hero-compact">
-        <p className="hero-kicker">World</p>
-        <h1 className="hero-title">
-          The world, <span className="accent">mapped and classified</span>
-        </h1>
+        <h1 className="hero-title">World</h1>
         {snap && (
           <p className="hero-pill" data-testid="map-pill">
             <span className="pulse-dot" aria-hidden="true" />
@@ -576,9 +574,8 @@ export default function MapPage() {
               <h2 className="section-title">World map</h2>
               <p className="intro">
                 <span>
-                  The live world preview, blown up and readable. Every property deed is drawn as a
-                  translucent polygon coloured by owner; the ringed dots mark where the bulldozers
-                  are busiest. Hover a biome below to light up where it sits.
+                  Deeds are drawn as owner-coloured polygons; ringed dots mark the busiest cells.
+                  Hover a biome below to light up where it sits.
                 </span>
               </p>
               <WorldMap map={map} world={world} hoveredBiome={hoveredBiome} />
@@ -597,8 +594,7 @@ export default function MapPage() {
               <h2 className="section-title">Biome &amp; water composition</h2>
               <p className="intro">
                 <span>
-                  Share of the whole map covered by each biome and by water. Coastal sea and fresh
-                  water used to vanish into an unlabelled 61% grey slice — now only genuine mountain
+                  Share of the whole map covered by each biome and by water — only genuine mountain
                   and transitional terrain ({Math.round(snap.unclassifiedPercent)}%) is left
                   unclassified.
                 </span>

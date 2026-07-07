@@ -94,11 +94,9 @@ export default function Crafting() {
 
   return (
     <Layout>
+      {/* One heading + the live pill as the single intro line (eco-app#97). */}
       <section className="hero hero-compact">
-        <p className="hero-kicker">Crafting atlas</p>
-        <h1 className="hero-title">
-          What the world is <span className="accent">making</span>
-        </h1>
+        <h1 className="hero-title">Crafting atlas</h1>
         {atlas && (
           <p className="hero-pill" data-testid="atlas-pill">
             <span className="pulse-dot" aria-hidden="true" />

@@ -839,6 +839,22 @@ a.dir-card:hover {
   background: #b7e8c8;
 }
 
+/* Discord CTA — blurple fill with white text, mirroring the MCP card's
+   `.cta.discord`. The explicit `:visited` rule is load-bearing: the global
+   `a:visited { color: var(--leaf) }` outranks a bare `.button-primary` class,
+   so a visited Discord link used to repaint leaf-green on its own leaf fill and
+   vanish (eco-app#97). White on blurple reads clearly in light and dark. */
+.button-discord,
+.button-discord:visited {
+  background: #5865f2;
+  border-color: #5865f2;
+  color: #fff;
+}
+
+.button-discord:hover {
+  background: #4a56d6;
+}
+
 .site-footer {
   padding: 2rem 0 0.5rem;
   display: flex;
