@@ -44,6 +44,32 @@ def test_explicit_routes_still_win() -> None:
 
 
 @pytest.mark.usefixtures("dist")
+def test_info_hard_load_renders_the_spa_not_json() -> None:
+    # eco-app#96: `/info` used to be the service-discovery JSON route, so a hard
+    # refresh returned JSON instead of the React Info page. It now falls through
+    # to the SPA catch-all and serves the shell as HTML.
+    client = TestClient(create_app())
+    r = client.get("/info")
+    assert r.status_code == 200
+    assert "spa-shell" in r.text
+    assert "application/json" not in r.headers.get("content-type", "")
+
+
+@pytest.mark.usefixtures("dist")
+def test_service_discovery_json_lives_under_api() -> None:
+    # The service-discovery blob relocated to the `/api`-style path (eco-app#96).
+    client = TestClient(create_app())
+    r = client.get("/api/service")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["service"] == "eco-app"
+    assert body["self"] == "/api/service"
+    assert body["mcp"] == "/mcp/"
+    # `/info` no longer serves this blob.
+    assert "service" not in client.get("/info").text
+
+
+@pytest.mark.usefixtures("dist")
 def test_traversal_outside_dist_gets_the_shell() -> None:
     client = TestClient(create_app())
     r = client.get("/%2e%2e/%2e%2e/etc/passwd")

@@ -493,13 +493,42 @@ describe("Trade", () => {
       expect(screen.getByTestId("logistics")).toBeInTheDocument()
     })
     expect(screen.getByTestId("arbitrage-row")).toHaveTextContent("Wheat Stand")
-    expect(screen.getByTestId("cheapest-list")).toHaveTextContent("Iron Emporium")
+    // The "Cheapest source" board was dropped as noise (eco-app#95).
+    expect(screen.queryByTestId("cheapest-list")).toBeNull()
     // Supply gap now names the reason and WHO needs it, not a prose note.
     const gaps = screen.getByTestId("gaps-list")
     expect(gaps).toHaveTextContent("Board")
     expect(gaps).toHaveTextContent("no supply")
     expect(within(gaps).getByTestId("gap-who")).toHaveTextContent("geodude")
     expect(within(gaps).getByTestId("gap-who")).toHaveTextContent("onix")
+  })
+
+  it("renders every supply gap, not just the first eight (eco-app#95)", async () => {
+    const manyGaps = {
+      ...LOGISTICS,
+      supplyGaps: Array.from({ length: 22 }, (_, i) => ({
+        item: `Item${i}`,
+        itemPretty: `Item ${i}`,
+        currency: "Credit",
+        reason: "no_supply" as const,
+        sellerCount: 0,
+        buyerCount: 1,
+        demandQty: 10,
+        supplyQty: 0,
+        buyPrice: 1,
+        cheapestSell: null,
+        median: null,
+        overMedianPct: null,
+        buyers: [{ owner: "onix", store: "Onix's Depot", quantity: 10, price: 1 }],
+      })),
+    }
+    stub({ logistics: manyGaps })
+    renderTrade()
+
+    await waitFor(() => {
+      expect(screen.getByTestId("gaps-list")).toBeInTheDocument()
+    })
+    expect(screen.getAllByTestId("gap-row")).toHaveLength(22)
   })
 
   it("shows the watcher panel with a feed badge when watchers exist", async () => {

@@ -85,6 +85,12 @@ HISTORY_RECENT_DAYS = float(os.environ.get("ECO_LOGI_RECENT_DAYS", "7.0"))
 TOP_PER_ITEM = int(os.environ.get("ECO_LOGI_TOP_PER_ITEM", "6"))
 TOP_ROWS = int(os.environ.get("ECO_LOGI_TOP_ROWS", "40"))
 
+# Supply gaps are the valued board (Kai, eco-app#95: "great — I want 20+"), so
+# they get their own, deliberately generous cap instead of sharing the price
+# boards' TOP_ROWS. The SPA renders the whole list, so this is what caps how many
+# gaps a busy server can surface.
+SUPPLY_GAP_ROWS = int(os.environ.get("ECO_LOGI_GAP_ROWS", "40"))
+
 
 def _norm_item(name: str) -> str:
     """Fold an item id to a comparison key: lowercase, drop a trailing ``item``.
@@ -190,6 +196,7 @@ def build_logistics(
     currency: str | None = None,
     top_per_item: int = TOP_PER_ITEM,
     top_rows: int = TOP_ROWS,
+    top_gap_rows: int = SUPPLY_GAP_ROWS,
     min_spread_pct: float = ARBITRAGE_MIN_SPREAD_PCT,
     min_abs_spread: float = ARBITRAGE_MIN_ABS_SPREAD,
     min_depth: int = MIN_MARKET_DEPTH,
@@ -319,7 +326,7 @@ def build_logistics(
     report.cheapest = cheapest[:top_rows]
     report.resale = resale[:top_rows]
     report.arbitrage = arbitrage[:top_rows]
-    report.supply_gaps = supply_gaps[:top_rows]
+    report.supply_gaps = supply_gaps[:top_gap_rows]
 
     # Honest depth note — the whole point of the "single-store" acceptance case.
     if report.total_offers == 0:
@@ -652,7 +659,6 @@ def logistics_template_context(report: LogisticsReport, *, top: int = 6) -> dict
         "live": report.live,
         "total_offers": report.total_offers,
         "total_stores": report.total_stores,
-        "cheapest": report.cheapest[:top],
         "resale": report.resale[:top],
         "arbitrage": report.arbitrage[:top],
         "supply_gaps": [
@@ -676,15 +682,6 @@ def logistics_markdown(report: LogisticsReport) -> str:
         f"{report.total_stores:,} stores ({src}, `{report.source_base_url}`)",
         "",
     ]
-    if report.cheapest:
-        lines.append("**Cheapest source (where to buy):**")
-        for r in report.cheapest[:5]:
-            best = r["offers"][0]
-            lines.append(
-                f"- {r['itemPretty']}: {r['cheapest']:,.2f} {r['currency']}/unit "
-                f"at {best['store']} ({best['source']}, {r['sellerCount']} seller(s))"
-            )
-        lines.append("")
     if report.resale:
         lines.append("**Best resale (where to sell):**")
         for r in report.resale[:5]:

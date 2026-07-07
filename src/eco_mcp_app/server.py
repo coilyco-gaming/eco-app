@@ -2504,9 +2504,8 @@ def build_server() -> Server:
                 title="Eco — trade & store logistics",
                 description=(
                     "Trade logistics engine: turns the trade ledger and live "
-                    "store shelves into buy/sell/haul decisions. Four boards — "
-                    "**cheapest source** (rank stores selling an item by price: "
-                    "'where is iron ingot cheapest'), **best resale** (rank "
+                    "store shelves into buy/sell/haul decisions. Three boards — "
+                    "**best resale** (rank "
                     "stores buying it, for a player holding stock), **arbitrage "
                     "spreads** (items a store sells below another store buys, by "
                     "more than a threshold, ranked by spread x volume), and "
