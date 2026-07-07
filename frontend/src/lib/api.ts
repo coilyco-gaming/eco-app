@@ -31,6 +31,8 @@ export interface EcoWorld {
 export interface EcoCycle {
   daysRunning: number
   daysUntilMeteor: number
+  // Real seconds since cycle start (the /info world clock); 1 in-game day = 3600s.
+  timeSinceStartS: number
   hasMeteor: boolean
   collaboration: string
   gameSpeed: string

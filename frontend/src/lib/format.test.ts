@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest"
 import {
   formatCount,
   formatDayHour,
+  formatEventDay,
   formatFetchedAt,
+  formatRelative,
   meteorProgressPercent,
   safeHttpUrl,
   stripEcoMarkup,
@@ -45,24 +47,24 @@ describe("formatFetchedAt", () => {
   })
 })
 
-describe("formatDayHour", () => {
-  it("folds the fractional day into a clock time", () => {
-    expect(formatDayHour(3.5)).toBe("Day 3, 12:00")
-    expect(formatDayHour(0)).toBe("Day 0, 00:00")
-    expect(formatDayHour(12)).toBe("Day 12, 00:00")
-    expect(formatDayHour(2.25)).toBe("Day 2, 06:00")
+describe("formatEventDay", () => {
+  it("folds the fractional exporter day into a clock time", () => {
+    expect(formatEventDay(3.5)).toBe("Day 3, 12:00")
+    expect(formatEventDay(0)).toBe("Day 0, 00:00")
+    expect(formatEventDay(12)).toBe("Day 12, 00:00")
+    expect(formatEventDay(2.25)).toBe("Day 2, 06:00")
   })
 
   it("carries a rounded-up fraction into the next whole day", () => {
     // 3.99999 rounds to 24:00 of day 3 — must read as day 4, 00:00.
-    expect(formatDayHour(3.99999)).toBe("Day 4, 00:00")
+    expect(formatEventDay(3.99999)).toBe("Day 4, 00:00")
   })
 
   it("dashes out missing / non-finite days", () => {
-    expect(formatDayHour(null)).toBe("—")
-    expect(formatDayHour(undefined)).toBe("—")
-    expect(formatDayHour(Number.NaN)).toBe("—")
-    expect(formatDayHour(Number.POSITIVE_INFINITY)).toBe("—")
+    expect(formatEventDay(null)).toBe("—")
+    expect(formatEventDay(undefined)).toBe("—")
+    expect(formatEventDay(Number.NaN)).toBe("—")
+    expect(formatEventDay(Number.POSITIVE_INFINITY)).toBe("—")
   })
 })
 
@@ -88,5 +90,34 @@ describe("meteorProgressPercent", () => {
   it("clamps degenerate inputs", () => {
     expect(meteorProgressPercent(0, 0)).toBe(0)
     expect(meteorProgressPercent(10, -20)).toBe(0)
+  })
+})
+
+describe("formatDayHour", () => {
+  it("folds world-clock seconds into an in-game day and hour", () => {
+    // 3600s = one in-game day; 150s = one in-game hour.
+    expect(formatDayHour(0)).toBe("day 0, 0h")
+    expect(formatDayHour(3600)).toBe("day 1, 0h")
+    expect(formatDayHour(3600 + 150)).toBe("day 1, 1h")
+    // 56 days + 12 in-game hours -> 56 * 3600 + 1800 = 203400.
+    expect(formatDayHour(203400)).toBe("day 56, 12h")
+  })
+
+  it("clamps negatives so skew never reads before the cycle start", () => {
+    expect(formatDayHour(-10)).toBe("day 0, 0h")
+  })
+})
+
+describe("formatRelative", () => {
+  it("reads the real elapsed gap in coarse units", () => {
+    expect(formatRelative(100, 100)).toBe("just now")
+    expect(formatRelative(0, 60)).toBe("1 minute ago")
+    expect(formatRelative(0, 3600)).toBe("1 hour ago")
+    expect(formatRelative(0, 7200)).toBe("2 hours ago")
+    expect(formatRelative(0, 86400)).toBe("1 day ago")
+  })
+
+  it("clamps a future timestamp to just now", () => {
+    expect(formatRelative(100, 50)).toBe("just now")
   })
 })

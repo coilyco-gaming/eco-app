@@ -31,14 +31,12 @@ export default function Home() {
 
   return (
     <Layout>
+      {/* One heading + one intro line (eco-app#97) — the poetic subtitle and
+          kicker overline are gone. */}
       <section className="hero hero-compact">
-        <p className="hero-kicker">Eco via Sirens</p>
-        <h1 className="hero-title">
-          A live window into a <span className="accent">world worth saving</span>
-        </h1>
+        <h1 className="hero-title">Eco via Sirens</h1>
         <p className="hero-tagline">
-          Dashboards for the Eco via Sirens game server. Pick a surface — everything is one
-          click from here.
+          Live dashboards for the game server — pick a surface, everything is one click away.
         </p>
       </section>
 

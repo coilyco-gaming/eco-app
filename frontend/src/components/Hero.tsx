@@ -7,17 +7,14 @@ interface HeroProps {
 }
 
 export default function Hero({ status, error }: HeroProps) {
+  // One heading tier, one intro line (eco-app#97): the live server description
+  // *is* the heading, and the players pill is the single supporting line. The
+  // former kicker, poetic title, and tagline stacked three tiers of prose.
   return (
     <section className="hero">
-      <p className="hero-kicker">Eco via Sirens</p>
       <h1 className="hero-title">
-        A live window into a <span className="accent">world worth saving</span>
+        {status ? stripEcoMarkup(status.server.description) : "Live server snapshot"}
       </h1>
-      <p className="hero-tagline">
-        {status
-          ? stripEcoMarkup(status.server.description)
-          : "Meteor countdowns, economy, laws, species, and maps from the Eco via Sirens game server."}
-      </p>
       {status && (
         <p className="hero-pill" data-testid="live-pill">
           <span className="pulse-dot" aria-hidden="true" />

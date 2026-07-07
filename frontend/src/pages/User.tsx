@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom"
 import Layout from "../components/Layout"
 import {
   formatCount,
-  formatDayHour,
+  formatEventDay,
   formatFetchedAt,
   formatRelativeTime,
   prettifyEcoName,
@@ -402,7 +402,7 @@ export default function User() {
                   const counterparty = t.buyer === username ? t.seller : t.buyer
                   return (
                     <tr key={`${t.item}-${i}`} data-testid="user-trade-row">
-                      <td>{formatDayHour(t.day)}</td>
+                      <td>{formatEventDay(t.day)}</td>
                       <td>{t.item ? prettifyEcoName(t.item) : "—"}</td>
                       <td>{role}</td>
                       <td>{counterparty}</td>
@@ -482,12 +482,12 @@ export default function User() {
             <ul className="warn-list" data-testid="user-civics-events">
               {dossier.civics.elections.map((e, i) => (
                 <li key={`el-${i}`}>
-                  {formatDayHour(e.day)}: {e.role} <strong>{e.subject}</strong>
+                  {formatEventDay(e.day)}: {e.role} <strong>{e.subject}</strong>
                 </li>
               ))}
               {dossier.civics.settlements.map((s, i) => (
                 <li key={`st-${i}`}>
-                  {formatDayHour(s.day)}: founded {s.kind} <strong>{s.subject}</strong>
+                  {formatEventDay(s.day)}: founded {s.kind} <strong>{s.subject}</strong>
                 </li>
               ))}
             </ul>
@@ -535,7 +535,7 @@ export default function User() {
                 <tbody>
                   {dossier.progression.trajectory.timeline.map((ev, i) => (
                     <tr key={`tl-${i}`}>
-                      <td>{formatDayHour(ev.day)}</td>
+                      <td>{formatEventDay(ev.day)}</td>
                       <td>{ev.kind}</td>
                       <td>{ev.pretty}</td>
                       <td>{ev.level ?? "—"}</td>

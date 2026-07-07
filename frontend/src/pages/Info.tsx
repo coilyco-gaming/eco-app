@@ -33,7 +33,7 @@ export default function Info() {
 
       <section className="cta-row">
         {discordUrl && (
-          <a className="button button-primary" href={discordUrl}>
+          <a className="button button-discord" href={discordUrl}>
             Join the Discord
           </a>
         )}

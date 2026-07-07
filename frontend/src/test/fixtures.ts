@@ -20,6 +20,8 @@ export const SAMPLE_STATUS: EcoStatus = {
   cycle: {
     daysRunning: 56,
     daysUntilMeteor: 3,
+    // 56 in-game days + 12 in-game hours: 56 * 3600 + 1800 = 203400s.
+    timeSinceStartS: 203400,
     hasMeteor: true,
     collaboration: "HighCollaboration",
     gameSpeed: "Slow",
