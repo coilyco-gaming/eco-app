@@ -1,7 +1,8 @@
 {# Trade logistics engine — rendered inside #root after a find_eco_trade tool
    call. Product UX is the SPA (/trade); this fragment is the compact in-chat
-   MCP Apps card: the four boards (cheapest source, best resale, arbitrage
-   spreads, supply gaps) as short tables. Empty-state is a distinct branch
+   MCP Apps card: three boards (best resale, arbitrage spreads, supply gaps) as
+   short tables — the "cheapest source" board was dropped as noise (eco-app#95).
+   Empty-state is a distinct branch
    because early in a cycle there is no shelf or trade history to route.
    eco-app#51. #}
 <div class="crafting-atlas">
@@ -31,27 +32,6 @@
       </div>
     </div>
   {% else %}
-
-  {% if cheapest %}
-  <div class="crafting-section">
-    <div class="crafting-section-label">Cheapest source — where to buy</div>
-    <table class="trades-table">
-      <thead>
-        <tr><th>Item</th><th>Store</th><th class="num">Price</th><th>Source</th></tr>
-      </thead>
-      <tbody>
-        {% for r in cheapest %}
-        <tr>
-          <td title="{{ r.item }}">{{ r.itemPretty }}</td>
-          <td>{{ r.offers[0].store }}</td>
-          <td class="num">{{ '%.2f' % r.cheapest }} {{ r.currency }}</td>
-          <td><span class="pill">{{ r.offers[0].source }}</span></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% endif %}
 
   {% if resale %}
   <div class="crafting-section">

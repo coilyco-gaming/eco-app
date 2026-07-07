@@ -89,11 +89,14 @@ def test_root_serves_spa_or_build_hint(client: TestClient) -> None:
         assert "frontend-build" in r.text
 
 
-def test_info(client: TestClient) -> None:
-    r = client.get("/info")
+def test_service_discovery(client: TestClient) -> None:
+    # The service-discovery blob moved off `/info` (now the SPA's Info page) to
+    # the `/api`-style path (eco-app#96).
+    r = client.get("/api/service")
     assert r.status_code == 200
     body = r.json()
     assert body["service"] == "eco-app"
+    assert body["self"] == "/api/service"
     assert body["mcp"] == "/mcp/"
     assert body["jobs"] == "/jobs"
     assert body["jobsApi"] == "/jobs/api/v1"

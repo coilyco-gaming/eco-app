@@ -247,6 +247,15 @@ def test_supply_gap_overpriced_vs_median() -> None:
     assert gaps[0]["median"] == pytest.approx(2.0)
 
 
+def test_supply_gap_board_surfaces_twenty_plus(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Kai wants the gap board in the 20+ range (eco-app#95): with enough
+    # demanded-but-unsupplied items, the board must not clip to the old ~8.
+    offers = [_offer("StoreA", f"Item{i:02d}", "buy", 1.0, quantity=100) for i in range(25)]
+    report = build_logistics(offers)
+    assert len(report.supply_gaps) == 25
+    assert all(g["reason"] == "no_supply" for g in report.supply_gaps)
+
+
 def test_healthy_market_has_no_gap() -> None:
     offers = [
         _offer("StoreA", "IronIngotItem", "sell", 2.0),
@@ -459,11 +468,15 @@ def test_logistics_markdown_populated() -> None:
     ]
     report = build_logistics(offers)
     md = logistics_markdown(report)
-    assert "Cheapest source" in md
+    # The "Cheapest source" board was dropped as noise (eco-app#95); resale and
+    # arbitrage remain.
+    assert "Cheapest source" not in md
+    assert "Best resale" in md
     assert "Arbitrage" in md
     ctx = logistics_template_context(report)
     assert ctx["empty"] is False
     assert ctx["arbitrage"]
+    assert "cheapest" not in ctx
 
 
 # ---------------------------------------------------------------------------

@@ -308,7 +308,7 @@ def create_app() -> Starlette:
     no_build_msg = (
         "Frontend not built. Run `ward exec frontend-build` (or `ward exec "
         "frontend-dev` for hot reload). JSON APIs are live at /preview.json, "
-        "/preview/<tool>.json, /info, and /jobs/api/v1/*."
+        "/preview/<tool>.json, /api/service, and /jobs/api/v1/*."
     )
 
     async def root(_: Request) -> Response:
@@ -332,11 +332,17 @@ def create_app() -> Starlette:
         return FileResponse(frontend_index)
 
     async def service_info(_: Request) -> JSONResponse:
+        # Service-discovery blob. Debug/discovery, not a user surface, so it
+        # lives under `/api/service` — every JSON endpoint under an `/api`-style
+        # path (eco-app#96). `/info` is freed for the SPA's React Info page: it
+        # falls through to the catch-all below and renders on a hard load, where
+        # the old Starlette `/info` route would have returned this JSON instead.
         tools_result = await _list_tools()
         names = sorted(t.name for t in tools_result.tools)
         return JSONResponse(
             {
                 "service": "eco-app",
+                "self": "/api/service",
                 "mcp": "/mcp/",
                 "jobs": "/jobs",
                 "jobsApi": "/jobs/api/v1",
@@ -712,7 +718,13 @@ def create_app() -> Starlette:
 
     routes: list[BaseRoute] = [
         Route("/", root, methods=["GET"]),
-        Route("/info", service_info, methods=["GET"]),
+        # Service-discovery JSON moved off `/info` → `/api/service` so `/info`
+        # falls through to the SPA (eco-app#96). `/healthz` and `/page-auth`
+        # stay on their bare paths: both are probes with external contracts
+        # (the k8s liveness/readiness check hits `/healthz`; the SPA's page-auth
+        # gate hardcodes `/page-auth`), not new user-facing surfaces, so moving
+        # them would break those consumers for no SPA-collision gain.
+        Route("/api/service", service_info, methods=["GET"]),
         Route("/healthz", healthz, methods=["GET"]),
         Route("/page-auth", page_auth_status, methods=["GET"]),
         Route("/page-auth", page_auth_verify, methods=["POST"]),
