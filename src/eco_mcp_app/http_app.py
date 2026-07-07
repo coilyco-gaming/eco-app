@@ -49,6 +49,7 @@ from .admin import build_admin_server
 from .items import fetch_item_index, fetch_item_pivot
 from .livereload import DEBUG, livereload_route
 from .map import build_map_payload, fetch_map_bundle
+from .recipes import filter_index, load_recipe_index
 from .server import (
     ADMIN_API_KEY_ENV,
     DEFAULT_ECO_INFO_URL,
@@ -652,6 +653,25 @@ def create_app() -> Starlette:
             return JSONResponse({"error": str(e)}, status_code=502)
         return JSONResponse(pivot.to_dict())
 
+    async def preview_recipes_json(request: Request) -> JSONResponse:
+        """`/preview/recipes.json` — the SPA's recipe bill-of-materials plane.
+
+        Serves the vendored Eco Gnome recipe graph (`recipes.py`) as the
+        `RecipeIndex` DTO the recipes page (eco-app#98 B) / cost engine (C) read.
+        Unlike the other preview routes this has **no `?server=`**: the graph is
+        static bundled vanilla data, not a per-server live fetch (eco-app#100).
+        Optional `?product=` / `?skill=` / `?station=` narrow the returned
+        `recipes` list; the lookup maps stay whole so facet pickers still work.
+        """
+        params = request.query_params
+        payload = filter_index(
+            load_recipe_index(),
+            product=params.get("product"),
+            skill=params.get("skill"),
+            station=params.get("station"),
+        )
+        return JSONResponse(payload)
+
     def _extract_json_block(call_result: mt.CallToolResult) -> Any:
         # Each tool emits markdown + JSON TextContent blocks (see
         # server.call_tool). Find the JSON one by skipping any HTMX-prefixed
@@ -742,6 +762,7 @@ def create_app() -> Starlette:
         Route("/preview/user.json", preview_user_json, methods=["GET"]),
         Route("/preview/items.json", preview_items_json, methods=["GET"]),
         Route("/preview/item.json", preview_item_json, methods=["GET"]),
+        Route("/preview/recipes.json", preview_recipes_json, methods=["GET"]),
         Route("/preview/{tool}", preview_tool, methods=["GET"]),
         Mount("/mcp", app=handle_mcp),
         Mount("/jobs/api", app=jobs_app),

@@ -1,0 +1,400 @@
+"""Recipe definitions — the bill-of-materials layer eco-app was missing.
+
+eco-app has the *market* half of the economy (`market.py`, `trades.py`,
+`logistics.py`, `stores.py`) and a production-event leaderboard
+(`crafting.py`), but no **recipe definitions**: no ingredients-in / product-out,
+no station, no required skill, no labor/calorie cost. This module fills that gap
+(keystone of the recipe/pricing roadmap on eco-app#98), so every recipe-shaped
+surface — the recipes page (B), the cost engine (C), value-per-profession (D),
+the pricing page (E) — has a bill-of-materials to read.
+
+Source: **Eco Gnome** (MIT) is itself a recipe exporter, so we ingest its output
+rather than build a bespoke Eco `RecipeManager` dumper (eco-app#40, #98). The
+vendored `data/eco_gnome_data.json` is the vanilla recipe graph bundled by
+`eco-gnome-website` (`ecocraft/eco_gnome_data.json`, MIT), pinned from
+`master@28113f2` (2026-07-04): 1,453 recipes / 1,526 items / 43 skills /
+142 tags. It is vendored (not fetched live) for reproducible builds and
+no-build-time-networking, per the eco-app#105 probe finding. The bundled copy is
+trimmed to `en-US` `LocalizedName` only — every other key is left intact, so the
+file stays **schema-identical** to what the DataExporter mod emits. When the
+self-host + DataExporter path lands (ward#585 / eco-ops#30) the modded export
+drops in over this seed with no parser rework: `build_recipe_index` reads the
+same shape either way.
+
+Unlike `crafting.py` / `trades.py`, the source here is a **static bundled file**,
+not a per-server remote CSV, so the cache is an in-process memo keyed on the
+resolved file path (mirroring the shape of those modules — a `RecipeIndex`
+dataclass with `to_dict` — without their SQLite/per-server-key machinery, which
+would be dead weight against immutable local data).
+
+DTO (eco-app#98):
+    Recipe {
+        name, displayName, product, ingredients[], byproducts[], station,
+        skill{name, level}, laborCost, craftMinutes, tableTierRequired, variants
+    }
+plus a RecipeIndex { recipes[], byProduct, bySkill, byStation, skills[], tags,
+counts, version, source, fetchedAtISO, warnings }.
+"""
+
+from __future__ import annotations
+
+import json
+from collections import defaultdict
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from importlib.resources import files
+from pathlib import Path
+from typing import Any
+
+from .crafting import prettify_eco_name
+
+# Where the vendored graph came from, surfaced on the index so a consumer (and a
+# human reading /preview/recipes.json) can tell vanilla-seed from modded-export.
+GNOME_DATA_SOURCE = (
+    "eco-gnome-website ecocraft/eco_gnome_data.json "
+    "(MIT, master@28113f2, 2026-07-04, en-US-trimmed)"
+)
+
+_DATA_FILENAME = "eco_gnome_data.json"
+
+
+# ---------- DTO ----------
+
+
+@dataclass
+class RecipeComponent:
+    """One ingredient / product / byproduct entry.
+
+    `item` is the Eco id (`ShaleItem`) or a tag name (`Wood`); `is_tag` says
+    which. Ingredients reference tags when any item carrying the tag will do —
+    the cost engine (eco-app#98 C) resolves those via `RecipeIndex.tags`.
+    """
+
+    item: str
+    quantity: float
+    is_tag: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "item": self.item,
+            "displayName": prettify_eco_name(self.item) if not self.is_tag else self.item,
+            "quantity": self.quantity,
+            "isTag": self.is_tag,
+        }
+
+
+@dataclass
+class Recipe:
+    """A single bill-of-materials, JSON-serializable via `to_dict`."""
+
+    name: str
+    display_name: str
+    product: RecipeComponent
+    ingredients: list[RecipeComponent] = field(default_factory=list)
+    byproducts: list[RecipeComponent] = field(default_factory=list)
+    station: str = ""
+    skill_name: str | None = None
+    skill_level: int = 0
+    labor_cost: float = 0.0
+    craft_minutes: float = 0.0
+    # Eco Gnome's export carries no explicit crafting-table upgrade tier, so this
+    # is left null until the cost engine (eco-app#98 C) derives it. The DTO field
+    # exists now so the shape is stable for B/C/D/E. See eco-app#100.
+    table_tier_required: int | None = None
+    # Other recipe names that produce the same FamilyName (alternate ways to
+    # craft the same thing — different skills/tables). Excludes self.
+    variants: list[str] = field(default_factory=list)
+    family: str = ""
+    is_default: bool = False
+    is_blueprint: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "displayName": self.display_name,
+            "product": self.product.to_dict(),
+            "ingredients": [c.to_dict() for c in self.ingredients],
+            "byproducts": [c.to_dict() for c in self.byproducts],
+            "station": self.station,
+            "stationDisplayName": prettify_eco_name(self.station),
+            "skill": (
+                {"name": self.skill_name, "level": self.skill_level} if self.skill_name else None
+            ),
+            "laborCost": self.labor_cost,
+            "craftMinutes": self.craft_minutes,
+            "tableTierRequired": self.table_tier_required,
+            "variants": list(self.variants),
+            "family": self.family,
+            "isDefault": self.is_default,
+            "isBlueprint": self.is_blueprint,
+        }
+
+
+@dataclass
+class RecipeIndex:
+    """The whole recipe graph plus lookup maps, JSON-serializable."""
+
+    fetched_at_iso: str
+    source: str
+    version: int = 0
+    recipes: list[Recipe] = field(default_factory=list)
+    # product item id -> recipe names that produce it (a product can be crafted
+    # multiple ways).
+    by_product: dict[str, list[str]] = field(default_factory=dict)
+    by_skill: dict[str, list[str]] = field(default_factory=dict)
+    by_station: dict[str, list[str]] = field(default_factory=dict)
+    # Skill definitions: name, display, max level — the profession axis (D).
+    skills: list[dict[str, Any]] = field(default_factory=list)
+    # tag name -> associated item ids, so a tag ingredient can be expanded.
+    tags: dict[str, list[str]] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+
+    def counts(self) -> dict[str, int]:
+        return {
+            "recipes": len(self.recipes),
+            "skills": len(self.skills),
+            "tags": len(self.tags),
+            "products": len(self.by_product),
+            "stations": len(self.by_station),
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "fetchedAtISO": self.fetched_at_iso,
+            "source": self.source,
+            "version": self.version,
+            "counts": self.counts(),
+            "recipes": [r.to_dict() for r in self.recipes],
+            "byProduct": {k: list(v) for k, v in self.by_product.items()},
+            "bySkill": {k: list(v) for k, v in self.by_skill.items()},
+            "byStation": {k: list(v) for k, v in self.by_station.items()},
+            "skills": list(self.skills),
+            "tags": {k: list(v) for k, v in self.tags.items()},
+            "warnings": list(self.warnings),
+        }
+
+
+# ---------- parsing ----------
+
+
+def _base_value(node: Any) -> float:
+    """Eco Gnome wraps every quantity as `{BaseValue, Modifiers[]}`.
+
+    We take the un-modified `BaseValue` — the base recipe. Skill/talent/module
+    modifiers that shrink labor or ingredient counts are a per-player concern the
+    cost engine (eco-app#98 C) will apply on top; the seed is deliberately the
+    baseline. Bare numbers (or a missing node) degrade to a float / 0.0.
+    """
+    if isinstance(node, dict):
+        try:
+            return float(node.get("BaseValue", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+    try:
+        return float(node or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _en_name(node: Any, fallback: str) -> str:
+    """Prefer Eco Gnome's real `en-US` display name over the PascalCase id.
+
+    The export ships human names ("Ashlar Shale") that beat the
+    `prettify_eco_name` heuristic; fall back to it when a locale row is blank or
+    absent (some modded exports drop `LocalizedName`).
+    """
+    if isinstance(node, dict):
+        ln = node.get("LocalizedName")
+        if isinstance(ln, dict):
+            en = (ln.get("en-US") or "").strip()
+            if en:
+                return en
+    return prettify_eco_name(fallback)
+
+
+def build_recipe_index(raw: dict[str, Any], *, source: str = GNOME_DATA_SOURCE) -> RecipeIndex:
+    """Fold a parsed Eco Gnome export into a `RecipeIndex`.
+
+    Pure function (no I/O) so tests hand in a minimal dict. Handles the vanilla
+    seed and a modded DataExporter dump identically — both carry
+    `{Version, Skills[], Items[], Tags[], Recipes[]}`.
+    """
+    index = RecipeIndex(fetched_at_iso=datetime.now(UTC).isoformat(), source=source)
+    index.version = int(raw.get("Version", 0) or 0)
+
+    tags_raw = raw.get("Tags") or []
+    tag_names: set[str] = set()
+    for t in tags_raw:
+        name = t.get("Name")
+        if not name:
+            continue
+        tag_names.add(name)
+        index.tags[name] = list(t.get("AssociatedItems") or [])
+
+    for s in raw.get("Skills") or []:
+        name = s.get("Name")
+        if not name:
+            continue
+        index.skills.append(
+            {
+                "name": name,
+                "displayName": _en_name(s, name),
+                "maxLevel": int(s.get("MaxLevel", 0) or 0),
+            }
+        )
+    index.skills.sort(key=lambda d: d["displayName"])
+
+    def _component(entry: dict[str, Any]) -> RecipeComponent:
+        item = entry.get("ItemOrTag", "") or ""
+        return RecipeComponent(
+            item=item,
+            quantity=_base_value(entry.get("Quantity")),
+            is_tag=item in tag_names,
+        )
+
+    # First pass: build recipes and group by family so `variants` can point at
+    # siblings once every recipe name is known.
+    recipes_raw = raw.get("Recipes") or []
+    by_family: dict[str, list[str]] = defaultdict(list)
+    for r in recipes_raw:
+        fam = r.get("FamilyName") or r.get("Name") or ""
+        if r.get("Name"):
+            by_family[fam].append(r["Name"])
+
+    for r in recipes_raw:
+        name = r.get("Name")
+        products = r.get("Products") or []
+        if not name or not products:
+            index.warnings.append(
+                f"skipped recipe with no {'name' if not name else 'products'}: {name or '?'}"
+            )
+            continue
+        product = _component(products[0])
+        byproducts = [_component(p) for p in products[1:]]
+        ingredients = [_component(i) for i in (r.get("Ingredients") or [])]
+        fam = r.get("FamilyName") or name
+        variants = [n for n in by_family.get(fam, []) if n != name]
+        skill = r.get("RequiredSkill") or None
+
+        recipe = Recipe(
+            name=name,
+            display_name=_en_name(r, name),
+            product=product,
+            ingredients=ingredients,
+            byproducts=byproducts,
+            station=r.get("CraftingTable", "") or "",
+            skill_name=skill,
+            skill_level=int(r.get("RequiredSkillLevel", 0) or 0),
+            labor_cost=_base_value(r.get("Labor")),
+            craft_minutes=_base_value(r.get("CraftMinutes")),
+            variants=variants,
+            family=fam,
+            is_default=bool(r.get("IsDefault", False)),
+            is_blueprint=bool(r.get("IsBlueprint", False)),
+        )
+        index.recipes.append(recipe)
+        index.by_product.setdefault(product.item, []).append(name)
+        if recipe.station:
+            index.by_station.setdefault(recipe.station, []).append(name)
+        if skill:
+            index.by_skill.setdefault(skill, []).append(name)
+
+    index.recipes.sort(key=lambda r: r.display_name)
+    return index
+
+
+# ---------- data loading ----------
+
+
+def _bundled_data_path() -> Path | None:
+    """Resolve the vendored graph, wheel-installed or source-checkout.
+
+    Installed wheels carry it as package data under
+    ``eco_mcp_app/data/eco_gnome_data.json`` (see ``force-include`` in
+    pyproject.toml). Editable/source checkouts keep it at repo-root
+    ``data/eco_gnome_data.json`` — the force-include isn't applied then, so we
+    walk up from ``__file__``. Mirrors ``ecoregion._load_ecoregions_bundled``.
+    """
+    try:
+        packaged = files("eco_mcp_app").joinpath("data", _DATA_FILENAME)
+        if packaged.is_file():
+            return Path(str(packaged))
+    except (FileNotFoundError, ModuleNotFoundError):
+        pass
+    here = Path(__file__).resolve().parent
+    for parent in (here.parent.parent, here.parent, here):
+        candidate = parent / "data" / _DATA_FILENAME
+        if candidate.exists():
+            return candidate
+    return None
+
+
+# In-process memo. The source is an immutable bundled file, so the parse is done
+# once per process and reused; `_clear_cache` resets it for tests.
+_INDEX_CACHE: dict[str, RecipeIndex] = {}
+
+
+def load_recipe_index() -> RecipeIndex:
+    """Load + parse the vendored Eco Gnome graph into a cached `RecipeIndex`.
+
+    A missing/corrupt bundle yields an empty index carrying a warning rather
+    than raising, so the SPA renders "no recipe data" instead of a 500 — the
+    same graceful-empty posture the crafting atlas takes.
+    """
+    path = _bundled_data_path()
+    key = str(path) if path else ""
+    if key and key in _INDEX_CACHE:
+        return _INDEX_CACHE[key]
+
+    if path is None:
+        empty = RecipeIndex(fetched_at_iso=datetime.now(UTC).isoformat(), source=GNOME_DATA_SOURCE)
+        empty.warnings.append(f"{_DATA_FILENAME} not found (bundled recipe graph missing)")
+        return empty
+
+    try:
+        raw = json.loads(path.read_text())
+    except (OSError, ValueError) as e:
+        empty = RecipeIndex(fetched_at_iso=datetime.now(UTC).isoformat(), source=GNOME_DATA_SOURCE)
+        empty.warnings.append(f"failed to read {_DATA_FILENAME}: {type(e).__name__}: {e}")
+        return empty
+
+    index = build_recipe_index(raw)
+    _INDEX_CACHE[key] = index
+    return index
+
+
+def _clear_cache() -> None:
+    """Drop the memoized index (test hook)."""
+    _INDEX_CACHE.clear()
+
+
+def filter_index(
+    index: RecipeIndex,
+    *,
+    product: str | None = None,
+    skill: str | None = None,
+    station: str | None = None,
+) -> dict[str, Any]:
+    """Serialize the index, optionally narrowed to one product / skill / station.
+
+    The full graph is ~1,450 recipes; the recipes page (eco-app#98 B) will often
+    want a slice. Filtering happens on the already-parsed index so the memo is
+    reused. An unmatched filter returns an empty `recipes` list with the lookup
+    maps intact (so the page can still populate its facet pickers).
+    """
+    payload = index.to_dict()
+    if not (product or skill or station):
+        return payload
+
+    def _keep(r: dict[str, Any]) -> bool:
+        if product and r["product"]["item"] != product:
+            return False
+        if skill and (r["skill"] or {}).get("name") != skill:
+            return False
+        if station and r["station"] != station:
+            return False
+        return True
+
+    payload["recipes"] = [r for r in payload["recipes"] if _keep(r)]
+    payload["counts"] = dict(payload["counts"], recipes=len(payload["recipes"]))
+    return payload

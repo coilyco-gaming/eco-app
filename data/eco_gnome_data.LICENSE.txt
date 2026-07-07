@@ -1,0 +1,29 @@
+Attribution — eco_gnome_data.json
+==================================
+
+eco_gnome_data.json is third-party data vendored from the Eco Gnome project,
+used under the MIT License.
+
+  Source project : Eco Gnome (eco-gnome-website)
+                   https://github.com/Eco-Gnome/eco-gnome-website
+  File           : ecocraft/eco_gnome_data.json
+                   (the bundled vanilla Eco recipe graph)
+  Pinned from    : master@28113f2b6107df7d89fb91b6d66c7e8d15a74aea (2026-07-04)
+  License        : MIT (as declared by the upstream project). The upstream
+                   README states MIT; no explicit copyright holder is given, so
+                   attribution is to the Eco Gnome project.
+
+Local modification
+------------------
+
+This copy is trimmed to the en-US locale only: every LocalizedName block across
+Recipes / Items / Tags / Skills was reduced from its 23 locales to en-US alone
+(~6 MB -> ~2.2 MB). No other key was changed, added, or removed, so the file
+stays schema-identical to a full Eco Gnome DataExporter dump.
+
+See docs/recipes.md and the header of src/eco_mcp_app/recipes.py for how it is
+consumed, and docs/calculator.md for the Eco Gnome self-host that replaces this
+vanilla seed with server-accurate modded data (Phase 2).
+
+The MIT License permits use, modification, and redistribution provided this
+attribution is preserved — which this notice does.
