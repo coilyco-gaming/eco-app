@@ -11,6 +11,24 @@ import {
 } from "../lib/progressionApi"
 import { formatCount, prettifyEcoName } from "../lib/format"
 
+// Survivalist and Self Improvement are the universal starter skills — every
+// citizen has them, so they carry no signal and only clutter the roster
+// (eco-app#94). We filter them out of every jobs surface (professions,
+// specialties, per-player skill lists, and the progression rank lists) in one
+// place here. Matching on the prettified, whitespace-collapsed name catches
+// both the jobs API's display names ("Self Improvement") and the progression
+// endpoint's raw Eco ids ("SelfImprovement", "SurvivalistSkill").
+const UNIVERSAL_SKILLS = new Set(["self improvement", "survivalist"])
+
+function isUniversalSkill(name: string): boolean {
+  const norm = prettifyEcoName(name)
+    .toLowerCase()
+    .replace(/\bskill\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+  return UNIVERSAL_SKILLS.has(norm)
+}
+
 function ProfessionCard({ stat }: { stat: ProfessionStat }) {
   const [open, setOpen] = useState(false)
   return (
@@ -258,6 +276,30 @@ export default function Jobs() {
 
   const hasHistory = (progression?.totalEvents ?? 0) > 0
 
+  // Drop the universal starter skills from every current-state surface
+  // (eco-app#94). Professions and specialties filter by name; players keep
+  // their card but shed the two universal rows.
+  const professions = useMemo(
+    () => (data?.professions ?? []).filter((s) => !isUniversalSkill(s.profession)),
+    [data],
+  )
+  const specialties = useMemo(
+    () => (data?.specialties ?? []).filter((s) => !isUniversalSkill(s.specialty)),
+    [data],
+  )
+  const players = useMemo(
+    () =>
+      (data?.players ?? []).map((p) => ({
+        ...p,
+        specialties: p.specialties.filter((s) => !isUniversalSkill(s.specialty)),
+      })),
+    [data],
+  )
+
+  // Same exclusion for the progression rank lists (name-keyed leaderboards).
+  const dropUniversal = (rows: Array<[string, number]>) =>
+    rows.filter(([name]) => !isUniversalSkill(name))
+
   return (
     <Layout>
       {data?.mockData && (
@@ -269,14 +311,69 @@ export default function Jobs() {
 
       <section className="intro">
         <p>
-          Who does what on the Eco server, and how they got there. The tables below are the{" "}
-          <strong>current state</strong> — professions, specialties, and which players have which
-          skills learned. The <strong>skill trajectories</strong> further down are the history
-          behind exactly those skills: when each was gained, level-up cadence, and who has been
-          busiest. "Active" means the player has logged in within the last week; "total" counts
-          everyone who's ever touched the skill.
+          Who does what on the Eco server and how they got there — the history up top, the current
+          roster below. "Active" means logged in within the last week.
         </p>
       </section>
+
+      {/* The server-wide trajectory layer: how the current roster below formed.
+          Moved above the current-state tables so the history reads first
+          (eco-app#94); folded in from the former /progression page (eco-app#90). */}
+      {hasHistory && (
+        <section className="jobs-progression" data-testid="jobs-progression">
+          <h2 className="section-title">
+            How the world got here{" "}
+            <span className="section-sub">
+              ({formatCount(progression!.totalEvents)} recorded skill events —{" "}
+              {formatCount(progression!.citizens.length)} citizens)
+            </span>
+          </h2>
+
+          {trendPanels.length > 0 && (
+            <div className="prog-trend-grid" data-testid="trend-grid">
+              {trendPanels.map(({ kind, points }) => (
+                <TrendSparkline key={kind} label={kind} points={points} />
+              ))}
+            </div>
+          )}
+
+          <div className="atlas-columns">
+            <div>
+              <h3 className="subsection-title">Most-gained specialties</h3>
+              <RankList
+                rows={dropUniversal(progression!.bySpecialty)}
+                emptyNote="No specialties gained yet."
+              />
+            </div>
+            <div>
+              <h3 className="subsection-title">Busiest levelers</h3>
+              <RankList
+                rows={progression!.topLevelers}
+                emptyNote="No level-ups recorded yet."
+                pretty={false}
+              />
+            </div>
+          </div>
+
+          {dropUniversal(progression!.classCompletions).length > 0 && (
+            <>
+              <h3 className="subsection-title">Classes completed</h3>
+              <RankList
+                rows={dropUniversal(progression!.classCompletions)}
+                emptyNote="No classes completed yet."
+              />
+            </>
+          )}
+
+          {progression!.warnings.length > 0 && (
+            <ul className="warn-list" data-testid="progression-warnings">
+              {progression!.warnings.map((w) => (
+                <li key={w}>⚠ {w}</li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {loading && (
         <p className="loading" data-testid="loading">
@@ -295,7 +392,7 @@ export default function Jobs() {
           <section>
             <h2 className="section-title">Professions</h2>
             <ul className="cards">
-              {data.professions.map((s) => (
+              {professions.map((s) => (
                 <ProfessionCard key={s.profession} stat={s} />
               ))}
             </ul>
@@ -304,7 +401,7 @@ export default function Jobs() {
           <section>
             <h2 className="section-title">Specialties</h2>
             <ul className="cards">
-              {data.specialties.map((s) => (
+              {specialties.map((s) => (
                 <SpecialtyCard key={s.specialty} stat={s} />
               ))}
             </ul>
@@ -318,72 +415,12 @@ export default function Jobs() {
               )}
             </h2>
             <ul className="cards">
-              {data.players.map((p) => (
+              {players.map((p) => (
                 <PlayerCard key={p.name} player={p} trajectory={trajectoryByName.get(p.name)} />
               ))}
             </ul>
           </section>
         </>
-      )}
-
-      {/* The server-wide trajectory layer: how the current roster above formed.
-          Folded in from the former standalone /progression page (eco-app#90). */}
-      {hasHistory && (
-        <section className="jobs-progression" data-testid="jobs-progression">
-          <h2 className="section-title">
-            How the world got here{" "}
-            <span className="section-sub">
-              ({formatCount(progression!.totalEvents)} recorded skill events —{" "}
-              {formatCount(progression!.citizens.length)} citizens)
-            </span>
-          </h2>
-
-          {trendPanels.length > 0 && (
-            <>
-              <h3 className="subsection-title">
-                Progression trends <span className="section-sub">(events per in-game day)</span>
-              </h3>
-              <div className="prog-trend-grid" data-testid="trend-grid">
-                {trendPanels.map(({ kind, points }) => (
-                  <TrendSparkline key={kind} label={kind} points={points} />
-                ))}
-              </div>
-            </>
-          )}
-
-          <div className="atlas-columns">
-            <div>
-              <h3 className="subsection-title">Most-gained specialties</h3>
-              <RankList rows={progression!.bySpecialty} emptyNote="No specialties gained yet." />
-            </div>
-            <div>
-              <h3 className="subsection-title">Busiest levelers</h3>
-              <RankList
-                rows={progression!.topLevelers}
-                emptyNote="No level-ups recorded yet."
-                pretty={false}
-              />
-            </div>
-          </div>
-
-          {progression!.classCompletions.length > 0 && (
-            <>
-              <h3 className="subsection-title">Classes completed</h3>
-              <RankList
-                rows={progression!.classCompletions}
-                emptyNote="No classes completed yet."
-              />
-            </>
-          )}
-
-          {progression!.warnings.length > 0 && (
-            <ul className="warn-list" data-testid="progression-warnings">
-              {progression!.warnings.map((w) => (
-                <li key={w}>⚠ {w}</li>
-              ))}
-            </ul>
-          )}
-        </section>
       )}
     </Layout>
   )

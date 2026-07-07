@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import Layout from "../components/Layout"
 import { fetchItemPivot, type ItemFeedRow, type ItemPivot } from "../lib/itemsApi"
-import { formatCount, formatDuration, formatRelativeTime, prettifyEcoName } from "../lib/format"
+import { formatCount, formatDuration, formatRelative, prettifyEcoName } from "../lib/format"
 
 // Maps the raw production action id to a past-tense verb for the feed lines.
 const ACTION_VERBS: Record<string, string> = {
@@ -36,7 +36,7 @@ function runTail(row: ItemFeedRow): string {
 // One feed row rendered as a single relative-time sentence. Compressed runs sum
 // their quantity, so "crafted 100 Hewn Log" is the whole run, not one event.
 function FeedLine({ row, item, now }: { row: ItemFeedRow; item: string; now: number }) {
-  const when = formatRelativeTime(row.time, now)
+  const when = formatRelative(row.time, now)
   if (row.kind === "craft") {
     const verb = ACTION_VERBS[row.actionType] ?? "made"
     const at =
@@ -111,7 +111,7 @@ export default function Item() {
 
   const summary = pivot?.summary
   // Reference "now" for relative time: the world clock if we have it, else the
-  // newest event on the page (formatRelativeTime clamps future to "just now").
+  // newest event on the page (formatRelative clamps future to "just now").
   // Plain consts — react-compiler memoizes; a manual useMemo here trips its
   // preserve-manual-memoization rule.
   const now = !pivot

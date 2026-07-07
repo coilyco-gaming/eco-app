@@ -697,6 +697,9 @@ def to_payload(info: dict[str, Any]) -> dict[str, Any]:
         "cycle": {
             "daysRunning": int(info.get("DaysRunning") or 0),
             "daysUntilMeteor": int(info.get("DaysUntilMeteor") or 0),
+            # Raw world clock in seconds since cycle start (1 in-game day = 3600s).
+            # The SPA folds this into a day+hour caption via formatDayHour (eco-app#97).
+            "timeSinceStartS": float(info.get("TimeSinceStart") or 0.0),
             "hasMeteor": bool(info.get("HasMeteor")),
             "collaboration": info.get("CollaborationLevel"),
             "gameSpeed": info.get("GameSpeed"),
@@ -2501,9 +2504,8 @@ def build_server() -> Server:
                 title="Eco — trade & store logistics",
                 description=(
                     "Trade logistics engine: turns the trade ledger and live "
-                    "store shelves into buy/sell/haul decisions. Four boards — "
-                    "**cheapest source** (rank stores selling an item by price: "
-                    "'where is iron ingot cheapest'), **best resale** (rank "
+                    "store shelves into buy/sell/haul decisions. Three boards — "
+                    "**best resale** (rank "
                     "stores buying it, for a player holding stock), **arbitrage "
                     "spreads** (items a store sells below another store buys, by "
                     "more than a threshold, ranked by spread x volume), and "

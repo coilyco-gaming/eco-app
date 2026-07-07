@@ -13,6 +13,10 @@ const TOP_MOVERS = 6
 const TOP_TRADED = 12
 const DIR_ROWS = 10
 const LOGI_ROWS = 8
+// Supply gaps are the valued board (eco-app#95): render the whole delivered list
+// (the backend caps it at SUPPLY_GAP_ROWS) rather than clipping to LOGI_ROWS, so
+// 20+ gaps surface when the server has them.
+const GAP_ROWS = 40
 const TOP_PARTIES = 15
 const LEDGER_ROWS = 60
 
@@ -504,11 +508,11 @@ export default function Trade() {
         </section>
       )}
 
-      {/* Logistics board — the headline "what should I do" panel. */}
+      {/* Logistics board — the headline "what should I do" panel. The
+          "Cheapest source" board was dropped as noise (eco-app#95); the
+          per-item cheapest source still shows in the drill-down pill above. */}
       {logistics &&
-        (logistics.cheapest.length > 0 ||
-          logistics.arbitrage.length > 0 ||
-          logistics.supplyGaps.length > 0) && (
+        (logistics.arbitrage.length > 0 || logistics.supplyGaps.length > 0) && (
           <section data-testid="logistics">
             <h2 className="section-title">
               Logistics <span className="section-sub">(what to do next)</span>
@@ -551,34 +555,13 @@ export default function Trade() {
                 </table>
               </>
             )}
-            {logistics.cheapest.length > 0 && (
-              <>
-                <h3 className="card-title">Cheapest source</h3>
-                <ul className="rank-rows" data-testid="cheapest-list">
-                  {logistics.cheapest.slice(0, LOGI_ROWS).map((c) => {
-                    const best = c.offers[0]
-                    return (
-                      <li key={`${c.item}-${c.currency}`}>
-                        <div className="rank-row">
-                          <span className="rank-name">{c.itemPretty}</span>
-                          <span className="rank-count">
-                            {fmtPrice(c.cheapest ?? best?.price ?? 0)} {c.currency}
-                            {best ? ` · ${best.store} (${best.owner})` : ""}
-                          </span>
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </>
-            )}
             {logistics.supplyGaps.length > 0 && (
               <>
                 <h3 className="card-title">
                   Supply gaps <span className="section-sub">(what to stock — and who needs it)</span>
                 </h3>
                 <ul className="gap-list" data-testid="gaps-list">
-                  {logistics.supplyGaps.slice(0, LOGI_ROWS).map((g) => (
+                  {logistics.supplyGaps.slice(0, GAP_ROWS).map((g) => (
                     <SupplyGapRow key={`${g.item}-${g.currency}`} gap={g} onPick={setQuery} />
                   ))}
                 </ul>
