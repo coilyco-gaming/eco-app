@@ -319,6 +319,43 @@ async def fetch_market(
     )
 
 
+def price_map(markets: Iterable[ItemMarket]) -> dict[str, float]:
+    """Collapse per-(item, currency) markets into one median price per item id.
+
+    The cost engine (eco-app#98 C) needs a single "what does this leaf cost"
+    number per item, but an item can trade in several currencies. We keep the
+    **busiest** market for each item (most trades, tie-broken by volume) — its
+    median is the dominant-currency price, the same "pick the busiest market"
+    rule `in_game_reference` uses for the fair-value bridge. Keyed on the raw
+    Eco item id (`IronIngotItem`); `cost._Resolver` also matches the normalized
+    stem, so a recipe ingredient resolves either way.
+    """
+    best: dict[str, ItemMarket] = {}
+    for m in markets:
+        cur = best.get(m.item)
+        if cur is None or (m.total_trades, m.total_volume) > (cur.total_trades, cur.total_volume):
+            best[m.item] = m
+    return {item: m.median_price for item, m in best.items()}
+
+
+async def fetch_price_map(
+    base_url: str | None = None,
+    api_key: str | None = None,
+    *,
+    client: httpx.AsyncClient | None = None,
+) -> dict[str, float]:
+    """Fetch the ledger and reduce it to an item → median price map.
+
+    Like `fetch_market` but **uncapped** (`top_markets=0`) and flattened to one
+    price per item, the shape the cost engine wants. Reuses `fetch_ledger`'s
+    cache, so a `/preview/recipes.json?cost=1` call rides the same fetch the
+    `/trade` market view already warmed.
+    """
+    ledger = await fetch_ledger(base_url=base_url, api_key=api_key, client=client)
+    markets = build_market(ledger.trades, top_markets=0)
+    return price_map(markets)
+
+
 @dataclass
 class InGameReference:
     """The in-game price read `fair_price` cross-references against FRED."""

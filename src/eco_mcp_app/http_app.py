@@ -46,9 +46,11 @@ from starlette.staticfiles import StaticFiles
 from . import page_auth
 from . import users as users_mod
 from .admin import build_admin_server
+from .cost import CostParams, annotate_payload
 from .items import fetch_item_index, fetch_item_pivot
 from .livereload import DEBUG, livereload_route
 from .map import build_map_payload, fetch_map_bundle
+from .market import fetch_price_map
 from .recipes import filter_index, load_recipe_index
 from .server import (
     ADMIN_API_KEY_ENV,
@@ -131,6 +133,27 @@ class NormalizeAdminPath:
 def _env_flag(name: str) -> bool:
     """True when env var `name` is set to a truthy string (1/true/yes/on)."""
     return (os.getenv(name) or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _is_truthy(value: str | None) -> bool:
+    """True when a query-param string reads truthy (1/true/yes/on)."""
+    return (value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _cost_params(params: Any) -> CostParams:
+    """Read `?caloriePrice=` / `?minutePrice=` into a `CostParams`.
+
+    Non-numeric or absent values fall back to 0.0 (labor/time reported but not
+    monetized), so a garbage query string never 500s the recipes page.
+    """
+
+    def _num(key: str) -> float:
+        try:
+            return float(params.get(key) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    return CostParams(calorie_cost=_num("caloriePrice"), minute_cost=_num("minutePrice"))
 
 
 # Feature flag: the privileged /admin MCP is off unless explicitly enabled, so
@@ -658,18 +681,40 @@ def create_app() -> Starlette:
 
         Serves the vendored Eco Gnome recipe graph (`recipes.py`) as the
         `RecipeIndex` DTO the recipes page (eco-app#98 B) / cost engine (C) read.
-        Unlike the other preview routes this has **no `?server=`**: the graph is
-        static bundled vanilla data, not a per-server live fetch (eco-app#100).
-        Optional `?product=` / `?skill=` / `?station=` narrow the returned
-        `recipes` list; the lookup maps stay whole so facet pickers still work.
+        The graph itself is static bundled vanilla data (eco-app#100), so by
+        default this has no live fetch. Optional `?product=` / `?skill=` /
+        `?station=` narrow the returned `recipes` list; the lookup maps stay
+        whole so facet pickers still work.
+
+        `?cost=1` turns on the roll-up engine (eco-app#98 C): each recipe row
+        gains a `cost` breakdown (ingredient + labor + time → per-unit cost /
+        margin), resolving leaf prices from the live market median. `?server=`
+        targets which server's market to price against; `?caloriePrice=` /
+        `?minutePrice=` monetize the labor / time axes (both default 0 — the raw
+        calorie/minute totals ride the payload regardless). An unreachable
+        market degrades to all-unpriced rather than failing the whole page.
         """
         params = request.query_params
+        index = load_recipe_index()
         payload = filter_index(
-            load_recipe_index(),
+            index,
             product=params.get("product"),
             skill=params.get("skill"),
             station=params.get("station"),
         )
+        if _is_truthy(params.get("cost")):
+            try:
+                prices = await fetch_price_map(
+                    base_url=params.get("server"), api_key=_resolve_admin_key()
+                )
+            except (httpx.HTTPError, OSError):
+                # Market unreachable: still ship the roll-up, every leaf just
+                # reads "unpriced" and the page shows a partial-cost note.
+                prices = {}
+                payload.setdefault("warnings", []).append(
+                    "cost: market unreachable, ingredient prices unavailable"
+                )
+            annotate_payload(payload, index, prices, _cost_params(params))
         return JSONResponse(payload)
 
     def _extract_json_block(call_result: mt.CallToolResult) -> Any:
