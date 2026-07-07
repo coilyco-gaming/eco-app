@@ -41,20 +41,46 @@ afterEach(() => {
 })
 
 describe("Items", () => {
-  it("lists every item with trade + craft columns and deep links to the pivot", async () => {
+  it("hides untraded items by default and deep links traded ones to the pivot", async () => {
     stubIndexFetch()
     renderItems()
 
     await waitFor(() => {
       expect(screen.getByTestId("items-pill")).toHaveTextContent("3 distinct items")
     })
-    expect(screen.getAllByTestId("item-row")).toHaveLength(3)
+    // Only the two traded items show; Dirt (tradeCount 0) is hidden.
+    expect(screen.getAllByTestId("item-row")).toHaveLength(2)
     expect(screen.getByText("Iron Ingot").closest("a")).toHaveAttribute(
       "href",
       "/item?item=IronIngotItem",
     )
-    // An item that was only crafted still lists, with a — for trade volume.
+    expect(screen.queryByText("Dirt")).not.toBeInTheDocument()
+  })
+
+  it("reveals untraded items when the toggle is checked", async () => {
+    stubIndexFetch()
+    renderItems()
+
+    await waitFor(() => {
+      expect(screen.getByText("Iron Ingot")).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByTestId("untraded-toggle").querySelector("input")!)
     expect(screen.getByText("Dirt")).toBeInTheDocument()
+    expect(screen.getAllByTestId("item-row")).toHaveLength(3)
+  })
+
+  it("sorts by trade volume when that chip is picked", async () => {
+    stubIndexFetch()
+    renderItems()
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("item-row")).toHaveLength(2)
+    })
+    fireEvent.click(screen.getByTestId("sort-volume"))
+    const rows = screen.getAllByTestId("item-row")
+    // Iron (3900) outranks Beet (50) by trade volume.
+    expect(rows[0]).toHaveTextContent("Iron Ingot")
+    expect(rows[1]).toHaveTextContent("Beet")
   })
 
   it("honors a ?q= deep link by filtering the list", async () => {
@@ -64,7 +90,7 @@ describe("Items", () => {
     await waitFor(() => {
       expect(screen.getByText("Beet")).toBeInTheDocument()
     })
-    expect(screen.queryByText("Dirt")).not.toBeInTheDocument()
+    expect(screen.queryByText("Iron Ingot")).not.toBeInTheDocument()
     expect(screen.getByTestId("items-filter")).toHaveValue("beet")
   })
 
@@ -75,8 +101,8 @@ describe("Items", () => {
     await waitFor(() => {
       expect(screen.getByText("Iron Ingot")).toBeInTheDocument()
     })
-    fireEvent.change(screen.getByTestId("items-filter"), { target: { value: "dirt" } })
-    expect(screen.getByText("Dirt")).toBeInTheDocument()
+    fireEvent.change(screen.getByTestId("items-filter"), { target: { value: "beet" } })
+    expect(screen.getByText("Beet")).toBeInTheDocument()
     expect(screen.queryByText("Iron Ingot")).not.toBeInTheDocument()
   })
 

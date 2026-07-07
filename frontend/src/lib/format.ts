@@ -45,6 +45,27 @@ export function formatRelativeTime(timeS: number, latest: number): string {
   return `${sec} seconds ago`
 }
 
+// A coarse duration, e.g. "3 minutes", "2 hours", "just now". Used for the
+// compressed-feed "(N crafts over <span>)" label, where span is how long a run
+// of identical events took (newest − oldest, in-game seconds). No "ago" suffix,
+// unlike formatRelativeTime.
+export function formatDuration(seconds: number): string {
+  const sec = Math.max(0, Math.round(seconds))
+  if (sec < 45) return "moments"
+  const units: Array<[number, string]> = [
+    [86400, "day"],
+    [3600, "hour"],
+    [60, "minute"],
+  ]
+  for (const [size, name] of units) {
+    if (sec >= size) {
+      const n = Math.round(sec / size)
+      return `${n} ${name}${n === 1 ? "" : "s"}`
+    }
+  }
+  return `${sec} seconds`
+}
+
 // "BunWulfRawMeatItem" -> "Bun Wulf Raw Meat", "OakSpecies" -> "Oak".
 // Mirrors prettify_eco_name in eco_mcp_app/crafting.py.
 export function prettifyEcoName(raw: string): string {

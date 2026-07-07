@@ -51,12 +51,70 @@ export interface ItemCraft {
   quantity: number
 }
 
+// One row of the merged, compressed, reverse-chrono feed (eco-app#92). A run of
+// identical consecutive events collapses to one row: `runCount` is how many
+// folded, `quantity` / `currencyAmount` are summed, `time` / `day` are the
+// newest in the run, `spanSeconds` is how long the run took.
+export interface ItemFeedRow {
+  kind: "craft" | "trade"
+  time: number
+  day: number
+  actor: string
+  actionType: string
+  station: string
+  quantity: number
+  buyer: string
+  seller: string
+  currency: string
+  unitPrice: number | null
+  currencyAmount: number
+  runCount: number
+  spanSeconds: number
+}
+
+// One store's shelf offer feeding the actionable summary (supply or demand).
+export interface ItemShelfOffer {
+  store: string
+  owner: string
+  price: number | null
+  quantity: number | null
+  currency: string
+  source: string
+}
+
+// A supply (stores selling) or demand (stores buying) block.
+export interface ItemShelfSide {
+  storeCount: number
+  totalQuantity: number
+  offers: ItemShelfOffer[]
+  capped: boolean
+}
+
+// One crafter who can make the item, ranked by quantity produced.
+export interface ItemCrafter {
+  name: string
+  quantity: number
+  events: number
+}
+
+// The actionable top-of-page summary: who makes it, what's for sale, who buys.
+export interface ItemSummary {
+  crafters: ItemCrafter[]
+  supply: ItemShelfSide
+  demand: ItemShelfSide
+  live: boolean
+}
+
 export interface ItemPivot {
   fetchedAtISO: string
   sourceBaseUrl: string
   item: string
   trades: ItemTrade[]
   crafts: ItemCraft[]
+  feed: ItemFeedRow[]
+  feedTruncated: boolean
+  summary: ItemSummary
+  worldClockS: number | null
   tradeCount: number
   tradeVolume: number
   craftCount: number

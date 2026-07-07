@@ -1,19 +1,44 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import Layout from "../components/Layout"
-import { fetchItemIndex, type ItemIndex } from "../lib/itemsApi"
+import { fetchItemIndex, type ItemIndex, type ItemStat } from "../lib/itemsApi"
 import { formatCount, prettifyEcoName } from "../lib/format"
 
 const LIST_ROWS = 200
 
+// Sort modes for the directory. "activity" is the index's own ranking (total
+// trades + crafted); the others let a shopper re-rank by a single column.
+type SortKey = "activity" | "trades" | "volume" | "crafted"
+
+const SORTS: Array<{ key: SortKey; label: string }> = [
+  { key: "activity", label: "Activity" },
+  { key: "trades", label: "Trades" },
+  { key: "volume", label: "Trade volume" },
+  { key: "crafted", label: "Crafted" },
+]
+
+function sortItems(items: ItemStat[], key: SortKey): ItemStat[] {
+  if (key === "activity") return items // the index is already activity-ranked
+  const pick: Record<Exclude<SortKey, "activity">, (r: ItemStat) => number> = {
+    trades: (r) => r.tradeCount,
+    volume: (r) => r.tradeVolume,
+    crafted: (r) => r.craftCount,
+  }
+  const f = pick[key]
+  return [...items].sort((a, b) => f(b) - f(a))
+}
+
 // Directory of every item ever bought, sold, or crafted. Each row deep-links to
-// the per-item pivot (/item?item=<id>). The list is ranked by total activity;
-// the ?q= filter narrows by prettified name and is deep-linkable.
+// the per-item pivot (/item?item=<id>). The ?q= name filter, the ?sort= column,
+// and the ?untraded= toggle are all deep-linkable. Untraded (craft-only) items
+// are hidden by default — most of the directory is noise for someone shopping.
 export default function Items() {
   const [index, setIndex] = useState<ItemIndex | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [params, setParams] = useSearchParams()
   const q = params.get("q") ?? ""
+  const sort = (params.get("sort") ?? "activity") as SortKey
+  const showUntraded = params.get("untraded") === "show"
 
   useEffect(() => {
     const controller = new AbortController()
@@ -25,18 +50,31 @@ export default function Items() {
     return () => controller.abort()
   }, [])
 
-  const setQuery = (value: string) => {
-    setParams(value ? { q: value } : {}, { replace: false })
+  // Preserve the other params when one control changes.
+  const update = (patch: Record<string, string>) => {
+    const next: Record<string, string> = {}
+    if (q) next.q = q
+    if (sort !== "activity") next.sort = sort
+    if (showUntraded) next.untraded = "show"
+    for (const [k, v] of Object.entries(patch)) {
+      if (v) next[k] = v
+      else delete next[k]
+    }
+    setParams(next, { replace: false })
   }
 
   const needle = q.trim().toLowerCase()
+  const hiddenUntraded = useMemo(
+    () => (index ? index.items.filter((r) => r.tradeCount === 0).length : 0),
+    [index],
+  )
   const visible = useMemo(() => {
     if (!index) return []
-    const matched = needle
-      ? index.items.filter((r) => prettifyEcoName(r.item).toLowerCase().includes(needle))
-      : index.items
-    return matched.slice(0, LIST_ROWS)
-  }, [index, needle])
+    let rows = index.items
+    if (!showUntraded) rows = rows.filter((r) => r.tradeCount > 0)
+    if (needle) rows = rows.filter((r) => prettifyEcoName(r.item).toLowerCase().includes(needle))
+    return sortItems(rows, sort).slice(0, LIST_ROWS)
+  }, [index, needle, sort, showUntraded])
 
   return (
     <Layout fetchedAtISO={index?.fetchedAtISO}>
@@ -75,14 +113,40 @@ export default function Items() {
               type="search"
               placeholder="Filter items by name… (deep-linkable as ?q=)"
               value={q}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => update({ q: e.target.value })}
               data-testid="items-filter"
             />
             {q && (
-              <button className="button" onClick={() => setQuery("")}>
+              <button className="button" onClick={() => update({ q: "" })}>
                 Clear
               </button>
             )}
+          </section>
+
+          <section className="controls-row" data-testid="items-controls">
+            <div className="sort-buttons" role="group" aria-label="Sort items">
+              <span className="sort-label">Sort:</span>
+              {SORTS.map((s) => (
+                <button
+                  key={s.key}
+                  className={`chip ${sort === s.key ? "chip-active" : ""}`}
+                  onClick={() => update({ sort: s.key === "activity" ? "" : s.key })}
+                  data-testid={`sort-${s.key}`}
+                  aria-pressed={sort === s.key}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            <label className="toggle" data-testid="untraded-toggle">
+              <input
+                type="checkbox"
+                checked={showUntraded}
+                onChange={(e) => update({ untraded: e.target.checked ? "show" : "" })}
+              />
+              Show untraded
+              {hiddenUntraded > 0 ? ` (${formatCount(hiddenUntraded)} hidden)` : ""}
+            </label>
           </section>
 
           <section>

@@ -1521,3 +1521,108 @@ a.dir-card:hover {
   color: var(--ink-faint);
   font-style: italic;
 }
+
+/* --- Item pivot: actionable summary, feed controls, pagination (#92) ------ */
+
+/* Three-up actionable summary at the top of /item: who makes it, what's for
+   sale now, who's buying. Collapses to one column on narrow screens. */
+.summary-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 2rem;
+}
+
+/* A dropdown styled to match .filter-input, for the actor / event-type filters. */
+.filter-select {
+  padding: 0.65rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--card-border);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9rem;
+  max-width: 14rem;
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: var(--leaf-dim);
+}
+
+/* Directory sort chips + untraded toggle live on one row above the table. */
+.controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sort-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.sort-label {
+  color: var(--ink-faint);
+  font-size: 0.85rem;
+  margin-right: 0.25rem;
+}
+
+.chip {
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--card-border);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.chip:hover {
+  border-color: var(--leaf-dim);
+}
+
+.chip-active {
+  background: var(--leaf-wash);
+  border-color: var(--leaf-dim);
+  color: var(--leaf);
+  font-weight: 600;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--ink-faint);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.toggle input {
+  accent-color: var(--leaf);
+}
+
+/* Feed pagination controls under the timeline. */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  margin-top: 1.25rem;
+}
+
+.pager-status {
+  color: var(--ink-faint);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pager .button[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

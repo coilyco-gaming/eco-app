@@ -33,6 +33,8 @@ HARVEST_URL = f"{BASE}/api/v1/exporter/actions?actionName=HarvestOrHunt"
 CHOP_URL = f"{BASE}/api/v1/exporter/actions?actionName=ChopTree"
 DIG_URL = f"{BASE}/api/v1/exporter/actions?actionName=DigOrMine"
 CITIZENS_URL = f"{BASE}/api/v1/citizens"
+STORES_URL = f"{BASE}/api/v1/stores"
+INFO_URL = f"{BASE}/info"
 
 _CITIZENS_JSON = [
     {"id": 129312, "name": "coilysiren"},
@@ -92,6 +94,11 @@ def _mock_all() -> None:
     respx.get(CHOP_URL).mock(return_value=httpx.Response(200, text=_CHOP_EMPTY))
     respx.get(DIG_URL).mock(return_value=httpx.Response(200, text=_DIG_EMPTY))
     respx.get(CITIZENS_URL).mock(return_value=httpx.Response(200, json=_CITIZENS_JSON))
+    # The pivot now folds a supply/demand summary off the logistics spine (the
+    # live shelf is reset-gated, so a 404 degrades to history) and reads the
+    # world clock off /info.
+    respx.get(STORES_URL).mock(return_value=httpx.Response(404))
+    respx.get(INFO_URL).mock(return_value=httpx.Response(200, json={"TimeSinceStart": 305000}))
 
 
 def test_build_item_index_merges_trade_and_craft_namespaces() -> None:
@@ -156,6 +163,20 @@ async def test_fetch_item_pivot_trades_and_crafts_for_one_item() -> None:
     assert craft["quantity"] == 5.0
     assert craft["station"] == "AnvilItem"
 
+    # Merged reverse-chrono feed: trade (t=300000) newest, craft (t=250000) next.
+    assert [(row["kind"], row["runCount"]) for row in pivot.feed] == [("trade", 1), ("craft", 1)]
+    assert pivot.feed[0]["buyer"] == "ekans"
+    assert pivot.feed[1]["actor"] == "ekans"
+
+    # World clock read off /info so the SPA can age events against real "now".
+    assert pivot.world_clock_s == 305000
+
+    # Actionable summary: who makes it (ekans, 5) and who sells it (coilysiren's
+    # history-derived shelf, since the live shelf 404s in the fixture).
+    assert pivot.summary["crafters"] == [{"name": "ekans", "quantity": 5.0, "events": 1}]
+    assert pivot.summary["supply"]["storeCount"] == 1
+    assert pivot.summary["live"] is False
+
 
 @pytest.mark.asyncio
 @respx.mock
@@ -166,6 +187,67 @@ async def test_fetch_item_pivot_unknown_item_is_empty_not_error() -> None:
     assert pivot.craft_count == 0
     assert pivot.trades == []
     assert pivot.crafts == []
+    assert pivot.feed == []
+    assert pivot.summary["crafters"] == []
+
+
+def test_build_item_feed_compresses_consecutive_repeats() -> None:
+    from eco_mcp_app.items import build_item_feed
+
+    # Rechim crafts 1 Hewn Log at a Carpentry Table five times in a row, then
+    # once at a different station, then a trade. Same (actor, verb, station) runs
+    # collapse; the station switch and the trade break the run.
+    crafts = [
+        {
+            "actionType": "ItemCraftedAction",
+            "time": t,
+            "day": t / 86400,
+            "citizen": "Rechim",
+            "station": "CarpentryTableItem",
+            "quantity": 1,
+        }
+        for t in (500, 400, 300, 200, 100)
+    ]
+    crafts.append(
+        {
+            "actionType": "ItemCraftedAction",
+            "time": 90,
+            "day": 90 / 86400,
+            "citizen": "Rechim",
+            "station": "SawmillItem",
+            "quantity": 1,
+        }
+    )
+    trades = [
+        {
+            "tradeType": "CurrencyTrade",
+            "time": 600,
+            "day": 600 / 86400,
+            "buyer": "b",
+            "seller": "s",
+            "shopOwner": "s",
+            "item": "HewnLogItem",
+            "quantity": 2,
+            "currency": "Credit",
+            "currencyAmount": 8,
+            "unitPrice": 4,
+            "store": "StoreItem",
+            "location": "",
+            "direction": "sell",
+        }
+    ]
+    feed, truncated = build_item_feed(trades, crafts)
+    assert truncated is False
+    # trade (t=600), 5 collapsed carpentry crafts (t=500..100), 1 sawmill craft.
+    assert [(r["kind"], r["runCount"]) for r in feed] == [("trade", 1), ("craft", 5), ("craft", 1)]
+    run = feed[1]
+    assert run["quantity"] == 5  # 1 x 5 summed
+    assert run["time"] == 500  # newest in the run
+    assert run["spanSeconds"] == 400  # 500 - 100
+
+    # The cap collapses to the compressed row count, and flags truncation.
+    tiny, tiny_trunc = build_item_feed(trades, crafts, max_rows=1)
+    assert len(tiny) == 1 and tiny_trunc is True
 
 
 @respx.mock
