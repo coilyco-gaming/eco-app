@@ -1,0 +1,138 @@
+import { useEffect, useMemo, useState } from "react"
+import { Link } from "react-router-dom"
+import Layout from "../components/Layout"
+import { fetchLogistics, type GapReason, type LogisticsBoard, type SupplyGap } from "../lib/logisticsApi"
+import { formatCount } from "../lib/format"
+
+const GAP_ROWS = 40
+
+// Prices carry fractional cents; formatCount rounds to whole units.
+function fmtPrice(n: number): string {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n)
+}
+
+// Supply-gap severity, encoded glyph + label + colour (never colour alone, per
+// the dataviz non-negotiables) — mirrors the /trade board: an unmet buy order is
+// the loudest (meteor amber), a lone monopolist is thin supply, a merely
+// over-priced shelf stays muted ink.
+const GAP: Record<GapReason, { glyph: string; label: string; color: string }> = {
+  no_supply: { glyph: "✖", label: "no supply", color: "var(--meteor)" },
+  thin_supply: { glyph: "◐", label: "thin supply", color: "var(--meteor-deep)" },
+  overpriced: { glyph: "▲", label: "over-priced", color: "var(--ink-faint)" },
+}
+
+function DemandRow({ gap }: { gap: SupplyGap }) {
+  const g = GAP[gap.reason]
+  return (
+    <li className="gap-row" data-testid="demand-row">
+      <div className="gap-head">
+        <span className="gap-name">{gap.itemPretty}</span>
+        <span className="gap-tag" style={{ color: g.color }} data-testid="demand-tag">
+          <span aria-hidden="true">{g.glyph}</span> {g.label}
+        </span>
+      </div>
+      <p className="gap-summary">
+        {formatCount(gap.demandQty)} wanted · {formatCount(gap.buyerCount)} buyer
+        {gap.buyerCount === 1 ? "" : "s"}
+        {gap.sellerCount > 0
+          ? ` · ${formatCount(gap.sellerCount)} seller${gap.sellerCount === 1 ? "" : "s"}`
+          : ""}
+      </p>
+      {gap.buyers.length > 0 && (
+        <p className="gap-who" data-testid="demand-who">
+          <span className="gap-who-label">Who needs it:</span>{" "}
+          {gap.buyers.map((b, i) => (
+            <span key={`${b.owner}-${b.store}-${i}`} className="gap-buyer">
+              {b.owner || b.store} <span className="gap-buyer-qty">{formatCount(b.quantity)}</span>
+              {b.price ? ` @ ${fmtPrice(b.price)} ${gap.currency}` : ""}
+              {i < gap.buyers.length - 1 ? ", " : ""}
+            </span>
+          ))}
+        </p>
+      )}
+    </li>
+  )
+}
+
+// "What's in demand right now" — the supply-gap signal given its own focused
+// page (eco-app#99). Reads the same /preview/logistics.json plane /trade does;
+// the sibling can 404 on a reset-gated shelf, so fetchLogistics resolves to null
+// and the page degrades to a clear note.
+export default function UsesDemand() {
+  const [logistics, setLogistics] = useState<LogisticsBoard | null>(null)
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchLogistics(controller.signal)
+      .then(setLogistics, () => setLogistics(null))
+      .finally(() => {
+        if (!controller.signal.aborted) setLoaded(true)
+      })
+    return () => controller.abort()
+  }, [])
+
+  const gaps = useMemo(
+    () => (logistics ? [...logistics.supplyGaps].sort((a, b) => b.demandQty - a.demandQty) : []),
+    [logistics],
+  )
+
+  return (
+    <Layout fetchedAtISO={logistics?.fetchedAtISO}>
+      <section className="hero hero-compact">
+        <p className="hero-kicker">
+          <Link to="/uses" className="linklike" data-testid="back-to-uses">
+            ← Use cases
+          </Link>
+        </p>
+        <h1 className="hero-title">
+          What's <span className="accent">in demand</span> right now
+        </h1>
+        {gaps.length > 0 && (
+          <p className="hero-pill" data-testid="demand-pill">
+            <span className="pulse-dot" aria-hidden="true" />
+            {formatCount(gaps.length)} item{gaps.length === 1 ? "" : "s"} with unmet demand
+          </p>
+        )}
+        {loaded && gaps.length === 0 && (
+          <p className="hero-pill hero-pill-muted" data-testid="demand-empty">
+            no supply gaps right now — either every buy order is being met, or the shelf data hasn't
+            landed yet
+          </p>
+        )}
+      </section>
+
+      {!loaded && (
+        <p className="empty-note" data-testid="demand-loading">
+          Loading demand…
+        </p>
+      )}
+
+      {gaps.length > 0 && (
+        <section data-testid="demand-list">
+          <h2 className="section-title">
+            Supply gaps <span className="section-sub">(ranked by quantity wanted)</span>
+          </h2>
+          <ul className="gap-list">
+            {gaps.slice(0, GAP_ROWS).map((g) => (
+              <DemandRow key={`${g.item}-${g.currency}`} gap={g} />
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {loaded && (
+        <section className="dir-cards">
+          <Link className="dir-card" to="/uses/buy-sell" data-testid="link-buy-sell">
+            <h3>Where to buy / sell →</h3>
+            <p>Pick an item and see the cheapest shelves to buy from and the best to sell into.</p>
+          </Link>
+          <Link className="dir-card" to="/trade" data-testid="link-trade">
+            <h3>Trade &amp; logistics →</h3>
+            <p>The whole market — movers, price history, stores, and the full ledger.</p>
+          </Link>
+        </section>
+      )}
+    </Layout>
+  )
+}

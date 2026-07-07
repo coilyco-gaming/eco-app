@@ -732,7 +732,12 @@ a.dir-card:hover {
 /* Price-trend tag on the /trade markets: a glyph + word + delta, coloured by
    direction. Colour is never the only signal — the arrow glyph and the word
    carry it too (dataviz non-negotiable). */
-.trend-tag {
+/* Small inline verdict/provenance chips — /trade's trend tag plus the /uses
+   source (live/history) and shop-check verdict (over/under/at market) tags.
+   All glyph + label + colour, never colour alone (dataviz non-negotiables). */
+.trend-tag,
+.source-tag,
+.verdict-tag {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   white-space: nowrap;

@@ -12,6 +12,11 @@ import Replay from "./pages/Replay"
 import Social from "./pages/Social"
 import Trade from "./pages/Trade"
 import User from "./pages/User"
+import Uses from "./pages/Uses"
+import UsesArbitrage from "./pages/UsesArbitrage"
+import UsesBuySell from "./pages/UsesBuySell"
+import UsesDemand from "./pages/UsesDemand"
+import UsesShopCheck from "./pages/UsesShopCheck"
 
 // Route table for the SPA. The homepage is a thin directory of surfaces;
 // per-feature pages (map, species, milestones) join /info and /jobs here as
@@ -49,6 +54,15 @@ export default function App() {
         <Route path="/items" element={<Items />} />
         <Route path="/item" element={<Item />} />
         <Route path="/civics" element={<Civics />} />
+        {/* The /uses hub + its demand-side use-case pages (eco-app#99). The
+            hub gets the only homepage card; the four pages below are URL-only,
+            reached from the hub, mirroring how /item is reached only from
+            /items. */}
+        <Route path="/uses" element={<Uses />} />
+        <Route path="/uses/demand" element={<UsesDemand />} />
+        <Route path="/uses/buy-sell" element={<UsesBuySell />} />
+        <Route path="/uses/arbitrage" element={<UsesArbitrage />} />
+        <Route path="/uses/shop-check" element={<UsesShopCheck />} />
         <Route
           path="/social"
           element={
