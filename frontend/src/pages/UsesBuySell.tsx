@@ -1,0 +1,264 @@
+import { useEffect, useMemo, useState } from "react"
+import { Link, useSearchParams } from "react-router-dom"
+import Layout from "../components/Layout"
+import {
+  fetchLogistics,
+  type LogisticsBoard,
+  type PricedBoardRow,
+  type ShelfOffer,
+} from "../lib/logisticsApi"
+import { formatCount, prettifyEcoName } from "../lib/format"
+
+const PICK_ROWS = 200
+const OFFER_ROWS = 12
+
+function fmtPrice(n: number): string {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n)
+}
+
+// Source provenance, encoded label + colour (never colour alone): a live shelf
+// offer is the leaf green, a history-derived reconstruction stays muted ink.
+function SourceTag({ source }: { source: string }) {
+  const live = source === "live"
+  return (
+    <span
+      className="source-tag"
+      style={{ color: live ? "var(--leaf)" : "var(--ink-faint)" }}
+      data-testid="source-tag"
+    >
+      {live ? "● live" : "○ history"}
+    </span>
+  )
+}
+
+function OfferTable({
+  rows,
+  currency,
+  testid,
+}: {
+  rows: ShelfOffer[]
+  currency: string
+  testid: string
+}) {
+  if (rows.length === 0) {
+    return <p className="empty-note">No offers on this side right now.</p>
+  }
+  return (
+    <table className="ledger-table" data-testid={testid}>
+      <thead>
+        <tr>
+          <th>Store</th>
+          <th>Owner</th>
+          <th className="num">Price</th>
+          <th className="num">Qty</th>
+          <th>Source</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.slice(0, OFFER_ROWS).map((o, i) => (
+          <tr key={`${o.storeKey}-${o.side}-${i}`} data-testid="offer-row">
+            <td>{o.store}</td>
+            <td>{o.owner || "—"}</td>
+            <td className="num">
+              {fmtPrice(o.price)} {o.currency || currency}
+            </td>
+            <td className="num">{formatCount(o.quantity)}</td>
+            <td>
+              <SourceTag source={o.source} />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+// "Where to buy X cheapest / sell X highest" (eco-app#99). The item is picked
+// via ?item=<id> (deep-linkable). Cheapest sells come off the logistics
+// `cheapest` board (lowest sell price), best buys off `resale` (highest buy
+// price) — both from the same /preview/logistics.json plane /trade reads, which
+// can 404 on a reset-gated shelf, so the page degrades to a clear note.
+export default function UsesBuySell() {
+  const [logistics, setLogistics] = useState<LogisticsBoard | null>(null)
+  const [loaded, setLoaded] = useState(false)
+  const [params, setParams] = useSearchParams()
+  const item = params.get("item") ?? ""
+  const [filter, setFilter] = useState("")
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchLogistics(controller.signal)
+      .then(setLogistics, () => setLogistics(null))
+      .finally(() => {
+        if (!controller.signal.aborted) setLoaded(true)
+      })
+    return () => controller.abort()
+  }, [])
+
+  const pickItem = (id: string) => {
+    setParams(id ? { item: id } : {}, { replace: false })
+  }
+
+  // The union of every item on either board, ranked by how many total offers
+  // back it — the busiest markets pick first.
+  const options = useMemo(() => {
+    if (!logistics) return []
+    const byId = new Map<string, { item: string; pretty: string; offers: number }>()
+    const add = (row: PricedBoardRow) => {
+      const prev = byId.get(row.item)
+      const offers = row.offers.length
+      if (prev) prev.offers += offers
+      else byId.set(row.item, { item: row.item, pretty: row.itemPretty, offers })
+    }
+    logistics.cheapest.forEach(add)
+    logistics.resale.forEach(add)
+    return [...byId.values()].sort((a, b) => b.offers - a.offers)
+  }, [logistics])
+
+  const needle = filter.trim().toLowerCase()
+  const visibleOptions = useMemo(
+    () =>
+      (needle
+        ? options.filter((o) => o.pretty.toLowerCase().includes(needle))
+        : options
+      ).slice(0, PICK_ROWS),
+    [options, needle],
+  )
+
+  const sellRow = useMemo(
+    () => logistics?.cheapest.find((r) => r.item === item) ?? null,
+    [logistics, item],
+  )
+  const buyRow = useMemo(
+    () => logistics?.resale.find((r) => r.item === item) ?? null,
+    [logistics, item],
+  )
+
+  const cheapestSells = useMemo(
+    () => (sellRow ? [...sellRow.offers].sort((a, b) => a.price - b.price) : []),
+    [sellRow],
+  )
+  const bestBuys = useMemo(
+    () => (buyRow ? [...buyRow.offers].sort((a, b) => b.price - a.price) : []),
+    [buyRow],
+  )
+
+  const pretty = item ? prettifyEcoName(item) : ""
+  const currency = sellRow?.currency || buyRow?.currency || ""
+
+  return (
+    <Layout fetchedAtISO={logistics?.fetchedAtISO}>
+      <section className="hero hero-compact">
+        <p className="hero-kicker">
+          <Link to="/uses" className="linklike" data-testid="back-to-uses">
+            ← Use cases
+          </Link>
+        </p>
+        <h1 className="hero-title">
+          {pretty ? (
+            <>
+              Where to buy &amp; sell <span className="accent">{pretty}</span>
+            </>
+          ) : (
+            <>
+              Where to <span className="accent">buy &amp; sell</span>
+            </>
+          )}
+        </h1>
+        {loaded && !logistics && (
+          <p className="hero-pill hero-pill-muted" data-testid="buy-sell-error">
+            shelf data unavailable right now — check back once the store shelves have exported
+          </p>
+        )}
+      </section>
+
+      {!loaded && (
+        <p className="empty-note" data-testid="buy-sell-loading">
+          Loading shelves…
+        </p>
+      )}
+
+      {logistics && (
+        <section>
+          <div className="filter-row">
+            <input
+              className="filter-input"
+              type="search"
+              placeholder="Pick an item to price…"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              data-testid="buy-sell-filter"
+            />
+            {item && (
+              <button className="button" onClick={() => pickItem("")}>
+                Clear
+              </button>
+            )}
+          </div>
+          {!item && (
+            <ul className="rank-rows" data-testid="buy-sell-picker">
+              {visibleOptions.length === 0 ? (
+                <li>
+                  <p className="empty-note">No priced items on the shelves yet.</p>
+                </li>
+              ) : (
+                visibleOptions.map((o) => (
+                  <li key={o.item}>
+                    <button
+                      className="rank-row"
+                      onClick={() => pickItem(o.item)}
+                      data-testid="pick-item"
+                    >
+                      <span className="rank-name">{o.pretty}</span>
+                      <span className="rank-count">
+                        {formatCount(o.offers)} offer{o.offers === 1 ? "" : "s"}
+                      </span>
+                    </button>
+                  </li>
+                ))
+              )}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {item && logistics && (
+        <>
+          {!sellRow && !buyRow && (
+            <section>
+              <p className="empty-note" data-testid="buy-sell-none">
+                No live or history offers for {pretty} on either side right now.
+              </p>
+            </section>
+          )}
+          {(sellRow || buyRow) && (
+            <section className="atlas-columns" data-testid="buy-sell-boards">
+              <div>
+                <h2 className="section-title">
+                  Buy it cheapest{" "}
+                  {sellRow?.cheapest != null && (
+                    <span className="section-sub">
+                      (from {fmtPrice(sellRow.cheapest)} {currency})
+                    </span>
+                  )}
+                </h2>
+                <OfferTable rows={cheapestSells} currency={currency} testid="sell-offers" />
+              </div>
+              <div>
+                <h2 className="section-title">
+                  Sell it highest{" "}
+                  {buyRow?.best != null && (
+                    <span className="section-sub">
+                      (up to {fmtPrice(buyRow.best)} {currency})
+                    </span>
+                  )}
+                </h2>
+                <OfferTable rows={bestBuys} currency={currency} testid="buy-offers" />
+              </div>
+            </section>
+          )}
+        </>
+      )}
+    </Layout>
+  )
+}

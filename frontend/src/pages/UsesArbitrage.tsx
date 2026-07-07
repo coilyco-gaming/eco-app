@@ -1,0 +1,122 @@
+import { useEffect, useMemo, useState } from "react"
+import { Link } from "react-router-dom"
+import Layout from "../components/Layout"
+import { fetchLogistics, type LogisticsBoard } from "../lib/logisticsApi"
+import { formatCount } from "../lib/format"
+
+const ROWS = 40
+
+function fmtPrice(n: number): string {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n)
+}
+
+// "Buy low here, sell high there" (eco-app#99): the cross-store arbitrage
+// spreads from the logistics board, ranked by opportunity (spread × movable
+// volume). Reads the same /preview/logistics.json plane /trade does, which can
+// 404 on a reset-gated shelf, so the page degrades to a clear note.
+export default function UsesArbitrage() {
+  const [logistics, setLogistics] = useState<LogisticsBoard | null>(null)
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchLogistics(controller.signal)
+      .then(setLogistics, () => setLogistics(null))
+      .finally(() => {
+        if (!controller.signal.aborted) setLoaded(true)
+      })
+    return () => controller.abort()
+  }, [])
+
+  const spreads = useMemo(
+    () => (logistics ? [...logistics.arbitrage].sort((a, b) => b.opportunity - a.opportunity) : []),
+    [logistics],
+  )
+
+  return (
+    <Layout fetchedAtISO={logistics?.fetchedAtISO}>
+      <section className="hero hero-compact">
+        <p className="hero-kicker">
+          <Link to="/uses" className="linklike" data-testid="back-to-uses">
+            ← Use cases
+          </Link>
+        </p>
+        <h1 className="hero-title">
+          Buy low here, <span className="accent">sell high there</span>
+        </h1>
+        {spreads.length > 0 && (
+          <p className="hero-pill" data-testid="arb-pill">
+            <span className="pulse-dot" aria-hidden="true" />
+            {formatCount(spreads.length)} arbitrage spread{spreads.length === 1 ? "" : "s"} open
+          </p>
+        )}
+        {loaded && spreads.length === 0 && (
+          <p className="hero-pill hero-pill-muted" data-testid="arb-empty">
+            no arbitrage spreads right now — either prices are level across stores, or the shelf data
+            hasn't landed yet
+          </p>
+        )}
+      </section>
+
+      {!loaded && (
+        <p className="empty-note" data-testid="arb-loading">
+          Loading spreads…
+        </p>
+      )}
+
+      {spreads.length > 0 && (
+        <section data-testid="arb-list">
+          <h2 className="section-title">
+            Arbitrage spreads <span className="section-sub">(ranked by opportunity)</span>
+          </h2>
+          <table className="ledger-table" data-testid="arb-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Buy at</th>
+                <th>Sell at</th>
+                <th className="num">Spread</th>
+                <th className="num">Volume</th>
+                <th className="num">Opportunity</th>
+              </tr>
+            </thead>
+            <tbody>
+              {spreads.slice(0, ROWS).map((a) => (
+                <tr
+                  key={`${a.item}-${a.buyFrom.storeKey}-${a.sellTo.storeKey}`}
+                  data-testid="arb-row"
+                >
+                  <td>{a.itemPretty}</td>
+                  <td>
+                    {fmtPrice(a.buyFrom.price)} — {a.buyFrom.store}
+                  </td>
+                  <td>
+                    {fmtPrice(a.sellTo.price)} — {a.sellTo.store}
+                  </td>
+                  <td className="num">
+                    +{fmtPrice(a.spread)} {a.currency} ({Math.round(a.spreadPct)}%)
+                  </td>
+                  <td className="num">{formatCount(a.volume)}</td>
+                  <td className="num">{formatCount(a.opportunity)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      {loaded && (
+        <section className="dir-cards">
+          <Link className="dir-card" to="/uses/buy-sell" data-testid="link-buy-sell">
+            <h3>Where to buy / sell →</h3>
+            <p>Price one item across every shelf — the cheapest to buy, the best to sell into.</p>
+          </Link>
+          <Link className="dir-card" to="/trade" data-testid="link-trade">
+            <h3>Trade &amp; logistics →</h3>
+            <p>The whole market — movers, price history, stores, and the full ledger.</p>
+          </Link>
+        </section>
+      )}
+    </Layout>
+  )
+}

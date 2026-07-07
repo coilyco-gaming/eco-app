@@ -109,6 +109,14 @@ export default function Home() {
           <p>Every item ever bought, sold, or crafted — click through to its full history.</p>
         </Link>
 
+        {/* The /uses hub is the ONLY homepage card the whole use-case family
+            gets (eco-app#99): the demand-side pages (what's in demand, buy/sell,
+            arbitrage, shop-check) are URL-only, reached from the hub. */}
+        <Link className="dir-card" to="/uses" data-testid="dir-uses">
+          <h3>Use cases</h3>
+          <p>Task-framed answers — what's in demand, where to buy or sell, arbitrage, shop pricing.</p>
+        </Link>
+
         <Link className="dir-card" to="/civics" data-testid="dir-civics">
           <h3>Civics &amp; governance</h3>
           <p>Elections, turnout, demographics, and new settlements over time.</p>
