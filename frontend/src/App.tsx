@@ -8,6 +8,8 @@ import Item from "./pages/Item"
 import Items from "./pages/Items"
 import Jobs from "./pages/Jobs"
 import MapPage from "./pages/Map"
+import Recipe from "./pages/Recipe"
+import Recipes from "./pages/Recipes"
 import Replay from "./pages/Replay"
 import Social from "./pages/Social"
 import Trade from "./pages/Trade"
@@ -53,6 +55,11 @@ export default function App() {
         <Route path="/crafting" element={<Crafting />} />
         <Route path="/items" element={<Items />} />
         <Route path="/item" element={<Item />} />
+        {/* Recipe browse (eco-app#101): /recipes is the directory, /recipe?id=
+            the per-recipe detail, URL-only and reached only from /recipes —
+            mirroring /items -> /item. */}
+        <Route path="/recipes" element={<Recipes />} />
+        <Route path="/recipe" element={<Recipe />} />
         <Route path="/civics" element={<Civics />} />
         {/* The /uses hub + its demand-side use-case pages (eco-app#99). The
             hub gets the only homepage card; the four pages below are URL-only,

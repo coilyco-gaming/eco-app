@@ -109,6 +109,14 @@ export default function Home() {
           <p>Every item ever bought, sold, or crafted — click through to its full history.</p>
         </Link>
 
+        {/* The recipe browse surface (eco-app#101): the bill-of-materials for
+            every craftable, deep-linkable by product, profession, station, or
+            ingredient. /recipe details are URL-only, reached from here. */}
+        <Link className="dir-card" to="/recipes" data-testid="dir-recipes">
+          <h3>Recipes</h3>
+          <p>How everything is made — ingredients, station, profession, labor, and craft time.</p>
+        </Link>
+
         {/* The /uses hub is the ONLY homepage card the whole use-case family
             gets (eco-app#99): the demand-side pages (what's in demand, buy/sell,
             arbitrage, shop-check) are URL-only, reached from the hub. */}

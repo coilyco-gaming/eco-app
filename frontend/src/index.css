@@ -1647,3 +1647,65 @@ a.dir-card:hover {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* Recipe detail (eco-app#101): a fact strip, a two-column bill-of-materials,
+   and quantity-prefixed component lists. */
+.recipe-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.fact-label {
+  color: var(--ink-faint);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.fact-value {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.recipe-bom {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 2rem;
+}
+
+.recipe-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.recipe-qty {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--leaf);
+}
+
+.recipe-sublink {
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+  text-decoration: none;
+}
+
+.recipe-sublink:hover {
+  color: var(--leaf);
+}

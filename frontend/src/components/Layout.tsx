@@ -11,7 +11,9 @@ interface LayoutProps {
 // as one site rather than separate spheres. The nav mirrors the collapsed page
 // set from the eco-app#90 IA cleanup — progression lives inside Jobs, the
 // trades ledger inside Trade, and climate inside World, so they get no nav
-// entry of their own; Server is renamed Info and Map is titled World.
+// entry of their own; Server is renamed Info and Map is titled World. Recipes
+// (eco-app#101) earns its own entry as a primary browse surface, peer to Items
+// and Crafting.
 export default function Layout({ children, fetchedAtISO }: LayoutProps) {
   return (
     <div className="page">
@@ -25,6 +27,7 @@ export default function Layout({ children, fetchedAtISO }: LayoutProps) {
           <Link to="/jobs">Jobs</Link>
           <Link to="/trade">Trade</Link>
           <Link to="/items">Items</Link>
+          <Link to="/recipes">Recipes</Link>
           <Link to="/crafting">Crafting</Link>
           <Link to="/map">World</Link>
         </nav>
