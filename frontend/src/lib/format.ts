@@ -45,6 +45,25 @@ export function formatRelativeTime(timeS: number, latest: number): string {
   return `${sec} seconds ago`
 }
 
+// A raw in-game day is a float — `Time / 86400` — so 3.5 means "day 3, noon".
+// Rendering the bare float ("Day 3.5127") reads as a bug; every day-bearing
+// surface should show the whole day AND the clock time folded out of the
+// fraction. This is the shared day+hour formatter the site-wide polish sweep
+// converges on (eco-app#93); other surfaces still using `Math.floor(day)`
+// (e.g. the /trade ledger) can adopt it as they are touched.
+export function formatDayHour(day: number | null | undefined): string {
+  if (day == null || !Number.isFinite(day)) return "—"
+  const whole = Math.floor(day)
+  const minutesOfDay = Math.round((day - whole) * 24 * 60)
+  // Rounding can push 23:59:30+ up to a full day — carry it so 3.9999 reads
+  // "Day 4, 00:00", never "Day 3, 24:00".
+  const dayNum = whole + Math.floor(minutesOfDay / (24 * 60))
+  const rem = minutesOfDay % (24 * 60)
+  const hh = String(Math.floor(rem / 60)).padStart(2, "0")
+  const mm = String(rem % 60).padStart(2, "0")
+  return `Day ${dayNum}, ${hh}:${mm}`
+}
+
 // "BunWulfRawMeatItem" -> "Bun Wulf Raw Meat", "OakSpecies" -> "Oak".
 // Mirrors prettify_eco_name in eco_mcp_app/crafting.py.
 export function prettifyEcoName(raw: string): string {

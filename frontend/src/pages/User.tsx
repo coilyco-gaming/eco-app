@@ -1,12 +1,34 @@
 import { useEffect, useMemo, useState } from "react"
-import { Link, useParams } from "react-router-dom"
+import { useParams } from "react-router-dom"
 import Layout from "../components/Layout"
-import { formatCount, formatFetchedAt, prettifyEcoName } from "../lib/format"
+import {
+  formatCount,
+  formatDayHour,
+  formatFetchedAt,
+  formatRelativeTime,
+  prettifyEcoName,
+} from "../lib/format"
+import {
+  fetchLogistics,
+  type GapReason,
+  type LogisticsBoard,
+  type ShelfOffer,
+} from "../lib/logisticsApi"
+import { fetchStores, type StoreDirectory } from "../lib/storesApi"
 import {
   decodeUserHex,
   fetchUserDossier,
   type UserDossier,
 } from "../lib/usersApi"
+
+// Supply-gap severity labels, mirroring the /trade board's glyph+label so the
+// dossier's "what to make" opener reads the same as the market page. Colour is
+// carried alongside the glyph, never alone (the dataviz non-negotiable).
+const GAP: Record<GapReason, { glyph: string; label: string; color: string }> = {
+  no_supply: { glyph: "✖", label: "no supply", color: "var(--meteor)" },
+  thin_supply: { glyph: "◐", label: "thin supply", color: "var(--meteor-deep)" },
+  overpriced: { glyph: "▲", label: "over-priced", color: "var(--ink-faint)" },
+}
 
 // A labelled stat tile, mirroring the /map stat grids.
 function Stat({ value, label, detail }: { value: string; label: string; detail?: string }) {
@@ -34,6 +56,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default function User() {
   const { hex = "" } = useParams()
   const [dossier, setDossier] = useState<UserDossier | null>(null)
+  const [logistics, setLogistics] = useState<LogisticsBoard | null>(null)
+  const [stores, setStores] = useState<StoreDirectory | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // Decode the base16 path segment to the username before any fetch. A
@@ -49,13 +73,88 @@ export default function User() {
   useEffect(() => {
     if (decoded.badHex) return
     const controller = new AbortController()
-    fetchUserDossier(decoded.username, controller.signal)
+    const s = controller.signal
+    fetchUserDossier(decoded.username, s)
       .then(setDossier)
       .catch((err) => {
-        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : String(err))
+        if (!s.aborted) setError(err instanceof Error ? err.message : String(err))
       })
+    // The actionable summary reads the same market spine the /trade page and the
+    // item pages use (logistics = live shelf offers + supply gaps, stores = the
+    // per-trader footprint). Both are best-effort and independent of the dossier:
+    // a missing shelf/stores exporter just thins the summary, it never sinks the
+    // page, so each resolves to null on a miss like the /trade planes do.
+    fetchLogistics(s).then(setLogistics, () => setLogistics(null))
+    fetchStores(s).then(setStores, () => setStores(null))
     return () => controller.abort()
   }, [decoded])
+
+  const username = decoded.username
+
+  // --- Actionable summary (eco-app#93) -------------------------------------
+  // Every memo below is declared before the bad-hex early return so the hook
+  // order is stable; on a bad link `username` is "" and each falls out empty.
+
+  // Live open offers on the market spine, owner-matched. cheapest carries sell
+  // offers and resale the buy offers, but every row's offers[] tag their own
+  // side, so we union them and split by side. Deduped per shelf line.
+  const myOffers = useMemo(() => {
+    const empty = { sells: [] as ShelfOffer[], buys: [] as ShelfOffer[] }
+    if (!logistics || !username) return empty
+    const all = [
+      ...logistics.cheapest.flatMap((r) => r.offers),
+      ...logistics.resale.flatMap((r) => r.offers),
+    ]
+    const seen = new Set<string>()
+    const mine = all.filter((o) => {
+      if (o.owner !== username) return false
+      const key = `${o.item}|${o.side}|${o.store}|${o.price}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    return {
+      sells: mine.filter((o) => o.side === "sell"),
+      buys: mine.filter((o) => o.side === "buy"),
+    }
+  }, [logistics, username])
+
+  // The per-trade footprint from the stores directory — the fallback when the
+  // live shelf is reset-gated (no current offers), and a richer "what they
+  // move" view than the leaderboards alone.
+  const trader = useMemo(
+    () => stores?.traders.find((t) => t.name === username) ?? null,
+    [stores, username],
+  )
+
+  // What this player is best positioned to make: their highest-level
+  // specialties (what they can craft) crossed against the market's current
+  // supply gaps (what it will pay for). Specialties come from the dossier's
+  // own jobs surface; the gaps from the same logistics board /trade shows.
+  const topSpecialties = useMemo(() => {
+    const specs = dossier?.jobs?.specialties ?? []
+    return [...specs].sort((a, b) => b.level - a.level).slice(0, 6)
+  }, [dossier])
+  const marketGaps = useMemo(() => (logistics ? logistics.supplyGaps.slice(0, 5) : []), [logistics])
+
+  // Recent activity in relative time, not bare day floats: the player's own
+  // trades, newest first, phrased "3 hours ago" against the latest of them.
+  const recentActivity = useMemo(() => {
+    const timed = (dossier?.trades?.trades ?? []).filter((t) => typeof t.time === "number")
+    if (timed.length === 0) return { latest: 0, items: [] as typeof timed }
+    const latest = Math.max(...timed.map((t) => t.time as number))
+    const items = [...timed].sort((a, b) => (b.time as number) - (a.time as number)).slice(0, 6)
+    return { latest, items }
+  }, [dossier])
+
+  const hasSummary =
+    myOffers.sells.length > 0 ||
+    myOffers.buys.length > 0 ||
+    (trader?.topSells.length ?? 0) > 0 ||
+    (trader?.topBuys.length ?? 0) > 0 ||
+    topSpecialties.length > 0 ||
+    marketGaps.length > 0 ||
+    recentActivity.items.length > 0
 
   if (decoded.badHex) {
     return (
@@ -65,15 +164,11 @@ export default function User() {
           <h1 className="hero-title">Not a valid user link</h1>
           <p className="empty-note" data-testid="user-bad-hex">
             The <code>/users/&lt;hex&gt;</code> segment must be the base16 of a username.
-            <br />
-            <Link to="/users">Browse every user →</Link>
           </p>
         </section>
       </Layout>
     )
   }
-
-  const username = decoded.username
 
   return (
     <Layout fetchedAtISO={dossier?.fetchedAtISO}>
@@ -100,7 +195,7 @@ export default function User() {
         )}
         <p className="redaction-note">
           Every field the server exports about one player, pivoted into one place. Hidden by design
-          — no nav link, no password. <Link to="/users">All users →</Link>
+          — no nav link, no password.
         </p>
       </section>
 
@@ -111,6 +206,149 @@ export default function User() {
             the exporters that would carry their activity are unavailable.
           </p>
         </section>
+      )}
+
+      {/* Actionable summary (eco-app#93) — leads the dossier, orienting around
+          what *this* player would want at a glance: what they're trading now,
+          what they're best positioned to make, and what they've done lately.
+          The full per-surface panels below stay unchanged. */}
+      {dossier?.found && hasSummary && (
+        <Section title="At a glance">
+          <p className="section-sub">
+            What {username} is trading, best positioned to make, and up to lately.
+          </p>
+
+          <div className="atlas-columns" data-testid="user-summary-offers">
+            <div>
+              <h3 className="card-title">Selling now</h3>
+              {myOffers.sells.length > 0 ? (
+                <ul className="rank-rows" data-testid="user-selling">
+                  {myOffers.sells.map((o, i) => (
+                    <li key={`sell-${o.item}-${o.store}-${i}`}>
+                      <div className="rank-row">
+                        <span className="rank-name">{o.itemPretty || prettifyEcoName(o.item)}</span>
+                        <span className="rank-count">
+                          {formatCount(o.price)} {o.currency} · {formatCount(o.quantity)} in stock
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (trader?.topSells.length ?? 0) > 0 ? (
+                <>
+                  <p className="section-sub">No live shelf — recently sold:</p>
+                  <ul className="rank-rows" data-testid="user-selling-recent">
+                    {trader!.topSells.slice(0, 6).map((it) => (
+                      <li key={`ts-${it.item}`}>
+                        <div className="rank-row">
+                          <span className="rank-name">{it.pretty || prettifyEcoName(it.item)}</span>
+                          <span className="rank-count">{formatCount(it.volume)} volume</span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p className="empty-note">No open sell offers on the market spine.</p>
+              )}
+            </div>
+            <div>
+              <h3 className="card-title">Buying now</h3>
+              {myOffers.buys.length > 0 ? (
+                <ul className="rank-rows" data-testid="user-buying">
+                  {myOffers.buys.map((o, i) => (
+                    <li key={`buy-${o.item}-${o.store}-${i}`}>
+                      <div className="rank-row">
+                        <span className="rank-name">{o.itemPretty || prettifyEcoName(o.item)}</span>
+                        <span className="rank-count">
+                          {formatCount(o.price)} {o.currency} · wants {formatCount(o.quantity)}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (trader?.topBuys.length ?? 0) > 0 ? (
+                <>
+                  <p className="section-sub">No live orders — recently bought:</p>
+                  <ul className="rank-rows" data-testid="user-buying-recent">
+                    {trader!.topBuys.slice(0, 6).map((it) => (
+                      <li key={`tb-${it.item}`}>
+                        <div className="rank-row">
+                          <span className="rank-name">{it.pretty || prettifyEcoName(it.item)}</span>
+                          <span className="rank-count">{formatCount(it.volume)} volume</span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p className="empty-note">No open buy orders on the market spine.</p>
+              )}
+            </div>
+          </div>
+
+          {(topSpecialties.length > 0 || marketGaps.length > 0) && (
+            <>
+              <h3 className="card-title">Best positioned to make &amp; sell</h3>
+              {topSpecialties.length > 0 ? (
+                <p className="intro" data-testid="user-strengths">
+                  <span>
+                    Highest specialties:{" "}
+                    {topSpecialties.map((s) => `${s.specialty} (lvl ${s.level})`).join(", ")}
+                  </span>
+                </p>
+              ) : (
+                <p className="empty-note">No high-level specialties recorded yet.</p>
+              )}
+              {marketGaps.length > 0 && (
+                <>
+                  <p className="section-sub">
+                    What the market is short on right now — a skilled crafter&rsquo;s opening:
+                  </p>
+                  <ul className="gap-list" data-testid="user-gaps">
+                    {marketGaps.map((g) => {
+                      const tag = GAP[g.reason]
+                      return (
+                        <li className="gap-row" key={`${g.item}-${g.currency}`}>
+                          <div className="gap-head">
+                            <span className="gap-name">{g.itemPretty}</span>
+                            <span className="gap-tag" style={{ color: tag.color }}>
+                              <span aria-hidden="true">{tag.glyph}</span> {tag.label}
+                            </span>
+                          </div>
+                          <p className="gap-summary">
+                            {formatCount(g.demandQty)} wanted · {formatCount(g.buyerCount)} buyer
+                            {g.buyerCount === 1 ? "" : "s"} · {formatCount(g.sellerCount)} seller
+                            {g.sellerCount === 1 ? "" : "s"}
+                          </p>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </>
+              )}
+            </>
+          )}
+
+          {recentActivity.items.length > 0 && (
+            <>
+              <h3 className="card-title">Recent activity</h3>
+              <ul className="warn-list" data-testid="user-recent">
+                {recentActivity.items.map((t, i) => {
+                  const role = t.buyer === username ? "bought" : "sold"
+                  const counterparty = t.buyer === username ? t.seller : t.buyer
+                  return (
+                    <li key={`recent-${i}`}>
+                      {formatRelativeTime(t.time as number, recentActivity.latest)} — {role}{" "}
+                      <strong>{t.item ? prettifyEcoName(t.item) : "an item"}</strong>
+                      {counterparty ? ` with ${counterparty}` : ""}
+                    </li>
+                  )
+                })}
+              </ul>
+            </>
+          )}
+        </Section>
       )}
 
       {dossier?.jobs && (
@@ -151,7 +389,7 @@ export default function User() {
             <table className="ledger-table" data-testid="user-trades">
               <thead>
                 <tr>
-                  <th>Day</th>
+                  <th>When</th>
                   <th>Item</th>
                   <th>Role</th>
                   <th>Counterparty</th>
@@ -164,7 +402,7 @@ export default function User() {
                   const counterparty = t.buyer === username ? t.seller : t.buyer
                   return (
                     <tr key={`${t.item}-${i}`} data-testid="user-trade-row">
-                      <td>{t.day ?? "—"}</td>
+                      <td>{formatDayHour(t.day)}</td>
                       <td>{t.item ? prettifyEcoName(t.item) : "—"}</td>
                       <td>{role}</td>
                       <td>{counterparty}</td>
@@ -244,12 +482,12 @@ export default function User() {
             <ul className="warn-list" data-testid="user-civics-events">
               {dossier.civics.elections.map((e, i) => (
                 <li key={`el-${i}`}>
-                  Day {e.day}: {e.role} <strong>{e.subject}</strong>
+                  {formatDayHour(e.day)}: {e.role} <strong>{e.subject}</strong>
                 </li>
               ))}
               {dossier.civics.settlements.map((s, i) => (
                 <li key={`st-${i}`}>
-                  Day {s.day}: founded {s.kind} <strong>{s.subject}</strong>
+                  {formatDayHour(s.day)}: founded {s.kind} <strong>{s.subject}</strong>
                 </li>
               ))}
             </ul>
@@ -288,7 +526,7 @@ export default function User() {
               <table className="ledger-table" data-testid="user-timeline">
                 <thead>
                   <tr>
-                    <th>Day</th>
+                    <th>When</th>
                     <th>Event</th>
                     <th>Skill</th>
                     <th>Level</th>
@@ -297,7 +535,7 @@ export default function User() {
                 <tbody>
                   {dossier.progression.trajectory.timeline.map((ev, i) => (
                     <tr key={`tl-${i}`}>
-                      <td>{ev.day}</td>
+                      <td>{formatDayHour(ev.day)}</td>
                       <td>{ev.kind}</td>
                       <td>{ev.pretty}</td>
                       <td>{ev.level ?? "—"}</td>
