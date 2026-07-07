@@ -7,6 +7,10 @@ const META = { mockData: true }
 const PROFESSIONS = [
   { profession: "Carpentry", active: 2, total: 3, players: ["coilysiren", "ekans"] },
   { profession: "Masonry", active: 0, total: 0, players: [] },
+  // Universal starter professions — everyone has these, so they must be
+  // filtered out of the surface (eco-app#94).
+  { profession: "Self Improvement", active: 2, total: 2, players: ["coilysiren", "ekans"] },
+  { profession: "Survivalist", active: 2, total: 2, players: ["coilysiren", "ekans"] },
 ]
 const SPECIALTIES = [
   {
@@ -19,12 +23,22 @@ const SPECIALTIES = [
       { player: "ekans", level: 2, active: false },
     ],
   },
+  {
+    specialty: "Self Improvement",
+    profession: "Other",
+    active: 1,
+    total: 1,
+    holders: [{ player: "coilysiren", level: 3, active: true }],
+  },
 ]
 const PLAYERS = [
   {
     name: "coilysiren",
     active: true,
-    specialties: [{ specialty: "Basic Carpentry", level: 5, active: true }],
+    specialties: [
+      { specialty: "Basic Carpentry", level: 5, active: true },
+      { specialty: "Survivalist", level: 4, active: true },
+    ],
   },
   { name: "ekans", active: false, specialties: [] },
 ]
@@ -50,7 +64,13 @@ const PROGRESSION = {
     },
   ],
   trends: { specialty: [[1, 2]] },
-  bySpecialty: [["BasicCarpentry", 2]],
+  bySpecialty: [
+    ["BasicCarpentry", 2],
+    // Raw Eco id form of the universal skills — must be filtered from the
+    // progression rank list too (eco-app#94).
+    ["SelfImprovement", 9],
+    ["Survivalist", 8],
+  ],
   byProfession: [["Carpenter", 1]],
   classCompletions: [],
   topLevelers: [["coilysiren", 1]],
@@ -143,6 +163,24 @@ describe("Jobs", () => {
     expect(screen.getAllByTestId("rank-row").length).toBeGreaterThan(0)
     // There is no standalone progression page to link out to anymore.
     expect(screen.queryByRole("link", { name: /progression history/i })).not.toBeInTheDocument()
+  })
+
+  it("excludes the universal starter skills from every jobs surface", async () => {
+    stubJobsFetch()
+    renderJobs()
+
+    await waitFor(() => {
+      expect(screen.getByText("Professions")).toBeInTheDocument()
+    })
+    // Professions section: Self Improvement / Survivalist cards gone.
+    expect(screen.queryByRole("button", { name: /Self Improvement/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Survivalist/ })).not.toBeInTheDocument()
+    // Specialties + per-player rows + progression rank list: no trace anywhere.
+    expect(screen.queryByText("Self Improvement")).not.toBeInTheDocument()
+    expect(screen.queryByText("Survivalist")).not.toBeInTheDocument()
+    // The real professions and specialties still render.
+    expect(screen.getByRole("button", { name: /Carpentry/ })).toBeInTheDocument()
+    expect(screen.getAllByText("Basic Carpentry").length).toBeGreaterThan(0)
   })
 
   it("renders the per-player skill timeline from progression", async () => {
