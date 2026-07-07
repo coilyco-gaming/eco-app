@@ -78,9 +78,14 @@ const WORLD_HOURS_PER_DAY = 24
 
 // A world-clock timestamp (in-game seconds since cycle start) rendered as
 // "day D, Hh". Kai's rule for the site: every place that names a day also names
-// the hour, so one helper renders both from a single seconds value. The item
-// and user surfaces feed their event `Time` straight in; this repo also drives
-// the meteor banner's "into the cycle" caption from the /info TimeSinceStart.
+// the hour, so one helper renders both from a single seconds value. Drives the
+// meteor banner's "into the cycle" caption from the /info TimeSinceStart.
+//
+// NOTE (eco-app#93): this is the /info world clock (3600s/day). The exporter
+// CSVs (trades, civics, progression) count on a *different* calendar — Time /
+// 86400 = day (see trades.SECONDS_PER_DAY) — so their pre-divided float "day"
+// fields render through `formatEventDay` below, not this. Reconciling the two
+// clocks into one helper is a follow-up for the site-wide day+hour sweep.
 export function formatDayHour(timeSeconds: number): string {
   const t = Math.max(0, timeSeconds)
   const day = Math.floor(t / WORLD_SECONDS_PER_DAY)
@@ -110,6 +115,26 @@ export function formatRelative(timeSeconds: number, nowSeconds: number): string 
     }
   }
   return `${sec} seconds ago`
+}
+
+// The exporter-day clock, for the pre-divided float "day" the trades / civics /
+// progression exporters emit (day = Time / 86400, trades.SECONDS_PER_DAY). A raw
+// float ("Day 3.5127") reads as a bug, so every day-bearing dossier row shows the
+// whole day AND the clock time folded out of the fraction (eco-app#93). Distinct
+// from `formatDayHour` above, which folds the /info world clock's 3600s/day — the
+// two exporter/world calendars differ, so they cannot share one helper until the
+// site-wide sweep reconciles them.
+export function formatEventDay(day: number | null | undefined): string {
+  if (day == null || !Number.isFinite(day)) return "—"
+  const whole = Math.floor(day)
+  const minutesOfDay = Math.round((day - whole) * 24 * 60)
+  // Rounding can push 23:59:30+ up to a full day — carry it so 3.9999 reads
+  // "Day 4, 00:00", never "Day 3, 24:00".
+  const dayNum = whole + Math.floor(minutesOfDay / (24 * 60))
+  const rem = minutesOfDay % (24 * 60)
+  const hh = String(Math.floor(rem / 60)).padStart(2, "0")
+  const mm = String(rem % 60).padStart(2, "0")
+  return `Day ${dayNum}, ${hh}:${mm}`
 }
 
 // "BunWulfRawMeatItem" -> "Bun Wulf Raw Meat", "OakSpecies" -> "Oak".

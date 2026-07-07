@@ -9,6 +9,10 @@ payloads (each surface's ``to_dict()`` shape, or ``None`` when that fetch
 failed), so it unit-tests without a live server; the concurrent fan-out and
 the fetch itself live in ``http_app.py``.
 
+The all-users listing that once sat alongside this (``build_roster`` +
+``/preview/users.json`` + the SPA ``/users`` index) was removed in eco-app#93;
+only the single-user dossier remains.
+
 General rule (eco-app#80): a list pivoted by user lists **every** user, never a
 truncated top-N. The aggregate lists this reads — trades ``topBuyers`` /
 ``topSellers``, crafting ``byCitizen``, civics ``topVoters``, world
@@ -185,72 +189,6 @@ def _world_section(payload: dict[str, Any] | None, name: str) -> dict[str, Any] 
     return {"shaperEvents": shaper or 0, "pollutionEvents": polluter or 0}
 
 
-def build_roster(sources: dict[str, Any]) -> list[str]:
-    """Every distinct username seen across all fetched surfaces, sorted.
-
-    This is the "list every user, never a truncated top-N" surface (eco-app#80):
-    a union over each source's complete per-user lists. Unresolved ids keep
-    their ``Citizen #<id>`` label — they are users too. Empty labels are dropped.
-    """
-    names: set[str] = set()
-
-    for player in sources.get("jobs") or []:
-        if player.get("name"):
-            names.add(player["name"])
-
-    trades = sources.get("trades") or {}
-    for entry in (trades.get("topBuyers") or []) + (trades.get("topSellers") or []):
-        if entry and entry[0]:
-            names.add(entry[0])
-    for t in trades.get("trades") or []:
-        for who in (t.get("buyer"), t.get("seller"), t.get("shopOwner")):
-            if who:
-                names.add(who)
-
-    crafting = sources.get("crafting") or {}
-    for entry in crafting.get("byCitizen") or []:
-        if entry and entry[0]:
-            names.add(entry[0])
-
-    civics = sources.get("civics") or {}
-    for entry in civics.get("topVoters") or []:
-        if entry and entry[0]:
-            names.add(entry[0])
-    for e in civics.get("recentElections") or []:
-        if e.get("proposer"):
-            names.add(e["proposer"])
-    for e in civics.get("recentOutcomes") or []:
-        if e.get("winner"):
-            names.add(e["winner"])
-    for e in civics.get("recentDemographics") or []:
-        if e.get("name"):
-            names.add(e["name"])
-    for e in civics.get("recentSettlements") or []:
-        if e.get("founder"):
-            names.add(e["founder"])
-
-    currency = sources.get("currency") or {}
-    for cur in currency.get("currencies") or []:
-        for holder in cur.get("topHolders") or []:
-            if holder.get("holder"):
-                names.add(holder["holder"])
-
-    progression = sources.get("progression") or {}
-    for c in progression.get("citizens") or []:
-        if c.get("name"):
-            names.add(c["name"])
-    for entry in progression.get("topLevelers") or []:
-        if entry and entry[0]:
-            names.add(entry[0])
-
-    world = sources.get("world") or {}
-    for entry in (world.get("byCitizen") or []) + (world.get("byPolluter") or []):
-        if entry and entry[0]:
-            names.add(entry[0])
-
-    return sorted(names)
-
-
 # Per-source caps that survive upstream, so the dossier can flag when a user
 # might be hidden by one rather than implying it saw everything.
 _CAP_NOTES: dict[str, str] = {
@@ -286,12 +224,10 @@ def build_user_dossier(username: str, sources: dict[str, Any]) -> dict[str, Any]
     }
     available = {key: sources.get(key) is not None for key in SOURCE_KEYS}
     warnings = [note for key, note in _CAP_NOTES.items() if sections.get(key) is not None]
-    roster = build_roster(sources)
     return {
         "username": username,
         "found": any(section is not None for section in sections.values()),
         "available": available,
         **sections,
-        "roster": roster,
         "warnings": warnings,
     }

@@ -3,11 +3,14 @@
 // The page lives at `/users/<hex>` where <hex> is the base16 of the username.
 // It is hidden (no nav link) but NOT password-protected. The SPA decodes the
 // hex segment back to the username and asks the backend for a dossier — every
-// field the exporters carry about that one player. The `/users` index consumes
-// `/preview/users.json`, the "list every user, never a truncated top-N" roster.
+// field the exporters carry about that one player. The all-users `/users`
+// listing and its `/preview/users.json` roster were removed in eco-app#93;
+// only this single-user dossier remains.
 
 // base16 (hex) of a username's UTF-8 bytes. Lowercase, no separators — the
 // path segment. `encodeUserHex(decodeUserHex(h)) === h` for any valid hex.
+// Still exported for the dossier's own tests, which round-trip a username
+// through the hex segment.
 export function encodeUserHex(name: string): string {
   return Array.from(new TextEncoder().encode(name))
     .map((b) => b.toString(16).padStart(2, "0"))
@@ -45,6 +48,9 @@ export interface TradeRow {
   currencyAmount?: number
   unitPrice?: number | null
   day?: number
+  // Exporter `Time` in in-game seconds (day = time / 86400). Drives relative
+  // "hours/days ago" phrasing in the actionable summary and the day+hour clock.
+  time?: number
   direction?: string
   [key: string]: unknown
 }
@@ -114,14 +120,7 @@ export interface UserDossier {
   currency: CurrencySection | null
   progression: ProgressionSection | null
   world: WorldSection | null
-  roster: string[]
   warnings: string[]
-}
-
-export interface UsersIndex {
-  fetchedAtISO: string
-  users: string[]
-  available: Record<string, boolean>
 }
 
 export async function fetchUserDossier(
@@ -133,12 +132,4 @@ export async function fetchUserDossier(
     throw new Error(`user dossier fetch failed: HTTP ${resp.status}`)
   }
   return (await resp.json()) as UserDossier
-}
-
-export async function fetchUsersIndex(signal?: AbortSignal): Promise<UsersIndex> {
-  const resp = await fetch("/preview/users.json", { signal })
-  if (!resp.ok) {
-    throw new Error(`users index fetch failed: HTTP ${resp.status}`)
-  }
-  return (await resp.json()) as UsersIndex
 }

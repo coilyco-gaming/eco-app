@@ -141,7 +141,7 @@ async def _gather_user_sources(server_arg: str | None) -> dict[str, Any]:
     """Fan out concurrently to every per-user surface for one server.
 
     Returns a ``{source_key: payload_or_None}`` dict shaped for
-    ``users.build_user_dossier`` / ``build_roster``: each exporter's
+    ``users.build_user_dossier``: each exporter's
     ``to_dict()`` payload, the jobs surface pre-shaped to
     ``{name, active, lastSeenISO, specialties}`` rows, and the currency
     snapshot's raw dict (which carries every currency's top-holders, unlike the
@@ -262,23 +262,6 @@ async def preview_user_json(request: Request) -> JSONResponse:
     dossier = users_mod.build_user_dossier(username, sources)
     dossier["fetchedAtISO"] = datetime.now(UTC).isoformat()
     return JSONResponse(_sanitize_nonfinite(dossier))
-
-
-async def preview_users_json(request: Request) -> JSONResponse:
-    """`/preview/users.json` — every username seen across all exporters.
-
-    The "list every user, never a truncated top-N" index (eco-app#80): a union
-    over each surface's complete per-user lists. Backs the `/users` directory.
-    """
-    server_arg = request.query_params.get("server")
-    sources = await _gather_user_sources(server_arg)
-    return JSONResponse(
-        {
-            "fetchedAtISO": datetime.now(UTC).isoformat(),
-            "users": users_mod.build_roster(sources),
-            "available": {key: sources.get(key) is not None for key in users_mod.SOURCE_KEYS},
-        }
-    )
 
 
 def create_app() -> Starlette:
@@ -757,7 +740,6 @@ def create_app() -> Starlette:
         Route("/preview/world.json", preview_world_json, methods=["GET"]),
         Route("/preview/watchers.json", preview_watchers_json, methods=["GET"]),
         Route("/preview/user.json", preview_user_json, methods=["GET"]),
-        Route("/preview/users.json", preview_users_json, methods=["GET"]),
         Route("/preview/items.json", preview_items_json, methods=["GET"]),
         Route("/preview/item.json", preview_item_json, methods=["GET"]),
         Route("/preview/{tool}", preview_tool, methods=["GET"]),

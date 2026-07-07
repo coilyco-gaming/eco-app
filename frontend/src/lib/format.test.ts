@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   formatCount,
   formatDayHour,
+  formatEventDay,
   formatFetchedAt,
   formatRelative,
   meteorProgressPercent,
@@ -43,6 +44,27 @@ describe("formatFetchedAt", () => {
 
   it("returns empty string for garbage", () => {
     expect(formatFetchedAt("not-a-date")).toBe("")
+  })
+})
+
+describe("formatEventDay", () => {
+  it("folds the fractional exporter day into a clock time", () => {
+    expect(formatEventDay(3.5)).toBe("Day 3, 12:00")
+    expect(formatEventDay(0)).toBe("Day 0, 00:00")
+    expect(formatEventDay(12)).toBe("Day 12, 00:00")
+    expect(formatEventDay(2.25)).toBe("Day 2, 06:00")
+  })
+
+  it("carries a rounded-up fraction into the next whole day", () => {
+    // 3.99999 rounds to 24:00 of day 3 — must read as day 4, 00:00.
+    expect(formatEventDay(3.99999)).toBe("Day 4, 00:00")
+  })
+
+  it("dashes out missing / non-finite days", () => {
+    expect(formatEventDay(null)).toBe("—")
+    expect(formatEventDay(undefined)).toBe("—")
+    expect(formatEventDay(Number.NaN)).toBe("—")
+    expect(formatEventDay(Number.POSITIVE_INFINITY)).toBe("—")
   })
 })
 

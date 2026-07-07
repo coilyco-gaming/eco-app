@@ -1,8 +1,9 @@
-"""Per-user dossier pivot + roster, the world de-cap, and the two endpoints.
+"""Per-user dossier pivot, the world de-cap, and the dossier endpoint.
 
-The pivot/roster layer (`eco_mcp_app.users`) is pure over already-fetched tool
-payloads, so it tests without a live server. The endpoints are exercised with
-`_gather_user_sources` monkeypatched to canned sources.
+The pivot layer (`eco_mcp_app.users`) is pure over already-fetched tool
+payloads, so it tests without a live server. The endpoint is exercised with
+`_gather_user_sources` monkeypatched to canned sources. The all-users listing
+(`build_roster` + `/preview/users.json`) was removed in eco-app#93.
 """
 
 from __future__ import annotations
@@ -118,22 +119,8 @@ def test_dossier_for_an_unknown_user_is_empty_but_not_an_error() -> None:
     dossier = users.build_user_dossier("nobody", sample_sources())
     assert dossier["found"] is False
     assert all(dossier[key] is None for key in ("jobs", "trades", "crafting", "world"))
-    # The roster still lists everyone — an unknown user does not hide the index.
-    assert "coilysiren" in dossier["roster"]
-
-
-def test_roster_unions_every_user_including_unresolved_ids() -> None:
-    roster = users.build_roster(sample_sources())
-    # Names from jobs, trades (incl. Citizen #id), crafting, civics, currency,
-    # progression, and world — all deduped and sorted.
-    assert roster == sorted({"coilysiren", "redwood", "ekans", "Citizen #999"})
-    # Government/company holders (holder=None) never leak into the roster.
-    assert None not in roster
-
-
-def test_roster_tolerates_missing_and_none_sources() -> None:
-    sources = {"trades": None, "world": {"byCitizen": [["solo", 1]], "byPolluter": []}}
-    assert users.build_roster(sources) == ["solo"]
+    # No roster field: the all-users index was removed in eco-app#93.
+    assert "roster" not in dossier
 
 
 def test_dossier_available_flags_track_source_health() -> None:
@@ -187,13 +174,15 @@ def test_user_endpoint_requires_a_name() -> None:
 
 
 @pytest.mark.usefixtures("stub_sources")
-def test_users_index_lists_every_user() -> None:
+def test_users_index_endpoint_is_gone() -> None:
+    # The all-users listing was removed in eco-app#93; only the single-user
+    # dossier remains. The old index path no longer has a dedicated route — it
+    # falls through to the generic tool dispatcher, which has no `users` tool, so
+    # it errors rather than serving a roster.
     client = TestClient(create_app())
     r = client.get("/preview/users.json")
-    assert r.status_code == 200
-    body = r.json()
-    assert body["users"] == sorted({"coilysiren", "redwood", "ekans", "Citizen #999"})
-    assert body["available"]["trades"] is True
+    assert r.status_code >= 400
+    assert "users" not in r.json()
 
 
 def test_sanitize_nonfinite_walks_nested_structures() -> None:
