@@ -18,6 +18,7 @@ import Uses from "./pages/Uses"
 import UsesArbitrage from "./pages/UsesArbitrage"
 import UsesBuySell from "./pages/UsesBuySell"
 import UsesDemand from "./pages/UsesDemand"
+import UsesPrice from "./pages/UsesPrice"
 import UsesShopCheck from "./pages/UsesShopCheck"
 
 // Route table for the SPA. The homepage is a thin directory of surfaces;
@@ -69,6 +70,7 @@ export default function App() {
         <Route path="/uses/demand" element={<UsesDemand />} />
         <Route path="/uses/buy-sell" element={<UsesBuySell />} />
         <Route path="/uses/arbitrage" element={<UsesArbitrage />} />
+        <Route path="/uses/price" element={<UsesPrice />} />
         <Route path="/uses/shop-check" element={<UsesShopCheck />} />
         <Route
           path="/social"

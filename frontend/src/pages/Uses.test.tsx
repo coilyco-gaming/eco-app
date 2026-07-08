@@ -14,7 +14,7 @@ function renderUses() {
 afterEach(cleanup)
 
 describe("Uses hub", () => {
-  it("lists the four demand-side pages as live, linked cards", () => {
+  it("lists the live, linked use-case cards", () => {
     renderUses()
     expect(screen.getByTestId("use-demand").closest("a")).toHaveAttribute("href", "/uses/demand")
     expect(screen.getByTestId("use-buy-sell").closest("a")).toHaveAttribute(
@@ -25,6 +25,7 @@ describe("Uses hub", () => {
       "href",
       "/uses/arbitrage",
     )
+    expect(screen.getByTestId("use-price").closest("a")).toHaveAttribute("href", "/uses/price")
     expect(screen.getByTestId("use-shop-check").closest("a")).toHaveAttribute(
       "href",
       "/uses/shop-check",
@@ -34,7 +35,7 @@ describe("Uses hub", () => {
   it("shows the recipe-dependent use cases as muted, unlinked coming-soon cards", () => {
     renderUses()
     const soon = screen.getAllByTestId("use-soon")
-    expect(soon.length).toBeGreaterThan(0)
+    expect(soon).toHaveLength(2)
     // Coming-soon cards are static divs, not links.
     soon.forEach((card) => expect(card.closest("a")).toBeNull())
   })

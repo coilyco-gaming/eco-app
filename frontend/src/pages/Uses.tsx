@@ -39,6 +39,12 @@ const LIVE: UseCard[] = [
     blurb: "Cross-store spreads: buy at one shop, sell at another, ranked by the opportunity.",
   },
   {
+    to: "/uses/price",
+    testid: "use-price",
+    title: "How should I price X?",
+    blurb: "Compare the market band, shelf comparison, and craft cost before you post an ask.",
+  },
+  {
     to: "/uses/shop-check",
     testid: "use-shop-check",
     title: "Is my shop priced right?",
@@ -53,10 +59,6 @@ const SOON: Array<{ title: string; blurb: string }> = [
   {
     title: "What's X made from / used in",
     blurb: "The recipe tree around an item — ingredients up, products down.",
-  },
-  {
-    title: "How to price X",
-    blurb: "Cost to make versus what it sells for — the margin on a craft.",
   },
   {
     title: "Value per profession",
