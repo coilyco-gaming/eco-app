@@ -78,22 +78,284 @@ const PROGRESSION = {
   warnings: [],
 }
 
+const VALUE_RECIPES = {
+  fetchedAtISO: "2026-07-07T13:00:00+00:00",
+  source: "test",
+  version: 1,
+  counts: { recipes: 4, skills: 2, tags: 0, products: 4, stations: 2 },
+  recipes: [
+    {
+      name: "PlankRecipe",
+      displayName: "Plank",
+      product: { item: "PlankItem", displayName: "Plank", quantity: 1, isTag: false },
+      ingredients: [],
+      byproducts: [],
+      station: "WorkbenchItem",
+      stationDisplayName: "Workbench",
+      skill: { name: "CarpentrySkill", level: 1 },
+      laborCost: 0,
+      craftMinutes: 0,
+      tableTierRequired: null,
+      variants: [],
+      family: "Plank",
+      isDefault: true,
+      isBlueprint: false,
+      cost: { perUnitCost: 2, complete: true },
+    },
+    {
+      name: "BeamRecipe",
+      displayName: "Beam",
+      product: { item: "BeamItem", displayName: "Beam", quantity: 1, isTag: false },
+      ingredients: [],
+      byproducts: [],
+      station: "WorkbenchItem",
+      stationDisplayName: "Workbench",
+      skill: { name: "CarpentrySkill", level: 1 },
+      laborCost: 0,
+      craftMinutes: 0,
+      tableTierRequired: null,
+      variants: [],
+      family: "Beam",
+      isDefault: true,
+      isBlueprint: false,
+      cost: { perUnitCost: 3, complete: true },
+    },
+    {
+      name: "NeedleRecipe",
+      displayName: "Needle",
+      product: { item: "NeedleItem", displayName: "Needle", quantity: 1, isTag: false },
+      ingredients: [],
+      byproducts: [],
+      station: "WorkbenchItem",
+      stationDisplayName: "Workbench",
+      skill: { name: "CarpentrySkill", level: 1 },
+      laborCost: 0,
+      craftMinutes: 0,
+      tableTierRequired: null,
+      variants: [],
+      family: "Needle",
+      isDefault: true,
+      isBlueprint: false,
+      cost: { perUnitCost: 1, complete: true },
+    },
+    {
+      name: "BrickRecipe",
+      displayName: "Brick",
+      product: { item: "BrickItem", displayName: "Brick", quantity: 1, isTag: false },
+      ingredients: [],
+      byproducts: [],
+      station: "KilnItem",
+      stationDisplayName: "Kiln",
+      skill: { name: "MasonrySkill", level: 1 },
+      laborCost: 0,
+      craftMinutes: 0,
+      tableTierRequired: null,
+      variants: [],
+      family: "Brick",
+      isDefault: true,
+      isBlueprint: false,
+      cost: { perUnitCost: 12, complete: true },
+    },
+  ],
+  byProduct: {
+    PlankItem: ["PlankRecipe"],
+    BeamItem: ["BeamRecipe"],
+    NeedleItem: ["NeedleRecipe"],
+    BrickItem: ["BrickRecipe"],
+  },
+  bySkill: {
+    CarpentrySkill: ["PlankRecipe", "BeamRecipe", "NeedleRecipe"],
+    MasonrySkill: ["BrickRecipe"],
+  },
+  byStation: { WorkbenchItem: ["PlankRecipe", "BeamRecipe", "NeedleRecipe"], KilnItem: ["BrickRecipe"] },
+  skills: [
+    { name: "CarpentrySkill", displayName: "Carpentry", maxLevel: 7 },
+    { name: "MasonrySkill", displayName: "Masonry", maxLevel: 7 },
+  ],
+  tags: {},
+  warnings: [],
+}
+
+const VALUE_LOGISTICS = {
+  view: "logistics",
+  fetchedAtISO: "2026-07-07T13:00:00+00:00",
+  sourceBaseUrl: "http://x:3001",
+  live: true,
+  totalOffers: 0,
+  totalStores: 0,
+  cheapest: [],
+  resale: [],
+  arbitrage: [],
+  supplyGaps: [
+    {
+      item: "PlankItem",
+      itemPretty: "Plank",
+      currency: "Credit",
+      reason: "no_supply",
+      sellerCount: 0,
+      buyerCount: 2,
+      demandQty: 20,
+      supplyQty: 0,
+      buyPrice: 6,
+      cheapestSell: null,
+      median: 6,
+      overMedianPct: null,
+      buyers: [],
+    },
+    {
+      item: "BeamItem",
+      itemPretty: "Beam",
+      currency: "Credit",
+      reason: "thin_supply",
+      sellerCount: 1,
+      buyerCount: 1,
+      demandQty: 5,
+      supplyQty: 1,
+      buyPrice: 5,
+      cheapestSell: 4,
+      median: 5,
+      overMedianPct: null,
+      buyers: [],
+    },
+    {
+      item: "BrickItem",
+      itemPretty: "Brick",
+      currency: "Credit",
+      reason: "thin_supply",
+      sellerCount: 1,
+      buyerCount: 1,
+      demandQty: 4,
+      supplyQty: 1,
+      buyPrice: 20,
+      cheapestSell: 14,
+      median: 20,
+      overMedianPct: null,
+      buyers: [],
+    },
+    {
+      item: "NeedleItem",
+      itemPretty: "Needle",
+      currency: "Credit",
+      reason: "no_supply",
+      sellerCount: 0,
+      buyerCount: 10,
+      demandQty: 100,
+      supplyQty: 0,
+      buyPrice: 8,
+      cheapestSell: null,
+      median: 8,
+      overMedianPct: null,
+      buyers: [],
+    },
+  ],
+  warnings: [],
+}
+
+const VALUE_MARKET = {
+  view: "market",
+  fetchedAtISO: "2026-07-07T13:00:00+00:00",
+  sourceBaseUrl: "http://x:3001",
+  totalTrades: 10,
+  markets: [
+    {
+      item: "PlankItem",
+      itemPretty: "Plank",
+      currency: "Credit",
+      buckets: [],
+      medianPrice: 6,
+      latestPrice: 6,
+      latestDay: 1,
+      trend: "flat",
+      trendDeltaPct: 0,
+      shortMedian: 6,
+      longMedian: 6,
+      totalVolume: 100,
+      totalTrades: 10,
+    },
+    {
+      item: "BeamItem",
+      itemPretty: "Beam",
+      currency: "Credit",
+      buckets: [],
+      medianPrice: 5,
+      latestPrice: 5,
+      latestDay: 1,
+      trend: "flat",
+      trendDeltaPct: 0,
+      shortMedian: 5,
+      longMedian: 5,
+      totalVolume: 100,
+      totalTrades: 10,
+    },
+    {
+      item: "BrickItem",
+      itemPretty: "Brick",
+      currency: "Credit",
+      buckets: [],
+      medianPrice: 20,
+      latestPrice: 20,
+      latestDay: 1,
+      trend: "flat",
+      trendDeltaPct: 0,
+      shortMedian: 20,
+      longMedian: 20,
+      totalVolume: 100,
+      totalTrades: 10,
+    },
+    {
+      item: "NeedleItem",
+      itemPretty: "Needle",
+      currency: "Credit",
+      buckets: [],
+      medianPrice: 8,
+      latestPrice: 8,
+      latestDay: 1,
+      trend: "flat",
+      trendDeltaPct: 0,
+      shortMedian: 8,
+      longMedian: 8,
+      totalVolume: 100,
+      totalTrades: 10,
+    },
+  ],
+  warnings: [],
+}
+
+const VALUE_TRADES = {
+  fetchedAtISO: "2026-07-07T13:00:00+00:00",
+  sourceBaseUrl: "http://x:3001",
+  totalTrades: 10,
+  perTypeCounts: {},
+  trades: [],
+  totalCurrencyVolume: 10,
+  byItem: [
+    ["PlankItem", 5, 500],
+    ["BeamItem", 4, 120],
+    ["BrickItem", 3, 150],
+    ["NeedleItem", 1, 20],
+  ],
+  byCurrency: [["Credit", 10]],
+  topBuyers: [],
+  topSellers: [],
+  priceSeries: {},
+  warnings: [],
+}
+
 function stubJobsFetch() {
   vi.stubGlobal(
     "fetch",
     vi.fn((input: RequestInfo | URL) => {
       const url = String(input)
-      const body = url.endsWith("/meta")
-        ? META
-        : url.endsWith("/professions")
-          ? PROFESSIONS
-          : url.endsWith("/specialties")
-            ? SPECIALTIES
-            : url.endsWith("/players")
-              ? PLAYERS
-              : url.endsWith("/preview/progression.json")
-                ? PROGRESSION
-                : null
+      let body: unknown = null
+      if (url.endsWith("/meta")) body = META
+      else if (url.endsWith("/professions")) body = PROFESSIONS
+      else if (url.endsWith("/specialties")) body = SPECIALTIES
+      else if (url.endsWith("/players")) body = PLAYERS
+      else if (url.endsWith("/preview/progression.json")) body = PROGRESSION
+      else if (url.includes("/preview/recipes.json?cost=1")) body = VALUE_RECIPES
+      else if (url.endsWith("/preview/logistics.json")) body = VALUE_LOGISTICS
+      else if (url.endsWith("/preview/market.json")) body = VALUE_MARKET
+      else if (url.endsWith("/preview/get_eco_trades.json")) body = VALUE_TRADES
       if (body === null) return Promise.reject(new Error(`unexpected fetch: ${url}`))
       return Promise.resolve(
         new Response(JSON.stringify(body), {
@@ -130,6 +392,27 @@ describe("Jobs", () => {
     expect(screen.getAllByText("Basic Carpentry").length).toBeGreaterThan(0)
     expect(screen.getAllByText("ekans").length).toBeGreaterThan(0)
     expect(screen.getByTestId("mock-banner")).toBeInTheDocument()
+  })
+
+  it("ranks liquid supply-gap crafts per profession with severity callouts", async () => {
+    stubJobsFetch()
+    renderJobs()
+
+    await waitFor(() => {
+      expect(screen.getByTestId("jobs-value-boards")).toBeInTheDocument()
+    })
+    const valueBoards = screen.getAllByTestId("value-board")
+    expect(valueBoards).toHaveLength(2)
+    expect(valueBoards[0]).toHaveTextContent("Carpentry")
+    expect(valueBoards[1]).toHaveTextContent("Masonry")
+    const carpentryRows = valueBoards[0].querySelectorAll('[data-testid="rank-row"]')
+    expect(carpentryRows).toHaveLength(2)
+    expect(carpentryRows[0]).toHaveTextContent("Plank")
+    expect(carpentryRows[1]).toHaveTextContent("Beam")
+    expect(valueBoards[0].querySelector('[data-testid="value-tag"]')).toHaveTextContent(
+      "no supply",
+    )
+    expect(valueBoards[0]).not.toHaveTextContent("Needle")
   })
 
   it("expands a profession to list its players", async () => {

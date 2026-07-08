@@ -9,7 +9,7 @@ Three pieces: a C# Eco mod exposing a read-only HTTP endpoint of every player's 
 ## JSON API (FastAPI)
 
 - **Mounted at `/jobs/api` of the fused service** - public paths `/jobs/api/v1/professions`, `/v1/players`, `/v1/specialties` (unchanged from the Jinja era), plus `/v1/meta` reporting the mock-data flag the SPA's banner reads.
-- **Browser UI** - the SPA route `/jobs` (`frontend/src/pages/Jobs.tsx`): stacked Professions (client-side expanders), Specialties, Players sections, all from this API. Old drill-down URLs (`/jobs/professions` etc.) land on the same page via the SPA catch-all.
+- **Browser UI** - the SPA route `/jobs` (`frontend/src/pages/Jobs.tsx`): stacked Professions (client-side expanders), Specialties, Players sections, plus the recipe-driven "Most valuable to craft" board grouped by profession and ranked by true margin × supply-gap demand. Old drill-down URLs (`/jobs/professions` etc.) land on the same page via the SPA catch-all.
 - **Iframe embedding** - CSP `frame-ancestors` allows `coilysiren.me` to embed; the header now ships site-wide from `eco_mcp_app.http_app` (`FrameAncestorsCSP`).
 - **Mock-data fallback** - `UPSTREAM_URL` unset = canned data from `mock_data.py`, flagged via `/v1/meta`.
 - **Upstream mod fetch** - `UPSTREAM_URL` set = `upstream.py` calls `/api/v1/skills` with `UPSTREAM_API_KEY` as `X-API-Key`, 5s timeout, no fallback on a dead endpoint.
