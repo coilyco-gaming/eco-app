@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react"
+import type { ReactNode } from "react"
 import Layout from "../components/Layout"
 import { useJobsData } from "../hooks/useJobsData"
+import { fetchLogistics, type GapReason, type LogisticsBoard } from "../lib/logisticsApi"
+import { fetchMarket, type MarketIntelligence } from "../lib/marketApi"
+import { formatCount, prettifyEcoName } from "../lib/format"
+import { fetchRecipeIndexWithCost, type RecipeIndexWithCost } from "../lib/recipesApi"
+import { fetchTradesLedger, type TradesLedger } from "../lib/tradesApi"
 import type { PlayerRow, ProfessionStat, SpecialtyStat } from "../lib/jobsApi"
 import {
   fetchProgressionHistory,
@@ -9,7 +15,6 @@ import {
   type CitizenTrajectory,
   type ProgressionHistory,
 } from "../lib/progressionApi"
-import { formatCount, prettifyEcoName } from "../lib/format"
 
 // Survivalist and Self Improvement are the universal starter skills — every
 // citizen has them, so they carry no signal and only clutter the roster
@@ -19,6 +24,18 @@ import { formatCount, prettifyEcoName } from "../lib/format"
 // both the jobs API's display names ("Self Improvement") and the progression
 // endpoint's raw Eco ids ("SelfImprovement", "SurvivalistSkill").
 const UNIVERSAL_SKILLS = new Set(["self improvement", "survivalist"])
+const VALUE_ROWS = 5
+const LIQUIDITY_FLOOR = 100
+
+const GAP: Record<GapReason, { glyph: string; label: string; color: string }> = {
+  no_supply: { glyph: "✖", label: "no supply", color: "var(--meteor)" },
+  thin_supply: { glyph: "◐", label: "thin supply", color: "var(--meteor-deep)" },
+  overpriced: { glyph: "▲", label: "over-priced", color: "var(--ink-faint)" },
+}
+
+function fmtPrice(n: number): string {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n)
+}
 
 function isUniversalSkill(name: string): boolean {
   const norm = prettifyEcoName(name)
@@ -27,6 +44,26 @@ function isUniversalSkill(name: string): boolean {
     .replace(/\s+/g, " ")
     .trim()
   return UNIVERSAL_SKILLS.has(norm)
+}
+
+interface RankRow {
+  key: string
+  name: string
+  count: number
+  note?: ReactNode
+}
+
+interface ValueRow {
+  key: string
+  name: string
+  score: number
+  note: ReactNode
+}
+
+interface ProfessionValueBoard {
+  key: string
+  label: string
+  rows: ValueRow[]
 }
 
 function ProfessionCard({ stat }: { stat: ProfessionStat }) {
@@ -218,29 +255,50 @@ function RankList({
   rows,
   emptyNote,
   pretty = true,
+  formatValue = formatCount,
 }: {
-  rows: Array<[string, number]>
+  rows: RankRow[]
   emptyNote: string
   pretty?: boolean
+  formatValue?: (n: number) => string
 }) {
   const top = rows.slice(0, 15)
-  const max = Math.max(...top.map(([, c]) => c), 1)
+  const max = Math.max(...top.map((row) => row.count), 1)
   if (top.length === 0) {
     return <p className="empty-note">{emptyNote}</p>
   }
   return (
     <ul className="rank-rows">
-      {top.map(([name, count]) => (
-        <li key={name}>
+      {top.map((row) => (
+        <li key={row.key}>
           <div className="rank-row" data-testid="rank-row">
-            <span className="rank-name">{pretty ? prettifyEcoName(name) : name}</span>
-            <span className="rank-count">{formatCount(count)}</span>
-            <span className="rank-bar" style={{ width: `${(count / max) * 100}%` }} />
+            <span className="rank-name">{pretty ? prettifyEcoName(row.name) : row.name}</span>
+            <span className="rank-count">{formatValue(row.count)}</span>
+            <span className="rank-bar" style={{ width: `${(row.count / max) * 100}%` }} />
           </div>
+          {row.note && <p className="section-sub">{row.note}</p>}
         </li>
       ))}
     </ul>
   )
+}
+
+function ValueTag({ reason }: { reason: GapReason }) {
+  const tag = GAP[reason]
+  return (
+    <span className="gap-tag" style={{ color: tag.color }} data-testid="value-tag">
+      <span aria-hidden="true">{tag.glyph}</span> {tag.label}
+    </span>
+  )
+}
+
+function makeRankRow(
+  key: string,
+  name: string,
+  count: number,
+  note?: ReactNode,
+): RankRow {
+  return { key, name, count, note }
 }
 
 export default function Jobs() {
@@ -250,6 +308,11 @@ export default function Jobs() {
   // a best-effort enrichment — a failure leaves the current-state tables exactly
   // as they were before this surface existed, so we swallow errors.
   const [progression, setProgression] = useState<ProgressionHistory | null>(null)
+  const [recipeIndex, setRecipeIndex] = useState<RecipeIndexWithCost | null>(null)
+  const [logistics, setLogistics] = useState<LogisticsBoard | null>(null)
+  const [market, setMarket] = useState<MarketIntelligence | null>(null)
+  const [trades, setTrades] = useState<TradesLedger | null>(null)
+  const [valueLoaded, setValueLoaded] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -258,6 +321,50 @@ export default function Jobs() {
       .catch(() => {
         /* non-fatal: the trajectory layer just doesn't render */
       })
+    return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    const { signal } = controller
+    const requests = [
+      fetchRecipeIndexWithCost(signal).then(
+        (value) => {
+          if (!signal.aborted) setRecipeIndex(value)
+        },
+        () => {
+          if (!signal.aborted) setRecipeIndex(null)
+        },
+      ),
+      fetchLogistics(signal).then(
+        (value) => {
+          if (!signal.aborted) setLogistics(value)
+        },
+        () => {
+          if (!signal.aborted) setLogistics(null)
+        },
+      ),
+      fetchMarket(signal).then(
+        (value) => {
+          if (!signal.aborted) setMarket(value)
+        },
+        () => {
+          if (!signal.aborted) setMarket(null)
+        },
+      ),
+      fetchTradesLedger(signal).then(
+        (value) => {
+          if (!signal.aborted) setTrades(value)
+        },
+        () => {
+          if (!signal.aborted) setTrades(null)
+        },
+      ),
+    ]
+    Promise.all(requests).finally(() => {
+      if (!signal.aborted) setValueLoaded(true)
+    })
+
     return () => controller.abort()
   }, [])
 
@@ -295,6 +402,64 @@ export default function Jobs() {
       })),
     [data],
   )
+
+  const valueBoards = useMemo<ProfessionValueBoard[] | null>(() => {
+    if (!recipeIndex || !logistics || !market || !trades) return null
+
+    const marketMedians = new Map(market.markets.map((m) => [m.item, m.medianPrice] as const))
+    const gaps = new Map(logistics.supplyGaps.map((g) => [g.item, g] as const))
+    const liquidity = new Map(trades.byItem.map(([item, , volume]) => [item, volume] as const))
+    const recipesByName = new Map(recipeIndex.recipes.map((r) => [r.name, r] as const))
+
+    const boards = recipeIndex.skills
+      .map((skill) => {
+        const bestByItem = new Map<string, ValueRow>()
+        for (const recipeName of recipeIndex.bySkill[skill.name] ?? []) {
+          const recipe = recipesByName.get(recipeName)
+          if (!recipe?.cost?.complete || recipe.cost.perUnitCost == null) continue
+          const item = recipe.product.item
+          const gap = gaps.get(item)
+          const median = marketMedians.get(item)
+          const traded = liquidity.get(item) ?? 0
+          if (!gap || median == null || traded < LIQUIDITY_FLOOR || gap.demandQty <= 0) continue
+          const margin = median - recipe.cost.perUnitCost
+          if (margin <= 0) continue
+          const boost = gap.reason === "no_supply" ? 1.5 : gap.reason === "thin_supply" ? 1.25 : 1.0
+          const score = margin * gap.demandQty * boost
+          const note = (
+            <>
+              <ValueTag reason={gap.reason} />{" "}
+              <span>
+                margin {fmtPrice(margin)} · {formatCount(gap.demandQty)} wanted ·{" "}
+                {formatCount(traded)} traded volume
+              </span>
+            </>
+          )
+          const current = bestByItem.get(item)
+          if (!current || score > current.score) {
+            bestByItem.set(item, {
+              key: recipe.name,
+              name: recipe.product.displayName,
+              score,
+              note,
+            })
+          }
+        }
+
+        const rows = [...bestByItem.values()].sort((a, b) => b.score - a.score).slice(0, VALUE_ROWS)
+        return rows.length > 0
+          ? {
+              key: skill.name,
+              label: skill.displayName || prettifyEcoName(skill.name),
+              rows,
+            }
+          : null
+      })
+      .filter((board): board is ProfessionValueBoard => board !== null)
+      .sort((a, b) => (b.rows[0]?.score ?? 0) - (a.rows[0]?.score ?? 0) || a.label.localeCompare(b.label))
+
+    return boards
+  }, [recipeIndex, logistics, market, trades])
 
   // Same exclusion for the progression rank lists (name-keyed leaderboards).
   const dropUniversal = (rows: Array<[string, number]>) =>
@@ -341,14 +506,16 @@ export default function Jobs() {
             <div>
               <h3 className="subsection-title">Most-gained specialties</h3>
               <RankList
-                rows={dropUniversal(progression!.bySpecialty)}
+                rows={dropUniversal(progression!.bySpecialty).map(([name, count]) =>
+                  makeRankRow(name, name, count),
+                )}
                 emptyNote="No specialties gained yet."
               />
             </div>
             <div>
               <h3 className="subsection-title">Busiest levelers</h3>
               <RankList
-                rows={progression!.topLevelers}
+                rows={progression!.topLevelers.map(([name, count]) => makeRankRow(name, name, count))}
                 emptyNote="No level-ups recorded yet."
                 pretty={false}
               />
@@ -359,7 +526,9 @@ export default function Jobs() {
             <>
               <h3 className="subsection-title">Classes completed</h3>
               <RankList
-                rows={dropUniversal(progression!.classCompletions)}
+                rows={dropUniversal(progression!.classCompletions).map(([name, count]) =>
+                  makeRankRow(name, name, count),
+                )}
                 emptyNote="No classes completed yet."
               />
             </>
@@ -389,6 +558,40 @@ export default function Jobs() {
 
       {data && (
         <>
+          <section data-testid="jobs-value">
+            <h2 className="section-title">
+              Most valuable to craft{" "}
+              <span className="section-sub">(per profession, true margin × demand)</span>
+            </h2>
+            {!valueLoaded ? (
+              <p className="empty-note" data-testid="jobs-value-loading">
+                tallying craft margins…
+              </p>
+            ) : valueBoards === null ? (
+              <p className="empty-note" data-testid="jobs-value-empty">
+                Need recipes, market medians, logistics gaps, and trade volume to rank crafts.
+              </p>
+            ) : valueBoards.length === 0 ? (
+              <p className="empty-note" data-testid="jobs-value-empty">
+                No liquid supply-gap crafts yet.
+              </p>
+            ) : (
+              <div className="value-boards" data-testid="jobs-value-boards">
+                {valueBoards.map((board) => (
+                  <section className="value-board" key={board.key} data-testid="value-board">
+                    <h3 className="subsection-title">{board.label}</h3>
+                    <RankList
+                      rows={board.rows}
+                      emptyNote={`No liquid supply-gap crafts for ${board.label} yet.`}
+                      pretty={false}
+                      formatValue={fmtPrice}
+                    />
+                  </section>
+                ))}
+              </div>
+            )}
+          </section>
+
           <section>
             <h2 className="section-title">Professions</h2>
             <ul className="cards">

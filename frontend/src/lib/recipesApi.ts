@@ -2,6 +2,8 @@
 // `/preview/recipes.json` — the `RecipeIndex` DTO from `eco_mcp_app/recipes.py`
 // (the vendored Eco Gnome recipe graph, eco-app#100).
 //
+import { fetchJsonOrNull } from "./api"
+
 // Unlike the item / trade planes this is ONE static bundled payload — no
 // `?server=`, no per-id endpoint. So both the list (/recipes) and the detail
 // (/recipe?id=) fetch the same URL, the browser caches it, and the detail page
@@ -77,10 +79,56 @@ export interface RecipeIndex {
   warnings: string[]
 }
 
-export async function fetchRecipeIndex(signal?: AbortSignal): Promise<RecipeIndex> {
-  const resp = await fetch("/preview/recipes.json", { signal })
+export interface RecipeCostIngredient {
+  item: string
+  displayName: string
+  quantity: number
+  isTag: boolean
+  unitCost: number | null
+  source: string
+  subtotal: number | null
+}
+
+export interface RecipeCost {
+  recipe: string
+  product: string
+  yield: number
+  perUnitCost: number | null
+  totalCost: number
+  ingredientCost: number
+  laborCost: number
+  timeCost: number
+  laborCalories: number
+  craftMinutes: number
+  complete: boolean
+  unpricedInputs: string[]
+  ingredients: RecipeCostIngredient[]
+}
+
+export interface RecipeIndexWithCost extends RecipeIndex {
+  costParams?: {
+    caloriePrice: number
+    minutePrice: number
+  }
+  recipes: Array<Recipe & { cost?: RecipeCost }>
+}
+
+async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const resp = await fetch(path, { signal })
   if (!resp.ok) {
     throw new Error(`recipe index fetch failed: HTTP ${resp.status}`)
   }
-  return (await resp.json()) as RecipeIndex
+  return (await resp.json()) as T
+}
+
+export async function fetchRecipeIndex(signal?: AbortSignal): Promise<RecipeIndex> {
+  return await getJson<RecipeIndex>("/preview/recipes.json", signal)
+}
+
+export async function fetchRecipeIndexWithCost(
+  signal?: AbortSignal,
+): Promise<RecipeIndexWithCost | null> {
+  const body = await fetchJsonOrNull<RecipeIndexWithCost>("/preview/recipes.json?cost=1", signal)
+  if (!body || !Array.isArray(body.recipes)) return null
+  return body
 }
