@@ -60,6 +60,8 @@ interface ValueRow {
   note: ReactNode
 }
 
+type RankedRow = RankRow | ValueRow
+
 interface ProfessionValueBoard {
   key: string
   label: string
@@ -257,13 +259,14 @@ function RankList({
   pretty = true,
   formatValue = formatCount,
 }: {
-  rows: RankRow[]
+  rows: RankedRow[]
   emptyNote: string
   pretty?: boolean
   formatValue?: (n: number) => string
 }) {
   const top = rows.slice(0, 15)
-  const max = Math.max(...top.map((row) => row.count), 1)
+  const valueFor = (row: RankedRow) => ("count" in row ? row.count : row.score)
+  const max = Math.max(...top.map(valueFor), 1)
   if (top.length === 0) {
     return <p className="empty-note">{emptyNote}</p>
   }
@@ -273,8 +276,8 @@ function RankList({
         <li key={row.key}>
           <div className="rank-row" data-testid="rank-row">
             <span className="rank-name">{pretty ? prettifyEcoName(row.name) : row.name}</span>
-            <span className="rank-count">{formatValue(row.count)}</span>
-            <span className="rank-bar" style={{ width: `${(row.count / max) * 100}%` }} />
+            <span className="rank-count">{formatValue(valueFor(row))}</span>
+            <span className="rank-bar" style={{ width: `${(valueFor(row) / max) * 100}%` }} />
           </div>
           {row.note && <p className="section-sub">{row.note}</p>}
         </li>
