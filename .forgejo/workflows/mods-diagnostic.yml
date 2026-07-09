@@ -1,0 +1,32 @@
+name: mods-diagnostic
+
+# Manual diagnostics for the C# Eco mods and their NuGet restore/build/test
+# path. This workflow is intentionally workflow_dispatch only, so a red C# path
+# never makes normal push CI fail.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  mods:
+    runs-on: docker
+    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.195.0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain + NuGet egress preflight
+        run: |
+          set -eu
+          dotnet --version
+          dotnet --list-sdks
+          if curl -fsS --max-time 20 -o /dev/null \
+            -w 'api.nuget.org index: HTTP %{http_code} in %{time_total}s\n' \
+            https://api.nuget.org/v3/index.json; then
+            :
+          else
+            echo "FAIL: api.nuget.org is unreachable from this runner." >&2
+            exit 1
+          fi
+      - name: Compile the four C# mods
+        run: ward exec build-mods
+      - name: Run replay mod unit tests
+        run: ward exec test-mod-replay
