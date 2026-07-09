@@ -52,72 +52,14 @@ jobs:
       - run: pnpm build
         working-directory: frontend
 
-  mods:
-    runs-on: docker
-    # Compile the four C# Eco mods (mods/{jobs,replay,telemetry,stores}) as a
-    # standalone gate. The mods are built by the build-mod-* ward verbs and
-    # shipped to the game server OUT OF BAND - they are NOT in the eco-app image
-    # (SPA + MCP + jobs) - so a compile error otherwise reaches the live server
-    # caught by no gate. This job is that gate/signal for the out-of-band mod
-    # shipping step. It is deliberately DECOUPLED from `publish`'s needs
-    # (eco-app#68): a mod that fails to compile has zero bearing on whether the
-    # mod-less app image is publishable, so it must never block the publish.
-    # #60 wired this gate into publish's needs by mistake and, being red on
-    # every run, froze prod from #60 until #68 dropped it here.
-    #
-    # Runs inside the SAME pinned aos dev-base image as the `test` job, through
-    # the same `ward exec` verb an agent runs (CI parity, agentic-os#328).
-    # dev-base ships the pinned .NET 10 SDK + full ICU (agentic-os#329), so the
-    # image provides `dotnet` on PATH and `ward exec build-mods` (make -> dotnet
-    # build) just works - no self-installed SDK, and no
-    # DOTNET_SYSTEM_GLOBALIZATION_INVARIANT (the image runs full ICU, not
-    # invariant mode). This replaced the old node:20-bookworm self-install path,
-    # which failed on every run since #60 (eco-app#68). Bump this pin in lockstep
-    # with the `test` job's.
-    #
-    # The old retry wrapper masked deterministic failures and turned this gate
-    # into a 20-40 minute sink. The build path now restores and builds each mod
-    # once, with per-project timing, so a broken phase is obvious and a dead
-    # NuGet path fails fast instead of burning the runner.
-    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.195.0
-    steps:
-      - uses: actions/checkout@v4
-      # Surface the toolchain and NuGet reachability up front. If api.nuget.org
-      # is dead from this runner, fail here with a short diagnostic instead of
-      # letting the restore churn.
-      - name: Toolchain + NuGet egress preflight
-        run: |
-          set -eu
-          dotnet --version
-          dotnet --list-sdks
-          if curl -fsS --max-time 20 -o /dev/null \
-            -w 'api.nuget.org index: HTTP %{http_code} in %{time_total}s\n' \
-            https://api.nuget.org/v3/index.json; then
-            :
-          else
-            echo "FAIL: api.nuget.org is unreachable from this runner. The mods gate is not retrying a dead feed." >&2
-            exit 1
-          fi
-      # Compile all four mods once. The helper script restores and then builds
-      # each project separately, so the log shows the exact project and phase
-      # that failed.
-      - name: Compile the four C# mods (build-mods gate)
-        run: ward exec build-mods
-      # Run the replay mod's C# unit tests once. They still gate a real
-      # behavioural regression, but they now fail in the same phase-by-phase way
-      # as the compile gate instead of hiding inside a retry loop.
-      - name: Run replay mod unit tests (test-mod-replay gate)
-        run: ward exec test-mod-replay
-
   publish:
     runs-on: docker
     container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.195.0
-    # NOT `needs: mods`: the app image is SPA + MCP + jobs (Python/Node) and
-    # contains no C# mods, so mod compilation has no bearing on whether it is
-    # publishable. The image is fully validated by `test` (pytest/ruff/mypy/
-    # smoke) and `frontend` (lint/test/build). The `mods` job stays a separate
-    # required signal for the out-of-band mod-shipping step, never a publish
-    # gate. See eco-app#68 (which unfroze prod by dropping mods from here).
+    # The app image is SPA + MCP + jobs (Python/Node) and contains no C# mods,
+    # so mod compilation has no bearing on whether it is publishable. The image
+    # is fully validated by `test` (pytest/ruff/mypy/smoke) and `frontend`
+    # (lint/test/build). The C# mods checks now live in a separate manual
+    # diagnostic workflow and never gate publish.
     needs: [test, frontend]
     steps:
       - uses: actions/checkout@v4
