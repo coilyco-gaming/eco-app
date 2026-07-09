@@ -83,7 +83,8 @@ install-desktop: ## Wire eco-mcp-app into Claude Desktop's claude_desktop_config
 build-docker: ## Build the eco-app docker image locally.
 	docker build --progress plain -t $(name):$(git-hash) -t $(name):latest .
 
-build-mods: build-mod-jobs build-mod-replay build-mod-telemetry build-mod-stores ## Build every Eco mod DLL (jobs, replay, telemetry, stores) - the CI compile gate.
+build-mods: ## Restore and build every Eco mod DLL (jobs, replay, telemetry, stores) with per-project timings.
+	sh scripts/mods-gate.sh build-mods
 
 build-mod-jobs: ## Build the jobs-tracker Eco mod DLL (mods/jobs/src).
 	cd mods/jobs && dotnet build src/EcoJobsTracker.csproj -c Release
@@ -91,8 +92,8 @@ build-mod-jobs: ## Build the jobs-tracker Eco mod DLL (mods/jobs/src).
 build-mod-replay: ## Build the replay Eco mod DLL (mods/replay/src).
 	cd mods/replay/src && dotnet build EcoReplay.csproj -c Release
 
-test-mod-replay: ## Run the replay mod C# unit tests (mods/replay/tests).
-	cd mods/replay/tests && dotnet test EcoReplay.Tests.csproj
+test-mod-replay: ## Restore and run the replay mod C# unit tests (mods/replay/tests) with per-phase timings.
+	sh scripts/mods-gate.sh test-mod-replay
 
 build-mod-telemetry: ## Build the telemetry Eco mod DLL (mods/telemetry).
 	cd mods/telemetry && dotnet build EcoTelemetry.csproj -c Release

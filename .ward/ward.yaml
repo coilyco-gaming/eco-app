@@ -56,7 +56,7 @@ commands:
     description: Build the eco-app docker image locally.
   build-mods:
     run: make build-mods
-    description: Build every Eco mod DLL (jobs, replay, telemetry, stores) - the CI compile gate.
+    description: Restore and build every Eco mod DLL (jobs, replay, telemetry, stores) with per-project timings.
   build-mod-jobs:
     run: make build-mod-jobs
     description: Build the jobs-tracker Eco mod DLL (mods/jobs/src).
@@ -65,7 +65,7 @@ commands:
     description: Build the replay Eco mod DLL (mods/replay/src).
   test-mod-replay:
     run: make test-mod-replay
-    description: Run the replay mod C# unit tests (mods/replay/tests).
+    description: Restore and run the replay mod C# unit tests (mods/replay/tests) with per-phase timings.
   build-mod-telemetry:
     run: make build-mod-telemetry
     description: Build the telemetry Eco mod DLL (mods/telemetry).

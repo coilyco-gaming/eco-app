@@ -75,93 +75,39 @@ jobs:
     # which failed on every run since #60 (eco-app#68). Bump this pin in lockstep
     # with the `test` job's.
     #
-    # WHY THE RETRY + NUGET_ENHANCED env (eco-app#69): #68 fixed the toolchain
-    # (baked SDK + full ICU, so the SDK-install and ICU suspects are gone) but
-    # the job still went red on run 58. The build itself is sound - `ward exec
-    # build-mods` compiles all four mods green in this dev-base image with the
-    # Eco.ReferenceAssemblies 1024 pin restoring cleanly - so the remaining
-    # failure is `dotnet restore` reaching api.nuget.org over the in-cluster
-    # runner's KNOWN-FLAKY external egress. That is the same documented trait
-    # that makes infra's CD runner pull helm off the Alpine CDN instead of
-    # get.helm.sh and fetch kubectl with `curl --retry` (see
-    # infrastructure/docs/cd-runner.md). The `test` job survives it because a
-    # flaky egress still lets pypi through often enough; the mods' ONLY external
-    # build dependency is the NuGet feed, so it is the job that trips. The fix
-    # is to make the restore patient: NUGET_ENHANCED_* raises NuGet's own
-    # in-process HTTP retry, and the outer loop re-runs the whole compile so a
-    # wholesale restore timeout is survived rather than fatal. There is no
-    # in-cluster NuGet mirror to repoint the feed at; if a fresh run still fails
-    # AND the preflight shows api.nuget.org unreachable, the egress is a hard
-    # block (not flaky) and the durable fix is an in-cluster NuGet proxy in
-    # infra, tracked separately - not something eco-app CI can paper over.
+    # The old retry wrapper masked deterministic failures and turned this gate
+    # into a 20-40 minute sink. The build path now restores and builds each mod
+    # once, with per-project timing, so a broken phase is obvious and a dead
+    # NuGet path fails fast instead of burning the runner.
     container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.195.0
-    env:
-      # Raise NuGet's built-in HTTP retry so a slow/flaky nuget.org fetch keeps
-      # trying in-process before the restore gives up. Stock defaults are 3
-      # tries / 1s delay; the runner's flaky egress needs more headroom.
-      NUGET_ENABLE_ENHANCED_HTTP_RETRY: "true"
-      NUGET_ENHANCED_MAX_NETWORK_TRY_COUNT: "6"
-      NUGET_ENHANCED_NETWORK_RETRY_DELAY_MILLISECONDS: "3000"
     steps:
       - uses: actions/checkout@v4
-      # Non-fatal preflight: surface the toolchain + NuGet-feed reachability up
-      # front so a future red run is diagnosable at a glance (toolchain vs
-      # egress) instead of buried in a restore stack trace deep in the loop.
+      # Surface the toolchain and NuGet reachability up front. If api.nuget.org
+      # is dead from this runner, fail here with a short diagnostic instead of
+      # letting the restore churn.
       - name: Toolchain + NuGet egress preflight
         run: |
+          set -eu
           dotnet --version
           dotnet --list-sdks
-          curl -fsS --max-time 20 -o /dev/null \
+          if curl -fsS --max-time 20 -o /dev/null \
             -w 'api.nuget.org index: HTTP %{http_code} in %{time_total}s\n' \
-            https://api.nuget.org/v3/index.json \
-            || echo "WARN: api.nuget.org unreachable from this runner - restore leans on the retry loop below"
-      # Compile all four mods, retried to ride out the runner's flaky external
-      # egress to the NuGet feed (see the job comment). Each attempt is a full
-      # `ward exec build-mods` (gate + restore + build); the NUGET_ENHANCED_*
-      # env keeps each attempt's restore patient, the loop keeps a wholesale
-      # timeout non-fatal. A genuine compile error still fails all 3 attempts
-      # deterministically, so the retry rides out flakiness without masking a
-      # truly-broken mod.
+            https://api.nuget.org/v3/index.json; then
+            :
+          else
+            echo "FAIL: api.nuget.org is unreachable from this runner. The mods gate is not retrying a dead feed." >&2
+            exit 1
+          fi
+      # Compile all four mods once. The helper script restores and then builds
+      # each project separately, so the log shows the exact project and phase
+      # that failed.
       - name: Compile the four C# mods (build-mods gate)
-        run: |
-          set -eu
-          for attempt in 1 2 3; do
-            echo "::group::build-mods attempt ${attempt}/3"
-            if ward exec build-mods; then
-              echo "::endgroup::"
-              echo "mods compiled green on attempt ${attempt}"
-              exit 0
-            fi
-            echo "::endgroup::"
-            echo "attempt ${attempt} failed; backing off before retry" >&2
-            sleep $((attempt * 15))
-          done
-          echo "build-mods failed after 3 attempts - check the preflight for egress vs toolchain" >&2
-          exit 1
-      # Run the replay mod's C# unit tests. The compile gate above only proves
-      # the mods *build*; it never exercises BodySerializer's bounded-snapshot
-      # logic, so a behavioural regression (issue #67: a summarized property
-      # serialized to `{}` instead of its name) failed silently outside CI. This
-      # step makes those tests a gated signal. It restores from NuGet like the
-      # compile (EcoReplay.Tests pulls Newtonsoft + the xunit stack), so it rides
-      # the SAME retry loop to stay green through the runner's flaky egress; a
-      # genuine test failure still fails all 3 attempts deterministically.
+        run: ward exec build-mods
+      # Run the replay mod's C# unit tests once. They still gate a real
+      # behavioural regression, but they now fail in the same phase-by-phase way
+      # as the compile gate instead of hiding inside a retry loop.
       - name: Run replay mod unit tests (test-mod-replay gate)
-        run: |
-          set -eu
-          for attempt in 1 2 3; do
-            echo "::group::test-mod-replay attempt ${attempt}/3"
-            if ward exec test-mod-replay; then
-              echo "::endgroup::"
-              echo "replay tests passed on attempt ${attempt}"
-              exit 0
-            fi
-            echo "::endgroup::"
-            echo "attempt ${attempt} failed; backing off before retry" >&2
-            sleep $((attempt * 15))
-          done
-          echo "test-mod-replay failed after 3 attempts - check the preflight for egress vs toolchain" >&2
-          exit 1
+        run: ward exec test-mod-replay
 
   publish:
     runs-on: docker
