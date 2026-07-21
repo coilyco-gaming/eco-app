@@ -56,9 +56,12 @@ _CITIZENS_JSON = [
 _CRAFT_CSV = (
     "ActionLocation,WorldObjectItem,Citizen,ItemUsed,"
     "OverrideHierarchyActionsToConsumer,Count,Time\n"
-    '"418,75,460","CampfireItem",129312,"CharredMushroomsItem",false,165.0,6519\n'
-    '"289,89,310","WorkbenchItem",130409,"AdobeItem",false,133.0,7118\n'
-    '"99,89,123","WorkbenchItem",129580,"AdobeItem",false,197.0,7197\n'
+    # Three per-event rows (Count == 1, one crafting iteration each) plus two
+    # server-side hourly rollups (Count > 1) whose item/station labels are one
+    # arbitrary merged event's values (eco-app#131).
+    '"418,75,460","CampfireItem",129312,"CharredMushroomsItem",false,1.0,6519\n'
+    '"289,89,310","WorkbenchItem",130409,"AdobeItem",false,1.0,7118\n'
+    '"99,89,123","WorkbenchItem",129580,"AdobeItem",false,1.0,7197\n'
     '"142,82,203","CampfireItem",4478,"BeetCampfireSaladItem",false,189.0,10798\n'
     '"417,89,531","ResearchTableItem",129558,"DendrologyResearchPaperBasicItem",false,13.0,10785\n'
 )
@@ -114,25 +117,35 @@ def test_aggregate_rows_folds_craft_csv() -> None:
     atlas = CraftingAtlas(fetched_at_iso="t", source_base_url="b")
     n = aggregate_rows("ItemCraftedAction", _rows(_CRAFT_CSV), atlas)
     assert n == 5
-    # Crafts fold into by_crafted, summing the real unit Count (eco-app#70).
+    # Per-event rows (Count == 1) fold into by_crafted as iterations; the two
+    # rollup rows are excluded from every item-attributed board (eco-app#131).
     by_crafted = dict(atlas.by_crafted)
-    # AdobeItem 133 + 197 = 330
-    assert by_crafted["AdobeItem"] == pytest.approx(330.0)
+    # AdobeItem: two per-event rows.
+    assert by_crafted["AdobeItem"] == pytest.approx(2.0)
+    assert "BeetCampfireSaladItem" not in by_crafted
+    assert "DendrologyResearchPaperBasicItem" not in by_crafted
+    assert atlas.rollup_events == 2
+    assert atlas.rollup_iterations == pytest.approx(202.0)
     # No gather rows here, so the gathered board stays empty.
     assert atlas.by_gathered == []
     by_station = dict(atlas.by_station)
-    assert by_station["CampfireItem"] == 2
+    assert by_station["CampfireItem"] == 1
     assert by_station["WorkbenchItem"] == 2
+    assert "ResearchTableItem" not in by_station
     # aggregate_rows keys by_citizen by the raw numeric id; name resolution
-    # happens later in fetch_atlas (eco-app#5). The value is a production *event*
-    # count now, not summed Count (eco-app#70) — each citizen has one craft here.
+    # happens later in fetch_atlas (eco-app#5). Crafts weigh by Count, which is
+    # 1 on per-event rows and the true merged-iteration total on rollups
+    # (eco-app#131), so citizen credit survives server-side aggregation.
     by_citizen = dict(atlas.by_citizen)
     assert by_citizen["129312"] == 1
     assert by_citizen["129580"] == 1
-    # Flow edges exist for CampfireItem→CharredMushroomsItem etc.
+    assert by_citizen["4478"] == 189
+    assert by_citizen["129558"] == 13
+    # Flow edges exist for the per-event rows only.
     flow_keys = {(s, t) for s, t, _ in atlas.flows}
     assert ("CampfireItem", "CharredMushroomsItem") in flow_keys
     assert ("WorkbenchItem", "AdobeItem") in flow_keys
+    assert ("ResearchTableItem", "DendrologyResearchPaperBasicItem") not in flow_keys
 
 
 def test_corrected_index_absorbs_extra_tool_column() -> None:
@@ -199,15 +212,15 @@ def test_aggregate_rows_drops_position_and_numeric_keys() -> None:
     atlas = CraftingAtlas(fetched_at_iso="t", source_base_url="b")
     csv_text = (
         "WorldObjectItem,Citizen,ItemUsed,Count\n"
-        '"254,86,313",129312,"0.0",5\n'
-        "CampfireItem,129312,CharredMushroomsItem,2\n"
+        '"254,86,313",129312,"0.0",1\n'
+        "CampfireItem,129312,CharredMushroomsItem,1\n"
     )
     aggregate_rows("ItemCraftedAction", _rows(csv_text), atlas)
     by_crafted = dict(atlas.by_crafted)
     by_station = dict(atlas.by_station)
     assert "0.0" not in by_crafted
     assert "254,86,313" not in by_station
-    assert by_crafted["CharredMushroomsItem"] == pytest.approx(2.0)
+    assert by_crafted["CharredMushroomsItem"] == pytest.approx(1.0)
     assert by_station["CampfireItem"] == 1
 
 
@@ -258,10 +271,11 @@ async def test_fetch_atlas_merges_multiple_actions() -> None:
 
     atlas = await fetch_atlas(base_url=BASE, api_key="secret", cache_ttl_s=0)
     assert atlas.total_events == 5 + 2 + 2 + 0
-    # Crafts land on the crafted board with their unit Count; harvests/chops on
-    # the gathered board by event count (eco-app#70).
+    # Per-event crafts land on the crafted board as iterations; harvests/chops
+    # on the gathered board by event count (eco-app#70). Rollup craft rows are
+    # excluded from the item board (eco-app#131).
     by_crafted = dict(atlas.by_crafted)
-    assert by_crafted["AdobeItem"] == pytest.approx(330.0)
+    assert by_crafted["AdobeItem"] == pytest.approx(2.0)
     by_gathered = dict(atlas.by_gathered)
     assert by_gathered["BunchgrassSpecies"] == 1
     assert by_gathered["FirSpecies"] == 1
@@ -271,15 +285,18 @@ async def test_fetch_atlas_merges_multiple_actions() -> None:
         "ChopTree": 2,
         "DigOrMine": 0,
     }
-    # Citizen ids resolved to names via the /api/v1/citizens join, ranked by
-    # production *events* (eco-app#70). coilysiren (129312) has 1 craft + 1
-    # harvest + 1 chop = 3 events.
+    # Citizen ids resolved to names via the /api/v1/citizens join. coilysiren
+    # (129312) has 1 craft iteration + 1 harvest + 1 chop = 3; hammerhand
+    # (4478) gets full credit for the 189-iteration rollup (eco-app#131).
     by_citizen = dict(atlas.by_citizen)
     assert by_citizen["coilysiren"] == 3
-    assert "salt" in by_citizen  # id 129558
+    assert by_citizen["hammerhand"] == 189
+    assert by_citizen["salt"] == 13
     # An id with no mapping falls back to a "Citizen #<id>" label, not dropped.
     assert by_citizen["Citizen #129569"] == 1
-    assert atlas.warnings == []
+    # The only warning is the rollup-exclusion note.
+    assert len(atlas.warnings) == 1
+    assert "hourly rollups" in atlas.warnings[0]
 
 
 @pytest.mark.asyncio
@@ -384,7 +401,7 @@ def test_atlas_template_context_ranks_and_percents() -> None:
     aggregate_rows("ItemCraftedAction", _rows(_CRAFT_CSV), atlas)
     ctx = atlas_template_context(atlas)
     assert ctx["empty"] is False
-    # Top crafted item is AdobeItem with 330, percent must be 100.
+    # Top crafted item is AdobeItem with 2 iterations, percent must be 100.
     assert ctx["top_crafted"][0]["name"] == "AdobeItem"
     assert ctx["top_crafted"][0]["pct"] == pytest.approx(100.0)
     # Sankey has nodes for both columns.

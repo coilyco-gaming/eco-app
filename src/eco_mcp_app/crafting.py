@@ -50,12 +50,21 @@ CRAFT_ACTION_TYPES = (
     "DigOrMine",
 )
 
-# Only ItemCraftedAction carries a Count that means "units of item produced".
+# ItemCraftedAction fires once per completed crafting *iteration* (work-order
+# cycle), and its Count defaults to 1 per event. The server's StatsAggregator
+# then collapses events older than its detail window into per-citizen HOURLY
+# rollups: Count becomes the number of merged events, Time becomes the max,
+# and the item/station/location columns keep the *first* merged event's values
+# — i.e. on a Count>1 row those labels are an arbitrary representative, not an
+# attribution ("Theo crafted 32 stump latrines" was 32 iterations of anything
+# in one hour, 2 of them latrines). Citizen is the aggregation key, so citizen
+# attribution stays valid on rollups. See eco-app#131.
+#
 # For the gather actions (HarvestOrHunt / ChopTree / DigOrMine) the Count column
 # is a harvest *magnitude* — biomass / weight, hundreds-of-thousands per chop —
 # not a unit count, so summing it across action types buries real crafting under
 # plant biomass. We therefore keep two separate item boards: crafted counts
-# units, gathered counts *events*. See eco-app#70.
+# iterations from per-event rows, gathered counts *events*. See eco-app#70.
 CRAFTED_ACTION_TYPE = "ItemCraftedAction"
 
 DEFAULT_BASE_URL = os.environ.get("ECO_ADMIN_BASE_URL", "http://eco.coilysiren.me:3001")
@@ -186,8 +195,10 @@ class CraftingAtlas:
     fetched_at_iso: str
     source_base_url: str
     total_events: int = 0
-    # Crafted items: unit counts summed from ItemCraftedAction.Count — a real
-    # "how many units were made" number.
+    # Crafted items: crafting iterations per item, from per-event (Count == 1)
+    # ItemCraftedAction rows only. Hourly-rollup rows (Count > 1) carry an
+    # unreliable item label and are excluded here (eco-app#131), so this board
+    # covers the server's stats detail window, not all history.
     by_crafted: list[tuple[str, float]] = field(default_factory=list)
     # Gathered resources: gather *events* per species/block from HarvestOrHunt /
     # ChopTree / DigOrMine. Their Count is a biomass magnitude, not a unit count,
@@ -195,8 +206,11 @@ class CraftingAtlas:
     # See eco-app#70.
     by_gathered: list[tuple[str, int]] = field(default_factory=list)
     by_station: list[tuple[str, int]] = field(default_factory=list)
-    # Ranked by production *events* (crafts + gathers), not summed Count, so a
-    # plant harvester's biomass can't dominate the leaderboard. See eco-app#70.
+    # Ranked by production *events* (craft iterations + gather events), not
+    # gather magnitudes, so a plant harvester's biomass can't dominate the
+    # leaderboard (eco-app#70). Craft rows contribute their Count: on rollup
+    # rows that is the merged event total keyed by this citizen, so unlike the
+    # item boards this one stays correct across all history (eco-app#131).
     by_citizen: list[tuple[str, int]] = field(default_factory=list)
     # Sankey edges: (source_station, target_item, event_count). Event-weighted
     # for the same reason — a single 200k-biomass chop would otherwise swamp the
@@ -204,6 +218,11 @@ class CraftingAtlas:
     flows: list[tuple[str, str, float]] = field(default_factory=list)
     # Per-action-type row count, so the UI can say "4 types fed the atlas".
     per_action_counts: dict[str, int] = field(default_factory=dict)
+    # Hourly-rollup craft rows excluded from the item/station boards, and the
+    # iterations they carried — surfaced so the UI can say how much history
+    # sits outside the per-item detail window (eco-app#131).
+    rollup_events: int = 0
+    rollup_iterations: float = 0.0
     # Non-fatal fetch problems — shown as a hint under the card.
     warnings: list[str] = field(default_factory=list)
 
@@ -218,6 +237,8 @@ class CraftingAtlas:
             "byCitizen": [[n, c] for n, c in self.by_citizen],
             "flows": [[s, t, c] for s, t, c in self.flows],
             "perActionCounts": dict(self.per_action_counts),
+            "rollupEvents": self.rollup_events,
+            "rollupIterations": self.rollup_iterations,
             "warnings": list(self.warnings),
         }
 
@@ -269,6 +290,8 @@ def _cache_get(base_url: str, api_key: str | None, ttl_s: float) -> CraftingAtla
         by_citizen=[(n, int(c)) for n, c in data.get("byCitizen", [])],
         flows=[(s, t, float(c)) for s, t, c in data.get("flows", [])],
         per_action_counts=dict(data.get("perActionCounts", {})),
+        rollup_events=int(data.get("rollupEvents", 0)),
+        rollup_iterations=float(data.get("rollupIterations", 0.0)),
         warnings=list(data.get("warnings", [])),
     )
 
@@ -361,11 +384,15 @@ def aggregate_rows(
     action type, so we key off the header row instead of fixed positions.
 
     Count semantics differ by action class, so we fold them differently
-    (eco-app#70): a craft's Count is a real unit count and feeds `by_crafted`;
-    a gather's Count is a biomass magnitude, so it never gets summed — each
-    gather row contributes one *event* to `by_gathered`. Station utilization,
-    the citizen leaderboard, and the sankey are all event-weighted so no board
-    is dominated by harvest magnitude.
+    (eco-app#70): a gather's Count is a biomass magnitude, so it never gets
+    summed — each gather row contributes one *event* to `by_gathered`. A
+    craft's Count is 1 on a per-event row and the merged-event total on an
+    hourly rollup row (eco-app#131). Rollup rows carry a representative item /
+    station / location from one arbitrary merged event, so they are excluded
+    from every item-attributed board (`by_crafted`, `by_station`, `flows`) and
+    counted into `rollup_events` / `rollup_iterations` instead. The citizen
+    leaderboard keeps them: Citizen is the server aggregator's grouping key,
+    so a rollup's Count is that citizen's true iteration total for the hour.
     """
     it = iter(rows)
     try:
@@ -413,6 +440,10 @@ def aggregate_rows(
             count = float(pick(row, idx, "Count") or "0")
         except ValueError:
             count = 0.0
+        # A craft row with Count > 1 is a server-side hourly rollup: its item /
+        # station / location are one merged event's values, not an attribution.
+        # Only its citizen + Count survive as signal. See eco-app#131.
+        is_rollup = is_crafted and count > 1.0
         # Item: for crafts the output is ItemUsed; for harvests/chops the
         # Species IS the produced stack; for mining the block destroyed.
         item = (
@@ -440,17 +471,23 @@ def aggregate_rows(
         if station and _NONSENSE_KEY_RE.match(station):
             station = ""
 
-        if item:
+        if is_rollup:
+            atlas.rollup_events += 1
+            atlas.rollup_iterations += count
+        elif item:
             if is_crafted:
-                by_crafted[item] = by_crafted.get(item, 0.0) + count
+                by_crafted[item] = by_crafted.get(item, 0.0) + max(count, 1.0)
             else:
                 by_gathered[item] = by_gathered.get(item, 0) + 1
-        if station:
+        if station and not is_rollup:
             by_station[station] = by_station.get(station, 0) + 1
-        if station and item:
+        if station and item and not is_rollup:
             flows[(station, item)] = flows.get((station, item), 0.0) + 1.0
         if citizen and _INT_RE.match(citizen):
-            by_citizen[citizen] = by_citizen.get(citizen, 0) + 1
+            # Crafts weigh by iterations (Count, valid on rollups too); gathers
+            # stay event-weighted so biomass can't dominate (eco-app#70).
+            weight = int(max(count, 1.0)) if is_crafted else 1
+            by_citizen[citizen] = by_citizen.get(citizen, 0) + weight
         consumed += 1
 
     atlas.total_events += consumed
@@ -595,6 +632,14 @@ async def fetch_atlas(
                 atlas.warnings.append(f"{action}: HTTP {e.response.status_code}")
             except httpx.HTTPError as e:
                 atlas.warnings.append(f"{action}: {type(e).__name__}: {e}")
+
+        if atlas.rollup_events:
+            atlas.warnings.append(
+                f"{int(atlas.rollup_iterations)} older craft iterations arrive as "
+                f"{atlas.rollup_events} per-citizen hourly rollups without reliable item "
+                "detail - item/station boards cover the recent detail window only "
+                "(eco-app#131)"
+            )
 
         # Join the accumulated numeric Citizen ids to display names once every
         # action has folded. Skipped when no citizen rows survived. See eco-app#5.

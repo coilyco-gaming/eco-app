@@ -53,14 +53,19 @@ _CURRENCY_CSV = (
 )
 _BARTER_EMPTY = "Buyer,Seller,ItemUsed,NumberOfItems,Count,Time\n"
 
-# ItemCraftedAction: ekans crafts 5 Beet at an anvil (day ~2.9), coilysiren
-# crafts 810 IronIngot (day ~1.2). WorldObjectItem is the station, ItemUsed the
-# produced item, Count the quantity.
+# ItemCraftedAction: ekans crafts 1 Beet at an anvil (day ~2.9), coilysiren
+# crafts 3 IronIngot iterations (day ~1.2). WorldObjectItem is the station,
+# ItemUsed the produced item, Count is 1 per event row. The final row is a
+# server-side hourly rollup (Count > 1) whose item label is one arbitrary
+# merged event - it must never count as IronIngot crafts (eco-app#131).
 _CRAFT_CSV = (
     "ActionLocation,WorldObjectItem,Citizen,ItemUsed,"
     "OverrideHierarchyActionsToConsumer,Count,Time\n"
-    '"1,2,3",AnvilItem,130409,BeetItem,false,5,250000\n'
-    '"1,2,3",AnvilItem,129312,IronIngotItem,false,810,100000\n'
+    '"1,2,3",AnvilItem,130409,BeetItem,false,1,250000\n'
+    '"1,2,3",AnvilItem,129312,IronIngotItem,false,1,100000\n'
+    '"1,2,3",AnvilItem,129312,IronIngotItem,false,1,100100\n'
+    '"1,2,3",AnvilItem,129312,IronIngotItem,false,1,100200\n'
+    '"1,2,3",AnvilItem,129312,IronIngotItem,false,810,110000\n'
 )
 _HARVEST_EMPTY = (
     "Species,DamagedOrDestroyed,DestroyedByBlock,CaloriesToConsume,"
@@ -134,7 +139,9 @@ async def test_fetch_item_index_unions_both_exporters() -> None:
         "item": "IronIngotItem",
         "tradeCount": 1,
         "tradeVolume": 250.0,
-        "craftCount": 810.0,
+        # Three per-event iterations; the 810-iteration rollup row is excluded
+        # from item attribution (eco-app#131).
+        "craftCount": 3.0,
     }
     assert by_id["BeetItem"]["tradeVolume"] == 20.0
     assert index.items[0]["item"] == "IronIngotItem"
@@ -156,11 +163,11 @@ async def test_fetch_item_pivot_trades_and_crafts_for_one_item() -> None:
     assert trade["unitPrice"] == 10.0
 
     assert pivot.craft_count == 1
-    assert pivot.craft_quantity == 5.0
+    assert pivot.craft_quantity == 1.0
     (craft,) = pivot.crafts
     assert craft["actionType"] == "ItemCraftedAction"
     assert craft["citizen"] == "ekans"
-    assert craft["quantity"] == 5.0
+    assert craft["quantity"] == 1.0
     assert craft["station"] == "AnvilItem"
 
     # Merged reverse-chrono feed: trade (t=300000) newest, craft (t=250000) next.
@@ -171,11 +178,22 @@ async def test_fetch_item_pivot_trades_and_crafts_for_one_item() -> None:
     # World clock read off /info so the SPA can age events against real "now".
     assert pivot.world_clock_s == 305000
 
-    # Actionable summary: who makes it (ekans, 5) and who sells it (coilysiren's
-    # history-derived shelf, since the live shelf 404s in the fixture).
-    assert pivot.summary["crafters"] == [{"name": "ekans", "quantity": 5.0, "events": 1}]
+    # Actionable summary: who makes it (ekans, 1 iteration) and who sells it
+    # (coilysiren's history-derived shelf, since the live shelf 404s here).
+    assert pivot.summary["crafters"] == [{"name": "ekans", "quantity": 1.0, "events": 1}]
     assert pivot.summary["supply"]["storeCount"] == 1
     assert pivot.summary["live"] is False
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_item_pivot_skips_rollup_craft_rows() -> None:
+    """The 810-iteration hourly rollup never lands on the item it labels."""
+    _mock_all()
+    pivot = await fetch_item_pivot("IronIngotItem", base_url=BASE, api_key="secret", cache_ttl_s=0)
+    assert pivot.craft_count == 3
+    assert pivot.craft_quantity == 3.0
+    assert all(c["quantity"] == 1.0 for c in pivot.crafts)
 
 
 @pytest.mark.asyncio

@@ -40,6 +40,7 @@ from .crafting import (
     _INT_RE,
     _NONSENSE_KEY_RE,
     CRAFT_ACTION_TYPES,
+    CRAFTED_ACTION_TYPE,
     MAX_ROWS_PER_ACTION,
     _corrected_index,
     _normalize_admin_base,
@@ -285,6 +286,12 @@ def parse_craft_events(
             quantity = float(pick(row, idx, "Count") or "0")
         except ValueError:
             quantity = 0.0
+        # A craft row with Count > 1 is a per-citizen hourly rollup whose item
+        # label is one arbitrary merged event - not this item's craft. Skip it
+        # so the pivot never re-manufactures "Theo crafted 32 stump latrines"
+        # (eco-app#131). Gather rows keep their Count (biomass magnitude).
+        if action_name == CRAFTED_ACTION_TYPE and quantity > 1.0:
+            continue
         station = pick(row, idx, "WorldObjectItem", "ToolUsed") or "(hand)"
         if _NONSENSE_KEY_RE.match(station):
             station = "(hand)"

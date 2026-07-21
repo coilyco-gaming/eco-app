@@ -214,7 +214,10 @@ export default function Item() {
                       <button className="rank-row" onClick={() => update({ actor: c.name, type: "craft" })}>
                         <span className="rank-name">{c.name}</span>
                         <span className="rank-count">
-                          {formatCount(c.quantity)} made · {formatCount(c.events)} craft
+                          {/* Iterations from per-event rows only - older history is
+                              rolled up server-side without item detail (eco-app#131). */}
+                          {formatCount(c.quantity)} recent iteration{c.quantity === 1 ? "" : "s"} ·{" "}
+                          {formatCount(c.events)} craft
                           {c.events === 1 ? "" : "s"}
                         </span>
                         <span className="rank-bar" style={{ width: `${(c.quantity / max) * 100}%` }} />

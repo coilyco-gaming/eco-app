@@ -2,10 +2,16 @@
 // byCitizen carries display names joined from the jobs mod's /api/v1/citizens
 // surface, falling back to "Citizen #<id>" when a name is missing (eco-app#5).
 //
-// Produced items are split into two boards (eco-app#70): byCrafted counts real
-// crafted units (ItemCraftedAction), byGathered counts harvest/chop/dig *events*
-// (their raw Count is biomass magnitude, not a unit count, so summing it buried
-// player crafting under plant biomass). byStation / byCitizen are event counts.
+// Produced items are split into two boards (eco-app#70): byCrafted counts
+// crafting *iterations* from per-event ItemCraftedAction rows, byGathered
+// counts harvest/chop/dig *events* (their raw Count is biomass magnitude, not
+// a unit count, so summing it buried player crafting under plant biomass).
+//
+// The server rolls craft events older than its detail window into per-citizen
+// hourly aggregates whose item/station labels are unreliable, so those rows
+// are excluded from the item and station boards and surfaced via
+// rollupEvents / rollupIterations instead. byCitizen keeps them - the citizen
+// is the rollup's grouping key, so that board spans all history (eco-app#131).
 
 export interface CraftingAtlas {
   fetchedAtISO: string
@@ -17,6 +23,8 @@ export interface CraftingAtlas {
   byCitizen: Array<[string, number]>
   flows: Array<[string, string, number]>
   perActionCounts: Record<string, number>
+  rollupEvents: number
+  rollupIterations: number
   warnings: string[]
 }
 
