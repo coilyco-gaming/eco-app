@@ -34,7 +34,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/eco_mcp_app", "src/eco_spec_tracker", "src/eco_replay"]
+packages = ["src/eco_mcp_app", "src/eco_spec_tracker", "src/eco_replay", "src/eco_snapshot"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/eco_mcp_app/templates" = "eco_mcp_app/templates"

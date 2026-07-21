@@ -1,6 +1,6 @@
 DEFAULT_GOAL := help
 
-.PHONY: help sync test lint fmt precommit smoke http harness install-desktop build-docker build-mods build-mod-jobs build-mod-replay test-mod-replay build-mod-telemetry build-mod-stores run-shell-jobs run-shell-stores frontend-install frontend-dev frontend-build frontend-test frontend-lint
+.PHONY: help sync test lint fmt precommit smoke http http-offline harness install-desktop build-docker build-mods build-mod-jobs build-mod-replay test-mod-replay build-mod-telemetry build-mod-stores run-shell-jobs run-shell-stores frontend-install frontend-dev frontend-build frontend-test frontend-lint snapshot-capture snapshot-push snapshot-pull snapshot-serve
 
 name ?= eco-app
 port ?= 4000
@@ -72,6 +72,39 @@ http: ## Run the fused server (MCP + /jobs) with autoreload, eco target auto-res
 	ECO_ADMIN_TOKEN="$${ECO_ADMIN_TOKEN:-$$KEY}" \
 	ECO_ADMIN_API_KEY="$${ECO_ADMIN_API_KEY:-$$KEY}" \
 	uv run uvicorn eco_mcp_app.http_app:app --reload --reload-dir src --host 0.0.0.0 --port $(or $(http_port),$(port))
+
+http-offline: ## Run the fused server against the local snapshot fixture (snapshot-serve) instead of a live eco server. Args - http_port=<int>, fixture_port=<int>.
+	ECO_INFO_URL="http://localhost:$(or $(fixture_port),3101)/info" \
+	UPSTREAM_API_KEY="$${UPSTREAM_API_KEY:-offline-fixture}" \
+	$(MAKE) http
+
+snapshot_dir ?= .snapshots/current
+snapshot_bucket ?= s3://kai-game-backups/eco-app/snapshots
+
+snapshot-capture: ## Capture every upstream eco-server dataset into a local snapshot dir. Args - snapshot_dir=<path>.
+	@BASE=$$(scripts/resolve-eco-target.sh) && \
+	KEY="$${UPSTREAM_API_KEY:-$$(aws ssm get-parameter --name /eco-mcp-app/api-admin-token --with-decryption --query Parameter.Value --output text 2>/dev/null || true)}" && \
+	UPSTREAM_API_KEY="$$KEY" uv run python -m eco_snapshot capture --base-url "$$BASE" --out $(snapshot_dir)
+
+snapshot-push: ## Tar the captured snapshot and push it to S3, timestamped plus latest. Args - snapshot_dir=<path>.
+	@test -f $(snapshot_dir)/manifest.json || { echo "no snapshot at $(snapshot_dir); run snapshot-capture first" >&2; exit 1; }
+	@STAMP=$$(date -u +%Y-%m-%dT%H%M%SZ) && \
+	TAR=$$(mktemp -d)/snapshot.tar.gz && \
+	tar -czf "$$TAR" -C $(snapshot_dir) . && \
+	aws s3 cp "$$TAR" $(snapshot_bucket)/$$STAMP.tar.gz && \
+	aws s3 cp $(snapshot_bucket)/$$STAMP.tar.gz $(snapshot_bucket)/latest.tar.gz && \
+	rm -f "$$TAR" && \
+	echo "pushed $(snapshot_bucket)/$$STAMP.tar.gz (+ latest.tar.gz)"
+
+snapshot-pull: ## Pull a snapshot tarball from S3 into the local snapshot dir. Args - snap=<stamp|latest>, snapshot_dir=<path>.
+	@TAR=$$(mktemp -d)/snapshot.tar.gz && \
+	aws s3 cp $(snapshot_bucket)/$(or $(snap),latest).tar.gz "$$TAR" && \
+	rm -rf $(snapshot_dir) && mkdir -p $(snapshot_dir) && \
+	tar -xzf "$$TAR" -C $(snapshot_dir) && rm -f "$$TAR" && \
+	echo "pulled $(snapshot_bucket)/$(or $(snap),latest).tar.gz into $(snapshot_dir)"
+
+snapshot-serve: ## Replay the pulled snapshot as a fixture eco server on localhost. Args - fixture_port=<int>, snapshot_dir=<path>.
+	uv run python -m eco_snapshot serve --dir $(snapshot_dir) --port $(or $(fixture_port),3101)
 
 harness: ## Serve static/harness.html, the local Claude-Desktop-mimicking iframe host. Args - harness_port=<int>.
 	@echo "Harness: http://localhost:$(or $(harness_port),8765)/static/harness.html"

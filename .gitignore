@@ -12,6 +12,9 @@ build/
 .env
 *.log
 
+# Local snapshot harness captures (pushed to S3, never committed)
+.snapshots/
+
 # .NET build output (mods/)
 obj/
 bin/

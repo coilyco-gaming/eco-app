@@ -45,6 +45,21 @@ commands:
   http:
     run: make http
     description: Run the fused server (MCP + /jobs) with autoreload, eco target auto-resolved. Args - http_port=<int>.
+  http-offline:
+    run: make http-offline
+    description: Run the fused server against the local snapshot fixture (snapshot-serve) instead of a live eco server. Args - http_port=<int>, fixture_port=<int>.
+  snapshot-capture:
+    run: make snapshot-capture
+    description: Capture every upstream eco-server dataset into a local snapshot dir. Args - snapshot_dir=<path>.
+  snapshot-push:
+    run: make snapshot-push
+    description: Tar the captured snapshot and push it to S3, timestamped plus latest. Args - snapshot_dir=<path>.
+  snapshot-pull:
+    run: make snapshot-pull
+    description: Pull a snapshot tarball from S3 into the local snapshot dir. Args - snap=<stamp|latest>, snapshot_dir=<path>.
+  snapshot-serve:
+    run: make snapshot-serve
+    description: Replay the pulled snapshot as a fixture eco server on localhost. Args - fixture_port=<int>, snapshot_dir=<path>.
   harness:
     run: make harness
     description: Serve static/harness.html, the local Claude-Desktop-mimicking iframe host. Args - harness_port=<int>.
