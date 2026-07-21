@@ -117,21 +117,22 @@ def test_aggregate_rows_folds_craft_csv() -> None:
     atlas = CraftingAtlas(fetched_at_iso="t", source_base_url="b")
     n = aggregate_rows("ItemCraftedAction", _rows(_CRAFT_CSV), atlas)
     assert n == 5
-    # Per-event rows (Count == 1) fold into by_crafted as iterations; the two
-    # rollup rows are excluded from every item-attributed board (eco-app#131).
+    # Every craft row contributes exactly 1 confirmed iteration to the item
+    # board: per-event rows are one iteration, and a rollup's labels come from
+    # its first merged event, so one iteration is proven and the remaining
+    # count-1 land in the rollup tallies (eco-app#131).
     by_crafted = dict(atlas.by_crafted)
-    # AdobeItem: two per-event rows.
     assert by_crafted["AdobeItem"] == pytest.approx(2.0)
-    assert "BeetCampfireSaladItem" not in by_crafted
-    assert "DendrologyResearchPaperBasicItem" not in by_crafted
+    assert by_crafted["BeetCampfireSaladItem"] == pytest.approx(1.0)
+    assert by_crafted["DendrologyResearchPaperBasicItem"] == pytest.approx(1.0)
     assert atlas.rollup_events == 2
-    assert atlas.rollup_iterations == pytest.approx(202.0)
+    assert atlas.rollup_iterations == pytest.approx(200.0)  # (189-1) + (13-1)
     # No gather rows here, so the gathered board stays empty.
     assert atlas.by_gathered == []
     by_station = dict(atlas.by_station)
-    assert by_station["CampfireItem"] == 1
+    assert by_station["CampfireItem"] == 2
     assert by_station["WorkbenchItem"] == 2
-    assert "ResearchTableItem" not in by_station
+    assert by_station["ResearchTableItem"] == 1
     # aggregate_rows keys by_citizen by the raw numeric id; name resolution
     # happens later in fetch_atlas (eco-app#5). Crafts weigh by Count, which is
     # 1 on per-event rows and the true merged-iteration total on rollups
@@ -141,11 +142,11 @@ def test_aggregate_rows_folds_craft_csv() -> None:
     assert by_citizen["129580"] == 1
     assert by_citizen["4478"] == 189
     assert by_citizen["129558"] == 13
-    # Flow edges exist for the per-event rows only.
+    # Flow edges carry one confirmed iteration per row, rollups included.
     flow_keys = {(s, t) for s, t, _ in atlas.flows}
     assert ("CampfireItem", "CharredMushroomsItem") in flow_keys
     assert ("WorkbenchItem", "AdobeItem") in flow_keys
-    assert ("ResearchTableItem", "DendrologyResearchPaperBasicItem") not in flow_keys
+    assert ("ResearchTableItem", "DendrologyResearchPaperBasicItem") in flow_keys
 
 
 def test_corrected_index_absorbs_extra_tool_column() -> None:
@@ -271,11 +272,12 @@ async def test_fetch_atlas_merges_multiple_actions() -> None:
 
     atlas = await fetch_atlas(base_url=BASE, api_key="secret", cache_ttl_s=0)
     assert atlas.total_events == 5 + 2 + 2 + 0
-    # Per-event crafts land on the crafted board as iterations; harvests/chops
-    # on the gathered board by event count (eco-app#70). Rollup craft rows are
-    # excluded from the item board (eco-app#131).
+    # Crafts land on the crafted board as confirmed iterations (rollup rows
+    # count their one proven representative, eco-app#131); harvests/chops on
+    # the gathered board by event count (eco-app#70).
     by_crafted = dict(atlas.by_crafted)
     assert by_crafted["AdobeItem"] == pytest.approx(2.0)
+    assert by_crafted["BeetCampfireSaladItem"] == pytest.approx(1.0)
     by_gathered = dict(atlas.by_gathered)
     assert by_gathered["BunchgrassSpecies"] == 1
     assert by_gathered["FirSpecies"] == 1
@@ -294,9 +296,10 @@ async def test_fetch_atlas_merges_multiple_actions() -> None:
     assert by_citizen["salt"] == 13
     # An id with no mapping falls back to a "Citizen #<id>" label, not dropped.
     assert by_citizen["Citizen #129569"] == 1
-    # The only warning is the rollup-exclusion note.
+    # The only warning is the rollup floor note.
     assert len(atlas.warnings) == 1
-    assert "hourly rollups" in atlas.warnings[0]
+    assert "rollups" in atlas.warnings[0]
+    assert "200" in atlas.warnings[0]
 
 
 @pytest.mark.asyncio

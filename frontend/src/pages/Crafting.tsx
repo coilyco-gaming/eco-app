@@ -114,9 +114,9 @@ export default function Crafting() {
         )}
         {atlas && atlas.rollupEvents > 0 && (
           <p className="hero-pill hero-pill-muted" data-testid="atlas-rollup-note">
-            {formatCount(atlas.rollupIterations)} older craft iterations arrive as hourly
-            per-citizen rollups without item detail — item and station boards cover the recent
-            window; the crafter board covers all history
+            {formatCount(atlas.rollupIterations)} older craft iterations have no item detail
+            (hourly rollups) — item and station numbers are confirmed floors, not totals; the
+            crafter board covers all history
           </p>
         )}
       </section>
@@ -141,8 +141,8 @@ export default function Crafting() {
 
           <div className="atlas-columns">
             <section>
-              {/* Iterations from per-event rows; hourly rollups are excluded
-                  because their item labels are unreliable (eco-app#131). */}
+              {/* Confirmed iterations: per-event rows count 1 each, hourly
+                  rollups count only their proven representative (eco-app#131). */}
               <h2 className="section-title">Top crafted {q ? `matching "${q}"` : ""}</h2>
               <RankTable
                 rows={atlas.byCrafted}

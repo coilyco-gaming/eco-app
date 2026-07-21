@@ -56,8 +56,9 @@ _BARTER_EMPTY = "Buyer,Seller,ItemUsed,NumberOfItems,Count,Time\n"
 # ItemCraftedAction: ekans crafts 1 Beet at an anvil (day ~2.9), coilysiren
 # crafts 3 IronIngot iterations (day ~1.2). WorldObjectItem is the station,
 # ItemUsed the produced item, Count is 1 per event row. The final row is a
-# server-side hourly rollup (Count > 1) whose item label is one arbitrary
-# merged event - it must never count as IronIngot crafts (eco-app#131).
+# server-side hourly rollup (Count > 1): its labels come from its first merged
+# event, so it counts as exactly 1 proven IronIngot iteration, never the
+# merged 810 (eco-app#131).
 _CRAFT_CSV = (
     "ActionLocation,WorldObjectItem,Citizen,ItemUsed,"
     "OverrideHierarchyActionsToConsumer,Count,Time\n"
@@ -139,9 +140,10 @@ async def test_fetch_item_index_unions_both_exporters() -> None:
         "item": "IronIngotItem",
         "tradeCount": 1,
         "tradeVolume": 250.0,
-        # Three per-event iterations; the 810-iteration rollup row is excluded
-        # from item attribution (eco-app#131).
-        "craftCount": 3.0,
+        # Three per-event iterations plus the rollup row's one proven
+        # representative iteration - a confirmed floor, not the merged 810
+        # (eco-app#131).
+        "craftCount": 4.0,
     }
     assert by_id["BeetItem"]["tradeVolume"] == 20.0
     assert index.items[0]["item"] == "IronIngotItem"
@@ -187,12 +189,12 @@ async def test_fetch_item_pivot_trades_and_crafts_for_one_item() -> None:
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_item_pivot_skips_rollup_craft_rows() -> None:
-    """The 810-iteration hourly rollup never lands on the item it labels."""
+async def test_fetch_item_pivot_clamps_rollup_craft_rows() -> None:
+    """The 810-iteration hourly rollup counts as its one proven iteration."""
     _mock_all()
     pivot = await fetch_item_pivot("IronIngotItem", base_url=BASE, api_key="secret", cache_ttl_s=0)
-    assert pivot.craft_count == 3
-    assert pivot.craft_quantity == 3.0
+    assert pivot.craft_count == 4
+    assert pivot.craft_quantity == 4.0
     assert all(c["quantity"] == 1.0 for c in pivot.crafts)
 
 

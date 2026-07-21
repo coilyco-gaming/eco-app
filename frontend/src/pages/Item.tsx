@@ -214,9 +214,9 @@ export default function Item() {
                       <button className="rank-row" onClick={() => update({ actor: c.name, type: "craft" })}>
                         <span className="rank-name">{c.name}</span>
                         <span className="rank-count">
-                          {/* Iterations from per-event rows only - older history is
-                              rolled up server-side without item detail (eco-app#131). */}
-                          {formatCount(c.quantity)} recent iteration{c.quantity === 1 ? "" : "s"} ·{" "}
+                          {/* Confirmed floor - older history rolls up server-side
+                              without item detail (eco-app#131). */}
+                          {formatCount(c.quantity)}+ iteration{c.quantity === 1 ? "" : "s"} ·{" "}
                           {formatCount(c.events)} craft
                           {c.events === 1 ? "" : "s"}
                         </span>

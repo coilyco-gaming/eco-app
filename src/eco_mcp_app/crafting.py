@@ -195,10 +195,11 @@ class CraftingAtlas:
     fetched_at_iso: str
     source_base_url: str
     total_events: int = 0
-    # Crafted items: crafting iterations per item, from per-event (Count == 1)
-    # ItemCraftedAction rows only. Hourly-rollup rows (Count > 1) carry an
-    # unreliable item label and are excluded here (eco-app#131), so this board
-    # covers the server's stats detail window, not all history.
+    # Crafted items: confirmed crafting iterations per item. A per-event row
+    # (Count == 1) is one iteration; an hourly-rollup row (Count > 1) counts
+    # exactly 1 - its labels come from the first merged event, so one iteration
+    # of the label item is proven and the rest are unattributable (eco-app#131).
+    # These are floors, not totals, once history rolls up.
     by_crafted: list[tuple[str, float]] = field(default_factory=list)
     # Gathered resources: gather *events* per species/block from HarvestOrHunt /
     # ChopTree / DigOrMine. Their Count is a biomass magnitude, not a unit count,
@@ -218,9 +219,9 @@ class CraftingAtlas:
     flows: list[tuple[str, str, float]] = field(default_factory=list)
     # Per-action-type row count, so the UI can say "4 types fed the atlas".
     per_action_counts: dict[str, int] = field(default_factory=dict)
-    # Hourly-rollup craft rows excluded from the item/station boards, and the
-    # iterations they carried — surfaced so the UI can say how much history
-    # sits outside the per-item detail window (eco-app#131).
+    # Hourly-rollup craft rows seen, and the iterations on them beyond the one
+    # attributable representative each — surfaced so the UI can say how much
+    # history has no per-item detail (eco-app#131).
     rollup_events: int = 0
     rollup_iterations: float = 0.0
     # Non-fatal fetch problems — shown as a hint under the card.
@@ -387,12 +388,14 @@ def aggregate_rows(
     (eco-app#70): a gather's Count is a biomass magnitude, so it never gets
     summed — each gather row contributes one *event* to `by_gathered`. A
     craft's Count is 1 on a per-event row and the merged-event total on an
-    hourly rollup row (eco-app#131). Rollup rows carry a representative item /
-    station / location from one arbitrary merged event, so they are excluded
-    from every item-attributed board (`by_crafted`, `by_station`, `flows`) and
-    counted into `rollup_events` / `rollup_iterations` instead. The citizen
-    leaderboard keeps them: Citizen is the server aggregator's grouping key,
-    so a rollup's Count is that citizen's true iteration total for the hour.
+    hourly rollup row (eco-app#131). A rollup's item/station labels come from
+    the FIRST merged event — one genuine iteration of that item — so every
+    craft row contributes exactly 1 to the item-attributed boards
+    (`by_crafted`, `by_station`, `flows`), making them confirmed floors, and
+    the remaining count-1 unattributable iterations accumulate into
+    `rollup_events` / `rollup_iterations`. The citizen leaderboard weighs by
+    the full Count: Citizen is the server aggregator's grouping key, so a
+    rollup's Count is that citizen's true iteration total for the hour.
     """
     it = iter(rows)
     try:
@@ -472,16 +475,19 @@ def aggregate_rows(
             station = ""
 
         if is_rollup:
+            # The aggregator keeps the FIRST merged event as the row's labels,
+            # so exactly one iteration of the label item/station is proven; the
+            # remaining count-1 iterations have no item detail (eco-app#131).
             atlas.rollup_events += 1
-            atlas.rollup_iterations += count
-        elif item:
+            atlas.rollup_iterations += count - 1.0
+        if item:
             if is_crafted:
-                by_crafted[item] = by_crafted.get(item, 0.0) + max(count, 1.0)
+                by_crafted[item] = by_crafted.get(item, 0.0) + 1.0
             else:
                 by_gathered[item] = by_gathered.get(item, 0) + 1
-        if station and not is_rollup:
+        if station:
             by_station[station] = by_station.get(station, 0) + 1
-        if station and item and not is_rollup:
+        if station and item:
             flows[(station, item)] = flows.get((station, item), 0.0) + 1.0
         if citizen and _INT_RE.match(citizen):
             # Crafts weigh by iterations (Count, valid on rollups too); gathers
@@ -635,10 +641,9 @@ async def fetch_atlas(
 
         if atlas.rollup_events:
             atlas.warnings.append(
-                f"{int(atlas.rollup_iterations)} older craft iterations arrive as "
-                f"{atlas.rollup_events} per-citizen hourly rollups without reliable item "
-                "detail - item/station boards cover the recent detail window only "
-                "(eco-app#131)"
+                f"{int(atlas.rollup_iterations)} older craft iterations have no item "
+                f"detail (hourly per-citizen rollups, {atlas.rollup_events} rows) - "
+                "item/station numbers are confirmed floors, not totals (eco-app#131)"
             )
 
         # Join the accumulated numeric Citizen ids to display names once every
