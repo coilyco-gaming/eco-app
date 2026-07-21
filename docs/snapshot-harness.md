@@ -42,3 +42,7 @@ Auth is ignored on purpose. The snapshot already dropped everything the admin ke
 * The admin key rides `UPSTREAM_API_KEY` from SSM `/eco-mcp-app/api-admin-token`, fetched inside the `snapshot-capture` make target. It never lands in the snapshot or argv.
 * Snapshots are prod-shaped public-safe game data plus player names, same exposure class as the live public endpoints they mirror. The bucket stays private regardless.
 * S3 verbs live in the Makefile as plain `aws s3 cp` one-liners, mirroring how the dev loop already shells out for SSM reads.
+
+## See also
+
+* [infrastructure docs/eco-staging.md](https://forgejo.coilysiren.me/coilyco-flight-deck/infrastructure/src/branch/main/docs/eco-staging.md) - the sibling harness one layer down: snapshots the eco **server itself** (code + world save) to S3 and restores it as a neutered staging server on kai-server. This doc's harness snapshots the server's **data API surface** for the app's offline dev loop; the staging harness clones the server for mod/config iteration (e.g. eco-app#134).
