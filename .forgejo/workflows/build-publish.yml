@@ -28,7 +28,7 @@ jobs:
     # the agents actually run. dev-base bakes ward + uv + managed Pythons, so no
     # setup-uv / sync step is needed - `ward exec` (make -> uv run) syncs the
     # dev group on demand.
-    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.195.0
+    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.255.0
     steps:
       - uses: actions/checkout@v4
       - run: ward exec test
@@ -97,7 +97,7 @@ jobs:
           PY
   frontend:
     runs-on: docker
-    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.195.0
+    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.255.0
     steps:
       - uses: actions/checkout@v4
       # dev-base ships Node/npm. corepack activates the pinned pnpm from
@@ -175,7 +175,7 @@ jobs:
           PY
   publish:
     runs-on: docker
-    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.195.0
+    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.255.0
     # The app image is SPA + MCP + jobs (Python/Node) and contains no C# mods,
     # so mod compilation has no bearing on whether it is publishable. The image
     # is fully validated by `test` (pytest/ruff/mypy/smoke) and `frontend`

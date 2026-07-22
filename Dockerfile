@@ -1,4 +1,7 @@
-FROM node:22-bookworm-slim AS frontend
+ARG AOS_REGISTRY=forgejo.coilysiren.me/coilyco-flight-deck/agentic-os
+ARG AOS_TAG=v0.255.0
+
+FROM ${AOS_REGISTRY}:lang-node-${AOS_TAG} AS frontend
 
 WORKDIR /frontend
 
@@ -10,9 +13,7 @@ RUN pnpm install --frozen-lockfile
 COPY frontend/ /frontend/
 RUN pnpm build
 
-FROM python:3.13
-
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+FROM ${AOS_REGISTRY}:core-${AOS_TAG} AS runtime
 
 WORKDIR /app
 
