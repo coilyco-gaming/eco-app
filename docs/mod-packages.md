@@ -27,8 +27,10 @@ ZIP timestamps, file order, and permissions are normalized so identical build
 outputs produce identical archives.
 
 The final application image carries the generated files at `/mod-packages`.
-CI extracts that directory from the already-built image. It never recompiles
-the mods outside the image or publishes a different copy.
+CI builds and pushes that image once, then starts one matrix task for each mod.
+Every task pulls the already-built image, extracts that directory, and publishes
+only its assigned manifest record. No publisher recompiles a mod or publishes a
+different copy.
 
 ## Versions and registry coordinates
 
@@ -47,8 +49,10 @@ Package names are the kebab-case assembly names. For example,
 * `<AssemblyName>-<mod-version>.zip.sha256` - the archive checksum
 
 `.build/mod-packages/manifest.json` indexes every package emitted by one image
-build. A repeated workflow run for the same commit is idempotent. The publisher
-accepts an existing file only when its checksum matches the local file.
+build. `MOD_PACKAGE_NAME` selects one record for a matrix task; leaving it unset
+preserves the local all-packages command. A repeated workflow run for the same
+commit is idempotent. The publisher accepts an existing file only when its
+checksum matches the local file.
 
 Forgejo owns generic packages at the organization level. CI publishes under
 `coilyco-gaming` and authenticates as `coilyco-ops` with the

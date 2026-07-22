@@ -5,6 +5,9 @@ import json
 import zipfile
 from pathlib import Path
 
+import pytest
+
+from scripts import mod_packages
 from scripts.mod_packages import ModProject, package_mods
 
 
@@ -58,3 +61,46 @@ def test_package_name_splits_assembly_words() -> None:
     project = ModProject(Path("Sample.csproj"), "EcoJobsTracker", "1.0.0", "net10.0")
 
     assert project.package_name == "eco-jobs-tracker"
+
+
+def test_publish_mods_selects_one_manifest_package(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    records = []
+    for package_name in ("eco-replay", "eco-telemetry"):
+        archive = f"{package_name}.zip"
+        metadata = f"{package_name}.json"
+        checksum = f"{archive}.sha256"
+        for file_name in (archive, metadata, checksum):
+            (tmp_path / file_name).write_bytes(file_name.encode())
+        records.append(
+            {
+                "archive": archive,
+                "checksum_file": checksum,
+                "metadata": metadata,
+                "package_name": package_name,
+                "registry_version": "0.1.0+abc123",
+            }
+        )
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"schema": 1, "packages": records}), encoding="utf-8"
+    )
+    uploads: list[str] = []
+    monkeypatch.setattr(
+        mod_packages,
+        "_upload_idempotently",
+        lambda _path, url, _authorization: uploads.append(url),
+    )
+
+    mod_packages.publish_mods(
+        tmp_path,
+        "https://forgejo.example",
+        "coilyco-gaming",
+        "coilyco-ops",
+        "token",
+        "eco-replay",
+    )
+
+    assert len(uploads) == 3
+    assert all("/eco-replay/" in url for url in uploads)
+    assert all("eco-telemetry" not in url for url in uploads)

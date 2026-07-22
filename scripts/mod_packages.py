@@ -199,14 +199,21 @@ def publish_mods(
     owner: str,
     username: str,
     token: str,
+    package_name: str | None = None,
 ) -> None:
     manifest_path = package_dir / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("schema") != SCHEMA_VERSION:
         raise ValueError(f"unsupported package manifest schema: {manifest.get('schema')!r}")
 
+    records = manifest["packages"]
+    if package_name is not None:
+        records = [record for record in records if record["package_name"] == package_name]
+        if not records:
+            raise ValueError(f"package manifest has no package named {package_name!r}")
+
     authorization = _authorization(username, token)
-    for record in manifest["packages"]:
+    for record in records:
         package_name = urllib.parse.quote(record["package_name"], safe="")
         package_version = urllib.parse.quote(record["registry_version"], safe="")
         package_base = (
@@ -241,6 +248,11 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path(os.environ.get("MOD_PACKAGE_DIR", ".build/mod-packages")),
     )
+    publish_parser.add_argument(
+        "--package-name",
+        default=os.environ.get("MOD_PACKAGE_NAME") or None,
+        help="publish only this manifest package (defaults to all packages)",
+    )
     return parser.parse_args()
 
 
@@ -256,6 +268,7 @@ def main() -> int:
                 _required_env("FORGEJO_PACKAGE_OWNER"),
                 _required_env("FORGEJO_PACKAGE_USER"),
                 _required_env("FORGEJO_PACKAGE_TOKEN"),
+                args.package_name,
             )
     except (OSError, ValueError, RuntimeError, urllib.error.URLError) as error:
         print(f"mod packages: {error}", file=sys.stderr)

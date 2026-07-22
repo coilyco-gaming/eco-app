@@ -95,6 +95,128 @@ jobs:
 
           main()
           PY
+  publish-mod:
+    name: publish-${{ matrix.package }}
+    runs-on: docker
+    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.255.0
+    needs: [build-image]
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - eco-jobs-tracker
+          - eco-replay
+          - eco-store-exporter
+          - eco-telemetry
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require the Forgejo package publisher
+        env:
+          FORGEJO_PACKAGE_TOKEN: ${{ secrets.ECO_MOD_PACKAGE_TOKEN }}
+        run: |
+          set -eu
+          if [ -z "$FORGEJO_PACKAGE_TOKEN" ]; then
+            echo "FORGEJO_PACKAGE_TOKEN is required and must grant write:package" >&2
+            exit 1
+          fi
+      - name: Resolve docker host
+        run: |
+          set -euo pipefail
+          gw=$(node -e "const fs=require('fs');const l=(fs.readFileSync('/proc/net/route','utf8').split('\n').find(x=>x.split('\t')[1]==='00000000'))||'';const h=l.split(/\s+/)[2]||'';if(h){console.log(h.match(/../g).reverse().map(x=>parseInt(x,16)).join('.'))}" || true)
+          for h in "tcp://${gw}:2375" "${DOCKER_HOST:-}" tcp://localhost:2375 unix:///var/run/docker.sock; do
+            [ -z "$h" ] && continue
+            [ "$h" = "tcp://:2375" ] && continue
+            if docker -H "$h" info >/dev/null 2>&1; then
+              echo "docker daemon reachable at $h"
+              echo "DOCKER_HOST=$h" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            echo "no docker daemon at $h"
+          done
+          echo "no reachable docker daemon" >&2
+          exit 1
+      - name: Extract packages from application image
+        run: |
+          set -euo pipefail
+          IMAGE=192.168.0.194:30500/coilysiren-eco-app:${{ github.sha }}
+          docker pull "$IMAGE"
+          mkdir -p .build/mod-packages
+          container_id=$(docker create "$IMAGE")
+          cleanup() { docker rm -f "$container_id" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker cp "$container_id:/mod-packages/." .build/mod-packages/
+          cleanup
+          trap - EXIT
+          python3 -m json.tool .build/mod-packages/manifest.json >/dev/null
+      - name: Publish ${{ matrix.package }}
+        env:
+          FORGEJO_PACKAGE_URL: ${{ github.server_url }}
+          FORGEJO_PACKAGE_OWNER: coilyco-gaming
+          FORGEJO_PACKAGE_USER: coilyco-ops
+          FORGEJO_PACKAGE_TOKEN: ${{ secrets.ECO_MOD_PACKAGE_TOKEN }}
+          MOD_PACKAGE_DIR: .build/mod-packages
+          MOD_PACKAGE_NAME: ${{ matrix.package }}
+        run: ward exec publish-mod-packages
+      - name: Alert Telegram on main failure
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_RED_CHAT_ID }}
+          REPO: ${{ github.repository }}
+          WORKFLOW: ${{ github.workflow }}
+          JOB: ${{ github.job }}-${{ matrix.package }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          API_BASE: https://api.telegram.org
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          def build_message(repo, workflow, job, ref, sha, run_url):
+              return "\n".join([
+                  "CI failed on main",
+                  f"repo: {repo}",
+                  f"workflow: {workflow}",
+                  f"job: {job}",
+                  f"ref: {ref}",
+                  f"sha: {sha}",
+                  f"run: {run_url}",
+              ])
+
+          def main():
+              bot_token = os.environ["BOT_TOKEN"]
+              chat_id = os.environ["CHAT_ID"]
+              message = build_message(
+                  os.environ["REPO"],
+                  os.environ["WORKFLOW"],
+                  os.environ["JOB"],
+                  os.environ["REF"],
+                  os.environ["SHA"],
+                  os.environ["RUN_URL"],
+              )
+              payload = urllib.parse.urlencode(
+                  {
+                      "chat_id": chat_id,
+                      "text": message,
+                      "disable_web_page_preview": "true",
+                  }
+              ).encode("utf-8")
+              url = f"{os.environ['API_BASE'].rstrip('/')}/bot{bot_token}/sendMessage"
+              req = urllib.request.Request(url, data=payload, method="POST")
+              try:
+                  with urllib.request.urlopen(req, timeout=15) as resp:
+                      resp.read()
+              except urllib.error.URLError as exc:
+                  print(f"telegram alert failed: {exc}")
+                  raise SystemExit(1)
+
+          main()
+          PY
   frontend:
     runs-on: docker
     container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.255.0
@@ -173,25 +295,16 @@ jobs:
 
           main()
           PY
-  publish:
+  build-image:
     runs-on: docker
     container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.255.0
     # The Docker build compiles every real Eco mod in the pinned AOS .NET tier,
     # packages install-ready ZIPs, and copies those exact bytes into the final
-    # app image. Package publication therefore gates the image push: mod.io can
-    # later promote the Forgejo artifact without rebuilding it.
+    # app image. The per-mod publisher jobs pull this exact image and promote
+    # those bytes to Forgejo without rebuilding them.
     needs: [test, frontend]
     steps:
       - uses: actions/checkout@v4
-      - name: Require the Forgejo package publisher
-        env:
-          FORGEJO_PACKAGE_TOKEN: ${{ secrets.ECO_MOD_PACKAGE_TOKEN }}
-        run: |
-          set -eu
-          if [ -z "$FORGEJO_PACKAGE_TOKEN" ]; then
-            echo "FORGEJO_PACKAGE_TOKEN is required and must grant write:package" >&2
-            exit 1
-          fi
       # The DinD sidecar shares the runner pod's netns and listens on :2375
       # there, but the job container sits on a separate per-workflow docker
       # bridge - so the inherited DOCKER_HOST=tcp://localhost:2375 points at
@@ -214,38 +327,18 @@ jobs:
           done
           echo "no reachable docker daemon" >&2
           exit 1
-      # Build the image, publish its mod packages, and push it to the in-cluster registry. The DinD
+      # Build the image once and push it to the in-cluster registry. The DinD
       # sidecar carries --insecure-registry=192.168.0.194:30500, so the
       # plain-http push to the NodePort registry round-trips. No tailnet join,
       # no GHCR, no docker-save sideload. See coilysiren/infrastructure#168, #171.
       # Use the legacy builder: the static docker CLI ships no buildx plugin,
       # so BuildKit (--progress, inline cache) is unavailable. A plain build
       # against the daemon is enough for this single image.
-      - name: Build image and extract mod packages
+      - name: Build and push application image
         run: |
           set -euo pipefail
           IMAGE=192.168.0.194:30500/coilysiren-eco-app:${{ github.sha }}
           docker build --build-arg MOD_SOURCE_REVISION=${{ github.sha }} -t "$IMAGE" .
-          mkdir -p .build/mod-packages
-          container_id=$(docker create "$IMAGE")
-          cleanup() { docker rm -f "$container_id" >/dev/null 2>&1 || true; }
-          trap cleanup EXIT
-          docker cp "$container_id:/mod-packages/." .build/mod-packages/
-          cleanup
-          trap - EXIT
-          python3 -m json.tool .build/mod-packages/manifest.json >/dev/null
-          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
-      - name: Publish mod packages
-        env:
-          FORGEJO_PACKAGE_URL: ${{ github.server_url }}
-          FORGEJO_PACKAGE_OWNER: coilyco-gaming
-          FORGEJO_PACKAGE_USER: coilyco-ops
-          FORGEJO_PACKAGE_TOKEN: ${{ secrets.ECO_MOD_PACKAGE_TOKEN }}
-          MOD_PACKAGE_DIR: .build/mod-packages
-        run: ward exec publish-mod-packages
-      - name: Push application image
-        run: |
-          set -euo pipefail
           docker push "$IMAGE"
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}
