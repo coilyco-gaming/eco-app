@@ -337,8 +337,14 @@ jobs:
       - name: Build and push application image
         run: |
           set -euo pipefail
+          : "${FORGEJO_EGRESS_PROXY:?runner must provide FORGEJO_EGRESS_PROXY}"
           IMAGE=192.168.0.194:30500/coilysiren-eco-app:${{ github.sha }}
-          docker build --build-arg MOD_SOURCE_REVISION=${{ github.sha }} -t "$IMAGE" .
+          docker build \
+            --build-arg HTTP_PROXY="$FORGEJO_EGRESS_PROXY" \
+            --build-arg HTTPS_PROXY="$FORGEJO_EGRESS_PROXY" \
+            --build-arg MOD_SOURCE_REVISION=${{ github.sha }} \
+            -t "$IMAGE" \
+            .
           docker push "$IMAGE"
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}

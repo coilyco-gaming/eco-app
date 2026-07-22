@@ -60,6 +60,13 @@ Forgejo owns generic packages at the organization level. CI publishes under
 publisher as `FORGEJO_PACKAGE_TOKEN`; the token needs only the `write:package`
 scope.
 
+The `build-image` job receives `FORGEJO_EGRESS_PROXY` from the infrastructure-
+owned Forgejo runner. CI passes that value only as Docker's predefined
+`HTTP_PROXY` and `HTTPS_PROXY` build arguments, which route the multi-stage
+dependency restores without persisting the proxy address in the application
+image. The allowlist and live verification procedure live in infrastructure's
+`docs/forgejo-runner-egress-proxy.md`.
+
 ## Commands
 
 ```text
