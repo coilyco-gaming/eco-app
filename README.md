@@ -10,7 +10,7 @@ One fused service ships from this repo. `eco_mcp_app` is the core: an MCP server
 
 `frontend/` is the browser face: a Vite + React + TypeScript SPA the fused service serves at `/`, headed for `eco-app.coilysiren.me`. Today it is a placeholder landing page; the real design lands through rapid iteration.
 
-The in-game halves live under `mods/` as C# Eco server plugins: `mods/jobs` (skills API the tracker consumes), `mods/replay` (player-action event store), and `mods/telemetry` (logs, metrics, and exception capture). Gameplay mods live in the sibling [eco-mods](https://forgejo.coilysiren.me/coilyco-gaming/eco-mods) repo, not here.
+The in-game halves live under `mods/` as C# Eco server plugins: `mods/jobs` (skills API the tracker consumes), `mods/replay` (player-action event store), `mods/stores` (live store and currency export), and `mods/telemetry` (logs, metrics, and exception capture). The Docker build compiles and packages every real mod project, and main CI publishes the install-ready ZIPs to Forgejo Packages using the contract in [docs/mod-packages.md](docs/mod-packages.md). Gameplay mods live in the sibling [eco-mods](https://forgejo.coilysiren.me/coilyco-gaming/eco-mods) repo, not here.
 
 ## Commands
 

@@ -71,7 +71,13 @@ commands:
     description: Build the eco-app docker image locally.
   build-mods:
     run: make build-mods
-    description: Restore and build every Eco mod DLL (jobs, replay, telemetry, stores) with per-project timings.
+    description: Discover, restore, and build every real Eco mod project with per-project timings.
+  package-mods:
+    run: make package-mods
+    description: Build deterministic, install-ready Eco mod ZIPs under .build/mod-packages.
+  publish-mod-packages:
+    run: make publish-mod-packages
+    description: Publish .build/mod-packages to Forgejo's generic package registry. Requires FORGEJO_PACKAGE_URL, OWNER, USER, and TOKEN.
   build-mod-jobs:
     run: make build-mod-jobs
     description: Build the jobs-tracker Eco mod DLL (mods/jobs/src).

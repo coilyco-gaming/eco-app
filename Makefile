@@ -1,6 +1,6 @@
 DEFAULT_GOAL := help
 
-.PHONY: help sync test lint fmt precommit smoke http http-offline harness install-desktop build-docker build-mods build-mod-jobs build-mod-replay test-mod-replay build-mod-telemetry build-mod-stores run-shell-jobs run-shell-stores frontend-install frontend-dev frontend-build frontend-test frontend-lint snapshot-capture snapshot-push snapshot-pull snapshot-serve
+.PHONY: help sync test lint fmt precommit smoke http http-offline harness install-desktop build-docker build-mods package-mods publish-mod-packages build-mod-jobs build-mod-replay test-mod-replay build-mod-telemetry build-mod-stores run-shell-jobs run-shell-stores frontend-install frontend-dev frontend-build frontend-test frontend-lint snapshot-capture snapshot-push snapshot-pull snapshot-serve
 
 name ?= eco-app
 port ?= 4000
@@ -114,10 +114,16 @@ install-desktop: ## Wire eco-mcp-app into Claude Desktop's claude_desktop_config
 	python3 scripts/install-desktop-config.py
 
 build-docker: ## Build the eco-app docker image locally.
-	docker build --progress plain -t $(name):$(git-hash) -t $(name):latest .
+	docker build --progress plain --build-arg MOD_SOURCE_REVISION=$(git-hash) -t $(name):$(git-hash) -t $(name):latest .
 
-build-mods: ## Restore and build every Eco mod DLL (jobs, replay, telemetry, stores) with per-project timings.
+build-mods: ## Discover, restore, and build every real Eco mod project with per-project timings.
 	sh scripts/mods-gate.sh build-mods
+
+package-mods: build-mods ## Build deterministic, install-ready ZIPs under .build/mod-packages.
+	python3 scripts/mod_packages.py package --output .build/mod-packages --revision $(git-hash)
+
+publish-mod-packages: ## Publish .build/mod-packages to Forgejo's generic registry.
+	python3 scripts/mod_packages.py publish
 
 build-mod-jobs: ## Build the jobs-tracker Eco mod DLL (mods/jobs/src).
 	cd mods/jobs && dotnet build src/EcoJobsTracker.csproj -c Release

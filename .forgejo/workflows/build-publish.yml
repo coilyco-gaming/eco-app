@@ -176,14 +176,22 @@ jobs:
   publish:
     runs-on: docker
     container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.255.0
-    # The app image is SPA + MCP + jobs (Python/Node) and contains no C# mods,
-    # so mod compilation has no bearing on whether it is publishable. The image
-    # is fully validated by `test` (pytest/ruff/mypy/smoke) and `frontend`
-    # (lint/test/build). The C# mods checks now live in a separate manual
-    # diagnostic workflow and never gate publish.
+    # The Docker build compiles every real Eco mod in the pinned AOS .NET tier,
+    # packages install-ready ZIPs, and copies those exact bytes into the final
+    # app image. Package publication therefore gates the image push: mod.io can
+    # later promote the Forgejo artifact without rebuilding it.
     needs: [test, frontend]
     steps:
       - uses: actions/checkout@v4
+      - name: Require the Forgejo package publisher
+        env:
+          FORGEJO_PACKAGE_TOKEN: ${{ secrets.ECO_MOD_PACKAGE_TOKEN }}
+        run: |
+          set -eu
+          if [ -z "$FORGEJO_PACKAGE_TOKEN" ]; then
+            echo "FORGEJO_PACKAGE_TOKEN is required and must grant write:package" >&2
+            exit 1
+          fi
       # The DinD sidecar shares the runner pod's netns and listens on :2375
       # there, but the job container sits on a separate per-workflow docker
       # bridge - so the inherited DOCKER_HOST=tcp://localhost:2375 points at
@@ -206,18 +214,38 @@ jobs:
           done
           echo "no reachable docker daemon" >&2
           exit 1
-      # Build the image and push it to the in-cluster registry. The DinD
+      # Build the image, publish its mod packages, and push it to the in-cluster registry. The DinD
       # sidecar carries --insecure-registry=192.168.0.194:30500, so the
       # plain-http push to the NodePort registry round-trips. No tailnet join,
       # no GHCR, no docker-save sideload. See coilysiren/infrastructure#168, #171.
       # Use the legacy builder: the static docker CLI ships no buildx plugin,
       # so BuildKit (--progress, inline cache) is unavailable. A plain build
       # against the daemon is enough for this single image.
-      - name: Build and push
+      - name: Build image and extract mod packages
         run: |
           set -euo pipefail
           IMAGE=192.168.0.194:30500/coilysiren-eco-app:${{ github.sha }}
-          docker build -t "$IMAGE" .
+          docker build --build-arg MOD_SOURCE_REVISION=${{ github.sha }} -t "$IMAGE" .
+          mkdir -p .build/mod-packages
+          container_id=$(docker create "$IMAGE")
+          cleanup() { docker rm -f "$container_id" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker cp "$container_id:/mod-packages/." .build/mod-packages/
+          cleanup
+          trap - EXIT
+          python3 -m json.tool .build/mod-packages/manifest.json >/dev/null
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+      - name: Publish mod packages
+        env:
+          FORGEJO_PACKAGE_URL: ${{ github.server_url }}
+          FORGEJO_PACKAGE_OWNER: coilyco-gaming
+          FORGEJO_PACKAGE_USER: coilyco-ops
+          FORGEJO_PACKAGE_TOKEN: ${{ secrets.ECO_MOD_PACKAGE_TOKEN }}
+          MOD_PACKAGE_DIR: .build/mod-packages
+        run: ward exec publish-mod-packages
+      - name: Push application image
+        run: |
+          set -euo pipefail
           docker push "$IMAGE"
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}

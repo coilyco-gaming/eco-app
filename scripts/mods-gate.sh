@@ -32,7 +32,7 @@ restore_then_build() {
     project=$2
     config=${3:-Release}
 
-    timed "$label: restore" dotnet restore "$project" -c "$config" --nologo -v minimal
+    timed "$label: restore" dotnet restore "$project" --nologo -v minimal
     timed "$label: build" dotnet build "$project" -c "$config" --no-restore --nologo -v minimal
 }
 
@@ -41,17 +41,23 @@ restore_then_test() {
     project=$2
     config=${3:-Release}
 
-    timed "$label: restore" dotnet restore "$project" -c "$config" --nologo -v minimal
+    timed "$label: restore" dotnet restore "$project" --nologo -v minimal
     timed "$label: test" dotnet test "$project" -c "$config" --no-restore --nologo -v minimal
 }
 
 case "${1:-}" in
     build-mods)
         echo "build-mods gate: restore/build each project once, then fail fast on the first broken phase."
-        restore_then_build "mods/jobs" "$ROOT/mods/jobs/src/EcoJobsTracker.csproj"
-        restore_then_build "mods/replay" "$ROOT/mods/replay/src/EcoReplay.csproj"
-        restore_then_build "mods/telemetry" "$ROOT/mods/telemetry/EcoTelemetry.csproj"
-        restore_then_build "mods/stores" "$ROOT/mods/stores/src/EcoStoreExporter.csproj"
+        projects=$(rg -l 'PackageReference Include="Eco.ReferenceAssemblies"' "$ROOT/mods" -g '*.csproj' | sort)
+        if [ -z "$projects" ]; then
+            echo "no real Eco mod projects found under mods/" >&2
+            exit 1
+        fi
+        for project in $projects; do
+            label=${project#"$ROOT/"}
+            label=${label%/*}
+            restore_then_build "$label" "$project"
+        done
         ;;
     test-mod-replay)
         echo "test-mod-replay gate: restore/test the replay project once, then fail fast on the first broken phase."

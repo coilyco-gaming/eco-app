@@ -4,10 +4,12 @@ venv/
 .ruff_cache/
 .pytest_cache/
 __pycache__/
+.build/
 investigation/
-# Image-irrelevant monorepo content: C# plugins ship to the game server via
-# their own build verbs, not inside this service image.
-mods/
+# C# plugin sources are image-build inputs. Keep host build outputs out of the
+# context so the AOS .NET stage always performs the authoritative clean build.
+mods/**/bin/
+mods/**/obj/
 tests/
 docs/
 .gauntlet/

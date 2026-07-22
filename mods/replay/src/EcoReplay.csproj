@@ -7,17 +7,24 @@
     <AssemblyName>EcoReplay</AssemblyName>
     <RootNamespace>EcoReplay</RootNamespace>
     <Version>0.1.0</Version>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <!-- CA1416: ModKit types are flagged Windows-only; Eco server runs on Linux .NET. -->
     <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Eco.ReferenceAssemblies" Version="0.13.0.4-beta-release-1024" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" PrivateAssets="all" />
+    <PackageReference Include="Eco.ReferenceAssemblies" Version="0.13.0.4-beta-release-1024">
+      <PrivateAssets>all</PrivateAssets>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" PrivateAssets="all" ExcludeAssets="runtime" />
     <!-- Microsoft.Data.Sqlite uses SQLitePCLRaw.bundle_e_sqlite3, which ships a
          Linux-native libe_sqlite3.so alongside the managed assemblies. No
          Windows/Linux interop dance required (unlike System.Data.SQLite). -->
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+    <!-- Override the provider's older native bundle. 2.1.12 carries the
+         patched SQLite build for GHSA-2m69-gcr7-jv3q. -->
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
   </ItemGroup>
 
   <ItemGroup>

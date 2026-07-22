@@ -26,7 +26,7 @@ jobs:
             echo "FAIL: api.nuget.org is unreachable from this runner." >&2
             exit 1
           fi
-      - name: Compile the four C# mods
+      - name: Compile every C# Eco mod
         run: ward exec build-mods
       - name: Run replay mod unit tests
         run: ward exec test-mod-replay
