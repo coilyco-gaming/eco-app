@@ -14,18 +14,34 @@ COMMAND_SCHEMA: list[dict[str, Any]] = [
         "description": "Read-only Eco server information",
         "type": 1,
         "options": [
-            {"name": "status", "description": "Current server status", "type": 1},
-            {"name": "world", "description": "World and climate summary", "type": 1},
-            {"name": "economy", "description": "Currency, trade, and supply highlights", "type": 1},
             {
-                "name": "player",
-                "description": "Public citizen dossier",
-                "type": 1,
+                "name": "rich",
+                "description": "Rich previews in #eco-info",
+                "type": 2,
                 "options": [
-                    {"name": "name", "description": "Citizen name", "type": 3, "required": True}
+                    {"name": "status", "description": "Current server status", "type": 1},
+                    {"name": "world", "description": "World and climate summary", "type": 1},
+                    {
+                        "name": "economy",
+                        "description": "Currency, trade, and supply highlights",
+                        "type": 1,
+                    },
+                    {
+                        "name": "player",
+                        "description": "Public citizen dossier",
+                        "type": 1,
+                        "options": [
+                            {
+                                "name": "name",
+                                "description": "Citizen name",
+                                "type": 3,
+                                "required": True,
+                            }
+                        ],
+                    },
+                    {"name": "help", "description": "Eco command directory", "type": 1},
                 ],
             },
-            {"name": "help", "description": "Eco command directory", "type": 1},
         ],
     }
 ]

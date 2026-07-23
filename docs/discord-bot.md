@@ -10,13 +10,18 @@ The first release provides read-only discovery. It does not parse ordinary messa
 
 ## User experience
 
-Discord registers one top-level `/eco` command group:
+Discord registers one top-level `/eco` command group with a `rich` subcommand
+group. All five rich previews are dedicated to `#eco-info`:
 
-* `/eco status` - current server state, online-player count, meteor countdown, world age, and version. The embed links to `/info`.
-* `/eco world` - climate and world summary with the current world-preview image when Discord can fetch it. The embed links to `/map`.
-* `/eco economy` - current currency, trade, and supply-gap highlights. The embed links to `/trade`.
-* `/eco player <name>` - the named citizen's public dossier summary. The embed links to the existing encoded player URL.
-* `/eco help` - a compact command directory. The embed links to the eco-app homepage.
+* `/eco rich status` - current server state, online-player count, meteor countdown, world age, and version. The embed links to `/info`.
+* `/eco rich world` - climate and world summary with the current world-preview image when Discord can fetch it. The embed links to `/map`.
+* `/eco rich economy` - current currency, trade, and supply-gap highlights. The embed links to `/trade`.
+* `/eco rich player <name>` - the named citizen's public dossier summary. The embed links to the existing encoded player URL.
+* `/eco rich help` - a compact command directory. The embed links to the eco-app homepage.
+
+`ECO_DISCORD_INFO_CHANNEL_ID` is required at worker startup. A rich command
+outside that channel returns only a concise ephemeral redirect to `#eco-info`;
+the worker does not call eco-app or fetch Eco data for that request.
 
 The implementation may add commands after the first release only when an existing public eco-app data plane can supply the answer. The bot does not reach around eco-app to call the game server directly.
 
@@ -59,7 +64,7 @@ The bot applies a shorter internal request timeout than Discord's deferred-inter
 
 The bot uses slash commands only. It requests no Message Content, Guild Members, or Presence privileged intents. The bot uses Discord's default non-privileged intents unless a later feature has a documented need for more.
 
-Command registration runs as an explicit deployment operation, not during every worker startup. The deploy workflow registers guild-scoped commands in a test server first. The operator promotes the same command schema to global registration after validation.
+Command registration runs as an explicit deployment operation, not during every worker startup. The deploy workflow registers guild-scoped commands in a test server only; it does not register these commands globally.
 
 ## Application architecture
 
@@ -89,6 +94,7 @@ The worker accepts:
 * `ECO_DISCORD_ECO_APP_URL` - eco-app base URL. The deploy supplies the cluster-local service URL, while local development may use localhost.
 * `ECO_DISCORD_PUBLIC_URL` - canonical public SPA base URL used in embed links.
 * `ECO_DISCORD_SERVER_LABEL` - public-safe server name shown in footers.
+* `ECO_DISCORD_INFO_CHANNEL_ID` - required `#eco-info` channel identifier for rich previews.
 
 Published image entrypoints are `eco-discord-worker` (the gateway process) and
 `eco-discord-register` (the explicit **test-guild-only** schema registration

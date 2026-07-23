@@ -23,6 +23,7 @@ class CommandService:
     client: EcoAppClient
     embeds: EmbedFactory
     public_url: str
+    info_channel_id: int
 
     def _url(self, path: str) -> str:
         return f"{self.public_url.rstrip('/')}{path}"
@@ -49,8 +50,18 @@ class CommandService:
     async def resolve_interaction(
         self, interaction: object, command: str, name: str | None = None
     ) -> None:
-        """Defer before every fetch, then make exactly one embed-only edit."""
+        """Redirect out-of-channel requests, otherwise defer before every fetch."""
         started = time.monotonic()
+        channel_id = getattr(interaction, "channel_id", None)
+        if channel_id != self.info_channel_id:
+            await interaction.response.send_message(  # type: ignore[attr-defined]
+                f"Use <#{self.info_channel_id}> for Eco rich previews.", ephemeral=True
+            )
+            LOG.info(
+                "discord_command_redirected",
+                extra={"command": command, "outcome": "redirect"},
+            )
+            return
         await interaction.response.defer()  # type: ignore[attr-defined]
         payload = await self.render(command, name)
         await interaction.edit_original_response(  # type: ignore[attr-defined]
@@ -131,7 +142,7 @@ class CommandService:
             title="Eco command help",
             url=self._url("/"),
             description=(
-                "Use /eco status, world, economy, player, or help. "
+                "Use /eco rich status, world, economy, player, or help. "
                 "Every command links to its full Eco page."
             ),
         )

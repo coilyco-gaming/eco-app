@@ -11,7 +11,7 @@ BASE = "https://eco-app.test"
 
 
 def service() -> CommandService:
-    return CommandService(EcoAppClient(BASE), EmbedFactory("Sirens"), "https://eco.example")
+    return CommandService(EcoAppClient(BASE), EmbedFactory("Sirens"), "https://eco.example", 42)
 
 
 @respx.mock
@@ -57,11 +57,17 @@ class FakeResponse:
     async def defer(self) -> None:
         self.events.append("defer")
 
+    async def send_message(self, content: str, *, ephemeral: bool) -> None:
+        self.events.append("redirect")
+        self.content = content
+        self.ephemeral = ephemeral
+
 
 class FakeInteraction:
-    def __init__(self) -> None:
+    def __init__(self, channel_id: int = 42) -> None:
         self.events: list[str] = []
         self.response = FakeResponse(self.events)
+        self.channel_id = channel_id
 
     async def edit_original_response(self, **kwargs: object) -> None:
         self.events.append("edit")
@@ -81,6 +87,20 @@ async def test_interaction_defers_before_upstream_and_edits_once(monkeypatch) ->
     monkeypatch.setattr(command_service.embeds, "to_discord", lambda payload: object())
     await command_service.resolve_interaction(interaction, "help")
     assert interaction.events == ["defer", "edit"]
+
+
+async def test_interaction_outside_info_channel_redirects_without_fetch(monkeypatch) -> None:
+    interaction = FakeInteraction(channel_id=99)
+    command_service = service()
+
+    async def should_not_render(*args: object, **kwargs: object) -> object:
+        raise AssertionError("out-of-channel requests must not fetch Eco data")
+
+    monkeypatch.setattr(CommandService, "render", should_not_render)
+    await command_service.resolve_interaction(interaction, "world")
+    assert interaction.events == ["redirect"]
+    assert interaction.response.content == "Use <#42> for Eco rich previews."
+    assert interaction.response.ephemeral is True
 
 
 def test_help_needs_no_upstream() -> None:
