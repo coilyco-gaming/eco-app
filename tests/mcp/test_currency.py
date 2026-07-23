@@ -642,3 +642,69 @@ def test_preview_currency_json_route(monkeypatch: pytest.MonkeyPatch) -> None:
     # The dedicated route wins over the generic /preview/{tool} handler.
     r2 = client.get("/preview/currency.json")
     assert r2.json()["mode"] == "list"
+
+
+@respx.mock
+def test_preview_currency_json_sanitizes_nested_nonfinite_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The currency data plane stays strict JSON when exporter values are non-finite."""
+    from fastapi.testclient import TestClient
+
+    from eco_mcp_app.http_app import create_app
+
+    original_compute = currency_mod.compute_currency_payload
+
+    def _compute_with_nonfinite(
+        snapshot: CurrencySnapshot, *, currency: str | None = None
+    ) -> dict[str, object]:
+        payload = original_compute(snapshot, currency=currency)
+        payload["money"].update(
+            {
+                "personalWealth": float("inf"),
+                "governmentHoldings": float("-inf"),
+                "totalSupply": float("nan"),
+                "tradeValue7d": float("nan"),
+                "hasSupplyData": True,
+            }
+        )
+        payload["series"] = {
+            "personalWealth": [[0.0, float("inf")]],
+            "governmentHoldings": [[0.0, float("-inf")]],
+            "activeCurrencies": [[0.0, 3.0]],
+            "trades7d": [[0.0, float("nan")]],
+        }
+        return payload
+
+    monkeypatch.setattr(currency_mod, "compute_currency_payload", _compute_with_nonfinite)
+    monkeypatch.setattr(eco_server, "_render_currency_card", lambda _: "")
+    respx.get(DEFAULT_ECO_INFO_URL).mock(return_value=httpx.Response(200, json=_info()))
+    _route_datasets({ACTIVE_CURRENCIES_DATASET: [1, 2, 3]})
+    _route_flatlist([])
+    _route_all_actions()
+
+    response = TestClient(create_app()).get("/preview/currency.json")
+
+    assert response.status_code == 200, response.text
+    assert "Infinity" not in response.text
+    assert "NaN" not in response.text
+    payload = json.loads(
+        response.text,
+        parse_constant=lambda value: (_ for _ in ()).throw(
+            AssertionError(f"non-strict JSON constant: {value}")
+        ),
+    )
+    assert payload["money"] == {
+        "activeCurrencies": 3,
+        "personalWealth": None,
+        "governmentHoldings": None,
+        "totalSupply": None,
+        "tradeValue7d": None,
+        "hasSupplyData": True,
+    }
+    assert payload["series"] == {
+        "personalWealth": [[0.0, None]],
+        "governmentHoldings": [[0.0, None]],
+        "activeCurrencies": [[0.0, 3.0]],
+        "trades7d": [[0.0, None]],
+    }
