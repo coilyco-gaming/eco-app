@@ -250,7 +250,8 @@ public class EventStore
         }
     }
 
-    public IReadOnlyList<EventRow> Query(string? citizen, string? actionType, int limit, long? sinceUnix)
+    public IReadOnlyList<EventRow> Query(
+        string? citizen, string? actionType, int limit, long? sinceUnix, long? beforeId)
     {
         var results = new List<EventRow>();
 
@@ -263,6 +264,7 @@ public class EventStore
             if (citizen != null) { sql += " AND citizen = $c"; cmd.Parameters.AddWithValue("$c", citizen); }
             if (actionType != null) { sql += " AND action_type = $t"; cmd.Parameters.AddWithValue("$t", actionType); }
             if (sinceUnix != null) { sql += " AND unix_time >= $s"; cmd.Parameters.AddWithValue("$s", sinceUnix.Value); }
+            if (beforeId != null) { sql += " AND id < $b"; cmd.Parameters.AddWithValue("$b", beforeId.Value); }
             sql += " ORDER BY id DESC LIMIT $l";
             cmd.Parameters.AddWithValue("$l", Math.Clamp(limit, 1, 1000));
             cmd.CommandText = sql;

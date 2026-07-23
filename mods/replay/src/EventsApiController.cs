@@ -16,7 +16,8 @@ public class EventsApiController : ControllerBase
         [FromQuery] string? citizen = null,
         [FromQuery] string? type = null,
         [FromQuery] int limit = 100,
-        [FromQuery] long? since = null)
+        [FromQuery] long? since = null,
+        [FromQuery] long? beforeId = null)
     {
         var plugin = EcoReplayPlugin.Instance;
         if (plugin == null || !plugin.Store.IsReady)
@@ -25,7 +26,7 @@ public class EventsApiController : ControllerBase
         }
 
         var rows = plugin.Store
-            .Query(citizen, type, limit, since)
+            .Query(citizen, type, limit, since, beforeId)
             .Select(r => new EventDto(
                 r.Id, r.UnixTimeSeconds, r.GameTimeSeconds,
                 r.ActionType, r.Citizen, r.BodyJson))

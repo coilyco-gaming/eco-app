@@ -7,7 +7,7 @@ import json
 import mcp.types as mt
 import pytest
 
-from eco_mcp_app.server import KNOWN_PUBLIC_SERVERS, build_server
+from eco_mcp_app.server import KNOWN_PUBLIC_SERVERS, PUBLIC_SERVERS_OUTPUT_SCHEMA, build_server
 
 
 @pytest.mark.asyncio
@@ -51,6 +51,7 @@ async def test_list_public_eco_servers_returns_curated_list() -> None:
         params=mt.CallToolRequestParams(name="list_public_eco_servers", arguments={}),
     )
     result = await handler(req)
+    assert result.root.structuredContent == {"servers": KNOWN_PUBLIC_SERVERS}
     blocks = result.root.content
     assert len(blocks) == 2
     # Both blocks are TextContent by construction; narrow for mypy.
@@ -62,3 +63,18 @@ async def test_list_public_eco_servers_returns_curated_list() -> None:
     for s in KNOWN_PUBLIC_SERVERS:
         assert s["label"] in md
         assert s["host"] in md
+
+
+@pytest.mark.asyncio
+async def test_list_public_eco_servers_advertises_safe_structured_metadata() -> None:
+    mcp = build_server()
+    handler = mcp.request_handlers[mt.ListToolsRequest]
+    result = await handler(mt.ListToolsRequest(method="tools/list"))
+    tool = next(tool for tool in result.root.tools if tool.name == "list_public_eco_servers")
+
+    assert tool.annotations is not None
+    assert tool.annotations.readOnlyHint is True
+    assert tool.annotations.destructiveHint is False
+    assert tool.annotations.idempotentHint is True
+    assert tool.annotations.openWorldHint is False
+    assert tool.outputSchema == PUBLIC_SERVERS_OUTPUT_SCHEMA

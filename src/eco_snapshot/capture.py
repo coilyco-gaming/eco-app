@@ -48,11 +48,12 @@ STATIC_ENDPOINTS: list[tuple[str, QueryPairs]] = [
     ("/api/v1/skills", []),
     ("/api/v1/citizens", []),
     ("/api/v1/stores", []),
-    ("/api/v1/events", [("limit", "1000")]),
     ("/api/v1/events/stats", []),
     ("/Layers/WorldPreview.gif", []),
     ("/Layers/Pollution.gif", []),
 ]
+
+REPLAY_PAGE_SIZE = 1000
 
 _EXT_BY_TYPE = {
     "application/json": ".json",
@@ -118,6 +119,40 @@ def _species_endpoints(specieslist: str) -> list[tuple[str, QueryPairs]]:
     return out
 
 
+def _worldlayer_endpoints(catalog: Any) -> list[tuple[str, QueryPairs]]:
+    """Fan the worldlayer catalog out into one raster request per layer.
+
+    The map uses ``/Layers/<LayerName>.gif`` for hover highlights, and custom
+    worlds can add layers beyond the built-in biome names.  The catalog is the
+    authority here so a capture includes every raster the server advertises.
+    """
+    if not isinstance(catalog, list):
+        return []
+
+    out: list[tuple[str, QueryPairs]] = []
+    for category in catalog:
+        if not isinstance(category, dict):
+            continue
+        layers = category.get("List")
+        if not isinstance(layers, list):
+            continue
+        for layer in layers:
+            if not isinstance(layer, dict):
+                continue
+            name = layer.get("LayerName")
+            if isinstance(name, str) and name:
+                out.append((f"/Layers/{name}.gif", []))
+    return out
+
+
+def _replay_events(payload: Any) -> list[dict[str, Any]] | None:
+    """Read the replay mod's paged payload, accepting its legacy list shape."""
+    events = payload.get("events") if isinstance(payload, dict) else payload
+    if not isinstance(events, list) or not all(isinstance(event, dict) for event in events):
+        return None
+    return events
+
+
 async def capture_snapshot(
     base_url: str,
     out_dir: Path,
@@ -163,23 +198,43 @@ async def capture_snapshot(
                     "reason": f"fan-out skipped: {exc}",
                 }
             )
+        try:
+            worldlayers = await _fetch_json(client, base, "/api/v1/worldlayers/layers", headers)
+            endpoints += _worldlayer_endpoints(worldlayers)
+        except (httpx.HTTPError, ValueError) as exc:
+            manifest.failures.append(
+                {
+                    "path": "/api/v1/worldlayers/layers",
+                    "query": "",
+                    "reason": f"fan-out skipped: {exc}",
+                }
+            )
+
+        # Keep the explicitly requested preview/pollution layers and avoid
+        # duplicate catalog entries when either one is also advertised.
+        deduped: list[tuple[str, QueryPairs]] = []
+        seen: set[tuple[str, str]] = set()
+        for path, pairs in endpoints:
+            key = (path, canonical_query(pairs))
+            if key not in seen:
+                seen.add(key)
+                deduped.append((path, pairs))
 
         semaphore = asyncio.Semaphore(CONCURRENCY)
-        counter = 0
 
-        async def pull(index: int, path: str, pairs: QueryPairs) -> None:
+        async def pull(index: int, path: str, pairs: QueryPairs) -> httpx.Response | None:
             query = canonical_query(pairs)
             async with semaphore:
                 try:
                     r = await client.get(f"{base}{path}", params=tuple(pairs), headers=headers)
                 except httpx.HTTPError as exc:
                     manifest.failures.append({"path": path, "query": query, "reason": str(exc)})
-                    return
+                    return None
             if r.status_code != 200:
                 manifest.failures.append(
                     {"path": path, "query": query, "reason": f"HTTP {r.status_code}"}
                 )
-                return
+                return None
             content_type = r.headers.get("content-type", "application/octet-stream")
             rel = f"{RESPONSES_DIR}/{index:04d}-{_slug(path, query)}{_ext_for(content_type)}"
             (out_dir / rel).write_bytes(r.content)
@@ -192,12 +247,64 @@ async def capture_snapshot(
                     content_type=content_type,
                 )
             )
+            return r
 
-        tasks = []
-        for path, pairs in endpoints:
-            counter += 1
-            tasks.append(pull(counter, path, pairs))
+        tasks = [pull(index, path, pairs) for index, (path, pairs) in enumerate(deduped, start=1)]
         await asyncio.gather(*tasks)
+
+        # The replay mod returns newest-first pages.  ``beforeId`` is an
+        # exclusive cursor, so advancing to the smallest id in each page
+        # captures a complete event history without overlap.
+        event_index = len(deduped)
+        before_id: int | None = None
+        while True:
+            event_index += 1
+            replay_pairs: QueryPairs = [("limit", str(REPLAY_PAGE_SIZE))]
+            if before_id is not None:
+                replay_pairs.append(("beforeId", str(before_id)))
+            response = await pull(event_index, "/api/v1/events", replay_pairs)
+            if response is None:
+                break
+            try:
+                events = _replay_events(response.json())
+            except ValueError:
+                events = None
+            if events is None:
+                manifest.failures.append(
+                    {
+                        "path": "/api/v1/events",
+                        "query": canonical_query(replay_pairs),
+                        "reason": "pagination stopped: invalid events payload",
+                    }
+                )
+                break
+            if len(events) < REPLAY_PAGE_SIZE:
+                break
+            ids: list[int] = []
+            for event in events:
+                event_id = event.get("id")
+                if isinstance(event_id, int):
+                    ids.append(event_id)
+            if not ids:
+                manifest.failures.append(
+                    {
+                        "path": "/api/v1/events",
+                        "query": canonical_query(replay_pairs),
+                        "reason": "pagination stopped: full page has no integer ids",
+                    }
+                )
+                break
+            next_before_id = min(ids)
+            if before_id is not None and next_before_id >= before_id:
+                manifest.failures.append(
+                    {
+                        "path": "/api/v1/events",
+                        "query": canonical_query(replay_pairs),
+                        "reason": "pagination stopped: beforeId cursor did not advance",
+                    }
+                )
+                break
+            before_id = next_before_id
     finally:
         if owns_client:
             await client.aclose()

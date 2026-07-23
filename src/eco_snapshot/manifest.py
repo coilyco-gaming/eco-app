@@ -26,6 +26,10 @@ SIGNIFICANT_PARAMS: dict[str, tuple[str, ...]] = {
     "/datasets/get": ("dataset",),
     "/api/v1/exporter/actions": ("actionName",),
     "/api/v1/exporter/species": ("speciesName",),
+    # Replay pages are distinct only by their exclusive cursor.  ``limit`` is
+    # volatile so an offline app request for 100 rows can replay the captured
+    # first page of 1,000 rows.
+    "/api/v1/events": ("beforeId",),
 }
 
 
