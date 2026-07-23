@@ -13,7 +13,7 @@ Three read paths, in priority order:
    (e.g. `/home/kai/Steam/steamapps/common/EcoServer/Storage/EcoReplay.db`).
    Opens in WAL read-only mode, so it's safe to run alongside the live
    server writes.
-2. `UPSTREAM_URL` env var pointing at the mod's HTTP `/api/v1/events`
+2. `ECO_REPLAY_UPSTREAM_URL` env var pointing at the mod's HTTP `/api/v1/events`
    endpoint. Eco's web server requires admin auth — set
    `UPSTREAM_API_KEY` to pass it through as `X-API-Key`.
 3. Neither set: mock data, for local UI dev without an Eco server.
@@ -32,9 +32,8 @@ from fastapi.responses import JSONResponse
 from eco_mcp_app.telemetry import init_sentry
 
 ECO_REPLAY_DB = os.environ.get("ECO_REPLAY_DB")
-UPSTREAM_URL = os.environ.get("UPSTREAM_URL")
+ECO_REPLAY_UPSTREAM_URL = os.environ.get("ECO_REPLAY_UPSTREAM_URL")
 UPSTREAM_API_KEY = os.environ.get("UPSTREAM_API_KEY")
-USING_MOCK = ECO_REPLAY_DB is None and UPSTREAM_URL is None
 
 # Shared idempotent init from eco_mcp_app — in the fused process every
 # entrypoint calls it; whichever runs first wins, the rest are no-ops.
@@ -69,6 +68,28 @@ _MOCK_EVENTS = [
         "body": json.dumps({}),
     },
 ]
+
+
+class ReplayUpstreamUnavailableError(Exception):
+    """The configured replay upstream could not provide a usable response."""
+
+
+def using_mock() -> bool:
+    """Whether replay has neither its database nor its dedicated HTTP source."""
+    return ECO_REPLAY_DB is None and ECO_REPLAY_UPSTREAM_URL is None
+
+
+def _unavailable_response() -> JSONResponse:
+    """Return one public-safe shape for all replay upstream failures."""
+    return JSONResponse(
+        {
+            "error": {
+                "code": "replay_upstream_unavailable",
+                "message": "The replay chronicle is temporarily unavailable.",
+            }
+        },
+        status_code=503,
+    )
 
 
 def _fetch_from_db(
@@ -117,17 +138,23 @@ async def fetch_events(
     if ECO_REPLAY_DB:
         return _fetch_from_db(ECO_REPLAY_DB, citizen, type_, limit)
 
-    if UPSTREAM_URL:
+    if ECO_REPLAY_UPSTREAM_URL:
         params: dict[str, str | int] = {"limit": limit}
         if citizen:
             params["citizen"] = citizen
         if type_:
             params["type"] = type_
         headers = {"X-API-Key": UPSTREAM_API_KEY} if UPSTREAM_API_KEY else {}
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(UPSTREAM_URL, params=params, headers=headers)
-            resp.raise_for_status()
-            return resp.json().get("events", [])
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(ECO_REPLAY_UPSTREAM_URL, params=params, headers=headers)
+                resp.raise_for_status()
+                payload = resp.json()
+            if not isinstance(payload, dict) or not isinstance(payload.get("events"), list):
+                raise ValueError("replay events response has no events list")
+            return payload["events"]
+        except (httpx.HTTPError, TypeError, ValueError) as error:
+            raise ReplayUpstreamUnavailableError from error
 
     rows = _MOCK_EVENTS
     if citizen:
@@ -152,12 +179,23 @@ async def fetch_stats() -> dict:
     if ECO_REPLAY_DB:
         return _stats_from_db(ECO_REPLAY_DB)
 
-    if UPSTREAM_URL:
+    if ECO_REPLAY_UPSTREAM_URL:
         headers = {"X-API-Key": UPSTREAM_API_KEY} if UPSTREAM_API_KEY else {}
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"{UPSTREAM_URL}/stats", headers=headers)
-            resp.raise_for_status()
-            return resp.json()
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(f"{ECO_REPLAY_UPSTREAM_URL}/stats", headers=headers)
+                resp.raise_for_status()
+                payload = resp.json()
+            if (
+                not isinstance(payload, dict)
+                or not isinstance(payload.get("ready"), bool)
+                or not isinstance(payload.get("total"), int)
+                or isinstance(payload["total"], bool)
+            ):
+                raise ValueError("replay stats response is malformed")
+            return payload
+        except (httpx.HTTPError, TypeError, ValueError) as error:
+            raise ReplayUpstreamUnavailableError from error
 
     return {"ready": True, "total": len(_MOCK_EVENTS)}
 
@@ -165,7 +203,7 @@ async def fetch_stats() -> dict:
 @app.get("/v1/meta")
 def api_meta() -> JSONResponse:
     """Whether the data below is the canned mock set (no DB / upstream set)."""
-    return JSONResponse({"mockData": USING_MOCK})
+    return JSONResponse({"mockData": using_mock()})
 
 
 @app.get("/v1/events")
@@ -175,11 +213,17 @@ async def api_events(
     limit: int = Query(default=100, ge=1, le=1000),
 ) -> JSONResponse:
     """JSON mirror of the upstream mod endpoint, with mock fallback."""
-    events = await fetch_events(citizen=citizen, type_=type_, limit=limit)
+    try:
+        events = await fetch_events(citizen=citizen, type_=type_, limit=limit)
+    except ReplayUpstreamUnavailableError:
+        return _unavailable_response()
     return JSONResponse({"events": events, "count": len(events)})
 
 
 @app.get("/v1/events/stats")
 async def api_events_stats() -> JSONResponse:
     """JSON mirror of the upstream mod `/stats` endpoint, with mock fallback."""
-    return JSONResponse(await fetch_stats())
+    try:
+        return JSONResponse(await fetch_stats())
+    except ReplayUpstreamUnavailableError:
+        return _unavailable_response()
