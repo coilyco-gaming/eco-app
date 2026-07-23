@@ -21,8 +21,8 @@ Two terminals total: `snapshot-serve` in one, `http-offline` in the other. `.sna
 `src/eco_snapshot/capture.py` holds the endpoint list, which is the union of everything in the [dataset survey](datasets/README.md):
 
 * Catalog-driven fan-out - `/datasets/flatlist` drives one request per series (`/datasets/get`, day window from `/info` `DaysRunning`) and one per action exporter CSV (`/api/v1/exporter/actions`). `/api/v1/exporter/specieslist` drives the per-species CSVs. A dataset added next cycle is captured with no code change.
-* Static surfaces - `/info`, users, laws, elections + titles, currency holdings, worldlayers, map dimension + property, climate settings, and the world-preview + pollution rasters.
-* Mod surfaces - jobs (`/api/v1/skills`, `/api/v1/citizens`), stores (`/api/v1/stores`), replay (`/api/v1/events`, `/api/v1/events/stats`).
+* Static surfaces - `/info`, users, laws, elections + titles, currency holdings, worldlayers, map dimension + property, climate settings, and every catalog-advertised `/Layers/<LayerName>.gif` raster (including the world preview and optional pollution layer). A disabled raster remains a manifest failure.
+* Mod surfaces - jobs (`/api/v1/skills`, `/api/v1/citizens`), stores (`/api/v1/stores`), replay (`/api/v1/events`, `/api/v1/events/stats`). Replay capture follows the mod's exclusive `beforeId` cursor in 1,000-row pages until the complete event history is exhausted.
 
 Out of scope: the external species-enrichment fetches (Wikipedia, iNaturalist, Wikidata, FRED). Those are not eco-server data, and the app already degrades gracefully without them.
 
