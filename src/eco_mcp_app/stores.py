@@ -273,13 +273,21 @@ def build_directory(
     never depends on the undecoded `BoughtOrSold` enum.
     """
     name_map = fetch.name_map
+    rollups = [t for t in fetch.parsed if t.is_rollup]
     directory = StoreDirectory(
         fetched_at_iso=_now_iso(),
         source_base_url=fetch.normalized_base_url,
-        total_trades=len(fetch.parsed),
+        # Count remains a valid merged-event total, but store/trader labels on
+        # hourly TradeAction rollups are only representative (eco-app#132).
+        total_trades=sum(t.event_count for t in fetch.parsed),
         per_type_counts=dict(fetch.per_type_counts),
         warnings=list(fetch.warnings),
     )
+    if rollups:
+        directory.warnings.append(
+            f"{sum(t.event_count for t in rollups)} older trades arrive as {len(rollups)} "
+            "hourly rollups; store and trader profiles use detailed rows only (eco-app#132)"
+        )
 
     stores: dict[str, _StoreAcc] = {}
     traders: dict[str, _TraderAcc] = {}
@@ -292,6 +300,8 @@ def build_directory(
         return acc
 
     for t in fetch.parsed:
+        if t.is_rollup:
+            continue
         # --- store leg: needs a shop owner + a place to be a "store" ---
         if t.shop_owner_id:
             key = f"{t.location}|{t.shop_owner_id}"

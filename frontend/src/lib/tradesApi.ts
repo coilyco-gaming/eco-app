@@ -1,7 +1,7 @@
 // Typed client for the trades ledger (/preview/get_eco_trades.json).
 //
 // The endpoint returns TradesLedger.to_dict() from eco_mcp_app/trades.py: the
-// row-level individual trades (newest first, capped) plus the aggregates that
+// row-level detailed trades (newest first, capped) plus the aggregates that
 // fall out of them — top buyers/sellers by currency, per-currency volume,
 // most-traded items, and a per-item price-over-time series. Party ids are
 // already joined to names (Buyer/Seller/ShopOwner), falling back to
@@ -22,12 +22,17 @@ export interface Trade {
   store: string
   location: string
   direction: string
+  eventCount?: number
+  aggregated?: boolean
 }
 
 export interface TradesLedger {
   fetchedAtISO: string
   sourceBaseUrl: string
   totalTrades: number
+  detailedTrades?: number
+  rollupRows?: number
+  rollupTrades?: number
   perTypeCounts: Record<string, number>
   trades: Trade[]
   totalCurrencyVolume: number

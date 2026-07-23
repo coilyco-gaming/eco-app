@@ -300,6 +300,9 @@ const TRADES = {
   fetchedAtISO: "2026-06-12T13:00:00+00:00",
   sourceBaseUrl: "http://x:3001",
   totalTrades: 335,
+  detailedTrades: 2,
+  rollupRows: 1,
+  rollupTrades: 333,
   perTypeCounts: { CurrencyTrade: 335 },
   trades: [
     {
@@ -448,6 +451,8 @@ describe("Trade", () => {
     expect(screen.getByTestId("trades-table")).toHaveTextContent("ekans")
     // Top sellers / buyers leaderboards ride along.
     expect(screen.getAllByTestId("party-row").length).toBeGreaterThan(0)
+    expect(screen.getByText("Detailed trades ledger")).toBeInTheDocument()
+    expect(screen.getByTestId("ledger-rollup-note")).toHaveTextContent("333 older trades")
   })
 
   it("deep-links a drill target via ?q=", async () => {

@@ -52,6 +52,9 @@ _CURRENCY_CSV = (
     'IronIngotItem,130409,"1,2,3",1,200000\n'
 )
 _BARTER_EMPTY = "Buyer,Seller,ItemUsed,NumberOfItems,Count,Time\n"
+_CURRENCY_ROLLUP = (
+    '"old",Credit,900.0,90,33,129312,130409,129312,StoreItem,BeetItem,129312,"1,2,3",4,400000\n'
+)
 
 # ItemCraftedAction: ekans crafts 1 Beet at an anvil (day ~2.9), coilysiren
 # crafts 3 IronIngot iterations (day ~1.2). WorldObjectItem is the station,
@@ -92,8 +95,8 @@ def _isolated_caches(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         items_mod._clear_cache()
 
 
-def _mock_all() -> None:
-    respx.get(CURRENCY_URL).mock(return_value=httpx.Response(200, text=_CURRENCY_CSV))
+def _mock_all(currency_csv: str = _CURRENCY_CSV) -> None:
+    respx.get(CURRENCY_URL).mock(return_value=httpx.Response(200, text=currency_csv))
     respx.get(BARTER_URL).mock(return_value=httpx.Response(200, text=_BARTER_EMPTY))
     respx.get(CRAFT_URL).mock(return_value=httpx.Response(200, text=_CRAFT_CSV))
     respx.get(HARVEST_URL).mock(return_value=httpx.Response(200, text=_HARVEST_EMPTY))
@@ -185,6 +188,19 @@ async def test_fetch_item_pivot_trades_and_crafts_for_one_item() -> None:
     assert pivot.summary["crafters"] == [{"name": "ekans", "quantity": 1.0, "events": 1}]
     assert pivot.summary["supply"]["storeCount"] == 1
     assert pivot.summary["live"] is False
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_item_pivot_excludes_rollup_representative_item() -> None:
+    _mock_all(_CURRENCY_CSV + _CURRENCY_ROLLUP)
+    pivot = await fetch_item_pivot("BeetItem", base_url=BASE, api_key="secret", cache_ttl_s=0)
+
+    # The older row's ItemUsed=BeetItem is only a representative label; its
+    # summed amount and quantity must not fabricate a Beet trade or price.
+    assert pivot.trade_count == 1
+    assert pivot.trade_volume == 20.0
+    assert len(pivot.trades) == 1
 
 
 @pytest.mark.asyncio

@@ -625,13 +625,14 @@ export default function Trade() {
         </section>
       )}
 
-      {/* Row-level trades ledger — folded in from the former /trades page
+      {/* Row-level detailed-trades ledger — folded in from the former /trades page
           (eco-app#90). The same ?q= filter drives both the market drill above
-          and this ledger, so drilling an item narrows the rows here too. */}
+          and this ledger, so drilling an item narrows the rows here too. Older
+          hourly rollups do not have reliable party/item attribution. */}
       {ledger && ledger.totalTrades > 0 && (
         <section id="trade-ledger" data-testid="ledger">
           <h2 className="section-title">
-            Trades ledger {q ? `matching "${q}"` : ""}{" "}
+            Detailed trades ledger {q ? `matching "${q}"` : ""}{" "}
             <span className="section-sub">
               (newest {visibleTrades.length}
               {ledger.trades.length > visibleTrades.length
@@ -640,6 +641,12 @@ export default function Trade() {
               )
             </span>
           </h2>
+          {(ledger.rollupTrades ?? 0) > 0 && (
+            <p className="section-sub" data-testid="ledger-rollup-note">
+              {formatCount(ledger.rollupTrades ?? 0)} older trades are aggregated into {formatCount(ledger.rollupRows ?? 0)}
+              {" "}hourly rows and excluded from party, item, and unit-price attribution.
+            </p>
+          )}
           {visibleTrades.length === 0 ? (
             <p className="empty-note">No trades match.</p>
           ) : (

@@ -65,6 +65,14 @@ _CURRENCY_CSV = (
 
 _BARTER_EMPTY = "Buyer,Seller,ItemUsed,NumberOfItems,Count,Time\n"
 
+# An old hourly CurrencyTrade rollup. CurrencyAmount and NumberOfItems are
+# summed, but the buyer/seller/item/store fields are a representative event and
+# therefore must not enter any attribution or price calculation (eco-app#132).
+_CURRENCY_ROLLUP = (
+    '"old account",Credit,900.0,90,33,130409,129312,130409,StoreItem,'
+    'BogusRepresentativeItem,129312,"1,2,3",4,400000\n'
+)
+
 
 @pytest.fixture(autouse=True)
 def _clear_cache() -> Iterator[None]:
@@ -154,6 +162,28 @@ def test_build_ledger_aggregates_and_resolves_names() -> None:
     assert [r["time"] for r in ledger.trades] == [300000.0, 200000.0, 100000.0]
     assert ledger.trades[0]["seller"] == "ekans"
     assert ledger.trades[2]["buyer"] == "Citizen #129569"
+
+
+def test_build_ledger_excludes_hourly_rollups_from_attribution() -> None:
+    ledger = TradesLedger(fetched_at_iso="t", source_base_url="b")
+    parsed: list[_ParsedTrade] = []
+    parse_trade_rows("CurrencyTrade", _rows(_CURRENCY_CSV + _CURRENCY_ROLLUP), ledger, parsed)
+    build_ledger(parsed, ledger, {"129312": "coilysiren", "130409": "ekans"})
+
+    # Count is the real merged-event total, unlike the single CSV rollup row.
+    assert ledger.total_trades == 7
+    assert ledger.detailed_trades == 3
+    assert ledger.rollup_rows == 1
+    assert ledger.rollup_trades == 4
+    # CurrencyAmount is summed by the source action, so gross/currency totals
+    # retain all history; party/item and unit-price views remain detailed-only.
+    assert ledger.total_currency_volume == pytest.approx(1515.0)
+    assert dict(ledger.by_currency)["Credit"] == pytest.approx(1515.0)
+    assert "BogusRepresentativeItem" not in {item for item, _, _ in ledger.by_item}
+    assert all(row["item"] != "BogusRepresentativeItem" for row in ledger.trades)
+    assert "BogusRepresentativeItem" not in ledger.price_series
+    assert dict(ledger.top_sellers)["ekans"] == pytest.approx(390.0)
+    assert any("party, item, store, and unit-price" in w for w in ledger.warnings)
 
 
 def test_parse_trade_rows_realigns_shifted_row() -> None:

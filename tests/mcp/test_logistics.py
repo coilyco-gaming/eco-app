@@ -389,6 +389,7 @@ _CURRENCY_CSV = (
     '"a",Credit,9.0,10,32,1,1,3,StoreItem,IronOreItem,1,"9,9,9",1,172800\n'
 )
 _BARTER_EMPTY = "Buyer,Seller,ItemUsed,NumberOfItems,Count,Time\n"
+_CURRENCY_ROLLUP = '"old",Credit,900.0,90,33,1,2,1,StoreItem,FakeItem,1,"9,9,9",4,400000\n'
 
 
 @pytest.mark.asyncio
@@ -413,6 +414,22 @@ async def test_fetch_logistics_history_only_when_live_absent() -> None:
     # Single store → no arbitrage, honest depth warning.
     assert report.arbitrage == []
     assert any("not enough market depth" in w for w in report.warnings)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_logistics_excludes_rollup_history_quote() -> None:
+    respx.get(CURRENCY_URL).mock(
+        return_value=httpx.Response(200, text=_CURRENCY_CSV + _CURRENCY_ROLLUP)
+    )
+    respx.get(BARTER_URL).mock(return_value=httpx.Response(200, text=_BARTER_EMPTY))
+    respx.get(CITIZENS_URL).mock(return_value=httpx.Response(200, json=_CITIZENS_JSON))
+    respx.get(STORES_URL).mock(return_value=httpx.Response(404))
+
+    report = await fetch_logistics(base_url=BASE, api_key="k")
+
+    assert all(row["item"] != "FakeItem" for row in report.cheapest + report.resale)
+    assert any("detailed rows only" in w for w in report.warnings)
 
 
 @pytest.mark.asyncio

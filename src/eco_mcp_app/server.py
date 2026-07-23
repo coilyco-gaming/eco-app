@@ -2262,12 +2262,14 @@ def build_server() -> Server:
                 name="get_eco_trades",
                 title="Eco — trades ledger",
                 description=(
-                    "Pull the row-level trades ledger from an Eco server's "
-                    "action-log exporter: every individual CurrencyTrade and "
-                    "BarterTrade — who sold what to whom, for how much, where, "
-                    "and when. Aggregates top buyers / sellers by currency, "
-                    "per-currency volume, most-traded items, and a per-item "
-                    "price-over-time series (unit price by in-game day). "
+                    "Pull the detailed trades ledger from an Eco server's "
+                    "action-log exporter: recent CurrencyTrade and BarterTrade "
+                    "rows show who sold what to whom, for how much, where, and "
+                    "when. Older hourly rollups keep their merged event count "
+                    "and currency total but are excluded from party, item, "
+                    "store, and unit-price attribution. Aggregates include top "
+                    "buyers / sellers, per-currency volume, most-traded detailed "
+                    "items, and a per-item price-over-time series. "
                     "Numeric party ids are joined to names via the jobs mod's "
                     "citizens surface, falling back to `Citizen #<id>`. Requires "
                     "an admin API key configured server-side (ECO_ADMIN_API_KEY, "

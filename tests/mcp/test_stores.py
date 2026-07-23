@@ -64,6 +64,11 @@ _CURRENCY_CSV = (
 
 _BARTER_EMPTY = "Buyer,Seller,ItemUsed,NumberOfItems,Count,Time\n"
 
+_CURRENCY_ROLLUP = (
+    '"old account",Credit,900.0,90,33,130409,129312,130409,StoreItem,'
+    'BogusRepresentativeItem,129312,"1,2,3",4,400000\n'
+)
+
 
 @pytest.fixture(autouse=True)
 def _clear_cache() -> Iterator[None]:
@@ -133,6 +138,27 @@ async def test_build_directory_trader_profiles() -> None:
     # The unmapped seller on row 3 falls back rather than dropping.
     assert "Citizen #129569" in traders
     assert traders["Citizen #129569"].sell_volume == pytest.approx(225.0)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_build_directory_excludes_rollup_party_and_store_attribution() -> None:
+    respx.get(CURRENCY_URL).mock(
+        return_value=httpx.Response(200, text=_CURRENCY_CSV + _CURRENCY_ROLLUP)
+    )
+    respx.get(BARTER_URL).mock(return_value=httpx.Response(200, text=_BARTER_EMPTY))
+    respx.get(CITIZENS_URL).mock(return_value=httpx.Response(200, json=_CITIZENS_JSON))
+
+    directory = build_directory(await fetch_parsed_trades(base_url=BASE, api_key="secret"))
+
+    # The total keeps Count's four merged events, while the false representative
+    # item and parties never inflate an individual store/trader profile.
+    assert directory.total_trades == 7
+    ekans = {s.owner: s for s in directory.stores}["ekans"]
+    assert ekans.trade_count == 2
+    assert ekans.total_volume == pytest.approx(390.0)
+    assert all("BogusRepresentativeItem" not in str(s.top_items) for s in directory.stores)
+    assert any("detailed rows only" in w for w in directory.warnings)
 
 
 @pytest.mark.asyncio

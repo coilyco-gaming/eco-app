@@ -1,4 +1,4 @@
-"""Trades ledger — pull individual CurrencyTrade / BarterTrade rows.
+"""Trades ledger — pull detailed CurrencyTrade / BarterTrade rows.
 
 The economy card (`get_eco_economy`) only consumes aggregate time-series
 counters, but the action exporter ships *every individual trade*:
@@ -15,6 +15,16 @@ top buyers / sellers by currency, per-currency volume, and a per-item
 price-over-time series (unit price = CurrencyAmount / NumberOfItems, bucketed
 by in-game day). `BarterTrade` shares the endpoint shape but is currency-free
 (empty this cycle); we fetch it and fold whatever columns it exposes.
+
+The server retains individual actions only for its detail window. Older
+``TradeAction`` rows are per-citizen hourly rollups: ``Count`` is the number
+of merged events, while party/item/store fields are one representative event.
+``CurrencyAmount`` and ``NumberOfItems`` carry the action's
+``SumInAggregateGrouping`` semantics and remain useful as unattributed
+totals, but their ratio is not an item's price. Therefore ``Count > 1`` rows
+never enter party, item, store, or price attribution. They do contribute to
+the overall event count and currency totals, with an explicit warning for the
+SPA and MCP clients (eco-app#132).
 
 Design notes, mostly cribbed from the crafting atlas (eco-app#5):
 
@@ -108,7 +118,15 @@ class TradesLedger:
 
     fetched_at_iso: str
     source_base_url: str
+    # Actual trade events: detail rows count one, hourly rollup rows contribute
+    # their merged Count. This is intentionally not the number of CSV rows.
     total_trades: int = 0
+    # Detail rows whose party/item/store fields remain attributable.
+    detailed_trades: int = 0
+    # Older hourly-rollup CSV rows and the merged events they represent. Their
+    # currency totals are safe, but party/item/store attribution is not.
+    rollup_rows: int = 0
+    rollup_trades: int = 0
     # CurrencyTrade / BarterTrade -> rows folded (0 = fetched-but-empty).
     per_type_counts: dict[str, int] = field(default_factory=dict)
     # Individual trades, newest first, capped at MAX_LEDGER_ROWS. Each dict is
@@ -131,6 +149,9 @@ class TradesLedger:
             "fetchedAtISO": self.fetched_at_iso,
             "sourceBaseUrl": self.source_base_url,
             "totalTrades": self.total_trades,
+            "detailedTrades": self.detailed_trades,
+            "rollupRows": self.rollup_rows,
+            "rollupTrades": self.rollup_trades,
             "perTypeCounts": dict(self.per_type_counts),
             "trades": list(self.trades),
             "totalCurrencyVolume": self.total_currency_volume,
@@ -163,6 +184,11 @@ class _ParsedTrade:
     store: str
     location: str
     direction: str
+    # ``TradeAction`` rows with Count > 1 are server-side hourly rollups. The
+    # exported event count and aggregate-safe numeric totals remain useful,
+    # but labels describe only a representative event (eco-app#132).
+    event_count: int
+    is_rollup: bool
 
 
 def _clean_name(value: str | None) -> str:
@@ -230,8 +256,13 @@ def parse_trade_rows(
         idx = _corrected_index(header, row)
 
         time_s = pick_float(row, idx, "Time")
-        quantity = pick_float(row, idx, "NumberOfItems", "Count")
+        quantity = pick_float(row, idx, "NumberOfItems")
         currency_amount = pick_float(row, idx, "CurrencyAmount")
+        # Count is the event count on an individual trade and the merged event
+        # count on an older hourly rollup. Some best-effort Barter exports omit
+        # it, where a CSV row still proves one event.
+        event_count = max(int(pick_float(row, idx, "Count")), 1)
+        is_rollup = event_count > 1
         unit_price = currency_amount / quantity if quantity > 0 and currency_amount else None
         raw_dir = pick(row, idx, "BoughtOrSold")
 
@@ -251,6 +282,8 @@ def parse_trade_rows(
                 store=_clean_name(pick(row, idx, "WorldObjectItem")),
                 location=pick(row, idx, "ActionLocation"),
                 direction=BOUGHT_OR_SOLD.get(raw_dir, raw_dir),
+                event_count=event_count,
+                is_rollup=is_rollup,
             )
         )
         consumed += 1
@@ -286,6 +319,8 @@ def _row_dict(t: _ParsedTrade, name_map: dict[str, str]) -> dict[str, Any]:
         "store": t.store,
         "location": t.location,
         "direction": t.direction,
+        "eventCount": t.event_count,
+        "aggregated": t.is_rollup,
     }
 
 
@@ -293,7 +328,10 @@ def build_ledger(
     parsed: list[_ParsedTrade], ledger: TradesLedger, name_map: dict[str, str]
 ) -> None:
     """Resolve ids and roll `parsed` up into the ledger's rows + aggregates."""
-    ledger.total_trades = len(parsed)
+    ledger.total_trades = sum(t.event_count for t in parsed)
+    ledger.detailed_trades = sum(1 for t in parsed if not t.is_rollup)
+    ledger.rollup_rows = sum(1 for t in parsed if t.is_rollup)
+    ledger.rollup_trades = sum(t.event_count for t in parsed if t.is_rollup)
 
     by_item_count: dict[str, int] = defaultdict(int)
     by_item_volume: dict[str, float] = defaultdict(float)
@@ -304,12 +342,17 @@ def build_ledger(
     price_points: dict[str, dict[int, list[float]]] = defaultdict(lambda: defaultdict(list))
 
     for t in parsed:
+        # CurrencyAmount is summed by CurrencyTrade's aggregation contract, so
+        # gross and per-currency volume retain all history. The party/item/store
+        # fields are representative on a rollup and must never be attributed.
         ledger.total_currency_volume += t.currency_amount
+        if t.currency:
+            by_currency[t.currency] += t.currency_amount
+        if t.is_rollup:
+            continue
         if t.item:
             by_item_count[t.item] += 1
             by_item_volume[t.item] += t.currency_amount
-        if t.currency:
-            by_currency[t.currency] += t.currency_amount
         if t.currency_amount:
             if t.buyer_id:
                 buyers[_label(t.buyer_id, name_map)] += t.currency_amount
@@ -338,15 +381,22 @@ def build_ledger(
         if series:
             ledger.price_series[item] = series
 
-    # Newest trades first, capped — aggregates already saw every row.
-    ordered = sorted(parsed, key=lambda t: t.time_s, reverse=True)
+    # Newest attributable trades first, capped. Rollup rows never appear in the
+    # row-level ledger: their labels would fabricate party/item attribution.
+    ordered = sorted((t for t in parsed if not t.is_rollup), key=lambda t: t.time_s, reverse=True)
     if len(ordered) > MAX_LEDGER_ROWS:
         ledger.warnings.append(
-            f"ledger truncated to newest {MAX_LEDGER_ROWS} of {len(ordered)} trades "
+            f"ledger truncated to newest {MAX_LEDGER_ROWS} of {len(ordered)} detailed trades "
             "(aggregates cover all)"
         )
         ordered = ordered[:MAX_LEDGER_ROWS]
     ledger.trades = [_row_dict(t, name_map) for t in ordered]
+    if ledger.rollup_rows:
+        ledger.warnings.append(
+            f"{ledger.rollup_trades} older trades arrive as {ledger.rollup_rows} hourly "
+            "rollups; party, item, store, and unit-price views cover detailed rows only. "
+            "Overall currency volume includes their summed amounts (eco-app#132)"
+        )
 
 
 @dataclass
@@ -468,6 +518,9 @@ def _ledger_from_dict(data: dict[str, Any]) -> TradesLedger:
         fetched_at_iso=data["fetchedAtISO"],
         source_base_url=data["sourceBaseUrl"],
         total_trades=int(data["totalTrades"]),
+        detailed_trades=int(data.get("detailedTrades", data["totalTrades"])),
+        rollup_rows=int(data.get("rollupRows", 0)),
+        rollup_trades=int(data.get("rollupTrades", 0)),
         per_type_counts=dict(data.get("perTypeCounts", {})),
         trades=list(data.get("trades", [])),
         total_currency_volume=float(data.get("totalCurrencyVolume", 0.0)),
@@ -506,6 +559,9 @@ def ledger_template_context(
         "fetched_at_iso": ledger.fetched_at_iso,
         "source_base_url": ledger.source_base_url,
         "total_trades": ledger.total_trades,
+        "detailed_trades": ledger.detailed_trades,
+        "rollup_rows": ledger.rollup_rows,
+        "rollup_trades": ledger.rollup_trades,
         "total_currency_volume": ledger.total_currency_volume,
         "per_type_counts": [(n, c) for n, c in ledger.per_type_counts.items() if c],
         "top_items": [

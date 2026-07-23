@@ -461,6 +461,11 @@ def _history_offers(fetch: Any) -> tuple[list[ShelfOffer], dict[tuple[str, str],
     market_prices: dict[tuple[str, str], list[float]] = defaultdict(list)
 
     for t in fetch.parsed:
+        # A TradeAction hourly rollup's item/store/party fields describe a
+        # representative event. Its currency and quantity totals are useful to
+        # the ledger, but its derived unit price is not a shelf quote.
+        if t.is_rollup:
+            continue
         if not t.item or not t.currency or t.unit_price is None or t.unit_price <= 0:
             continue
         market_prices[(t.item, t.currency)].append(t.unit_price)
@@ -636,6 +641,12 @@ async def fetch_logistics(
     report.source_base_url = normalized
     report.live = bool(live_offers)
     report.warnings = list(fetch.warnings) + live_warnings + report.warnings
+    rollups = [t for t in fetch.parsed if t.is_rollup]
+    if rollups:
+        report.warnings.append(
+            f"{sum(t.event_count for t in rollups)} older trades arrive as {len(rollups)} "
+            "hourly rollups; history-derived offers use detailed rows only (eco-app#132)"
+        )
     return report
 
 

@@ -585,7 +585,10 @@ async def fetch_item_pivot(
     fetch = await fetch_parsed_trades(base_url=base_url, api_key=api_key, client=client)
     from .trades import _row_dict  # local import: avoids a module-load cycle
 
-    item_trades = [t for t in fetch.parsed if t.item == item]
+    # Older TradeAction rollups carry a representative ItemUsed value, not an
+    # item attribution. Keep this pivot consistent with the ledger/market and
+    # never make an old merged row look like a real item trade (eco-app#132).
+    item_trades = [t for t in fetch.parsed if not t.is_rollup and t.item == item]
     item_trades.sort(key=lambda t: t.time_s, reverse=True)
     pivot.trade_count = len(item_trades)
     pivot.trade_volume = sum(t.currency_amount for t in item_trades)

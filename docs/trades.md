@@ -14,7 +14,7 @@ and when. Filed as [#6](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/iss
 ## Data source
 
 `GET /api/v1/exporter/actions?actionName=CurrencyTrade` returns one CSV row per
-trade. Cycle-13 columns::
+recent trade. Cycle-13 columns::
 
     BankAccount, Currency, CurrencyAmount, NumberOfItems, BoughtOrSold,
     ShopOwner, Buyer, Seller, WorldObjectItem, ItemUsed, Citizen,
@@ -23,18 +23,41 @@ trade. Cycle-13 columns::
 `BarterTrade` shares the endpoint (currency-free, item-for-item, empty this
 cycle). Both are fetched; the ledger folds whatever columns each exposes.
 
+### Older-history rollups
+
+`CurrencyTrade` inherits `TradeAction` / `AggregatableAction`. Once the
+server's detail window expires, it merges older rows into hourly per-citizen
+rollups: `Count` becomes the merged-event total, `Time` becomes the latest
+event, and party/item/store fields are representative-only. The action source
+marks `CurrencyTrade.CurrencyAmount` and `TradeAction.NumberOfItems` with
+`SumInAggregateGrouping`; those numeric fields remain summed totals, while
+their representative `ItemUsed` label makes a rollup's unit price unusable for
+that item.
+
+The ledger treats `Count > 1` as one of these rollups. It keeps the merged
+event count and currency totals, but excludes rollups from row-level
+buyer/seller/store/item attribution and every per-item price series. The
+`/trade` page calls its table a **Detailed trades ledger** and reports how many
+older trades were excluded. Store, item, market, fair-price, logistics, and
+watcher consumers follow the same shared boundary (eco-app#132).
+
 ## What the ledger computes
 
-- **Row-level trades** - newest first, capped at `ECO_TRADES_LEDGER_ROWS` (default 4000) for the shipped payload while the aggregates cover every parsed row.
-- **Top buyers / sellers** - currency spent (by `Buyer`) and earned (by `Seller`).
-- **Per-currency volume** and **most-traded items** (count + currency volume).
-- **Price-over-time** - unit price = `CurrencyAmount / NumberOfItems`, mean per in-game day, for the busiest items. Rendered as an inline SVG line on `/trade`. This "falls out almost for free" once the rows are parsed.
+- **Detailed row-level trades** - newest first, capped at `ECO_TRADES_LEDGER_ROWS` (default 4000). Older rollups are not presented as individual trades.
+- **Top buyers / sellers** - currency spent (by `Buyer`) and earned (by `Seller`), from detailed rows only.
+- **Per-currency volume** - includes summed rollup amounts; **most-traded items** use detailed rows only.
+- **Price-over-time** - unit price = `CurrencyAmount / NumberOfItems`, mean per in-game day, for the busiest detailed items. Rendered as an inline SVG line on `/trade`.
 
 ## Messy bits handled (the pull-everything cleanups from the issue)
 
 - **Numeric party ids** - `Buyer` / `Seller` / `ShopOwner` / `Citizen` are numeric in-game ids. Joined to names via the jobs mod's `/api/v1/citizens` surface (shared `crafting.fetch_citizen_name_map`), falling back to `Citizen #<id>` when a name is missing. The id→name link is [#5](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/5).
 - **`BoughtOrSold` enum** - live values 32 / 33, undecoded in the exporter. Decoded best-effort to buy/sell (`BOUGHT_OR_SOLD`); the Eco `GameActions` source wasn't reachable from the build container to confirm polarity, so this is a heuristic. It only labels a secondary "direction" chip - the authoritative buyer/seller comes from the `Buyer` / `Seller` columns - so a wrong decode never corrupts a ledger row.
 - **Time semantics** - integer seconds since cycle start, same convention as the species population CSV: in-game day = `Time / 86400` (`SECONDS_PER_DAY`).
+- **Gather labels remain a separate caveat** - `HarvestOrHunt`, `ChopTree`, and
+  `DigOrMine` use `Count` for biomass even on individual rows, so there is no
+  `Count > 1` discriminator for an old gather rollup. Their `by_gathered`
+  species labels therefore retain this residual historical-attribution risk;
+  this issue documents it but does not fabricate a fix.
 - **Misalignment risk** - some exporter rows carry an undeclared extra tool column that shifts every later field. The ledger reuses `crafting._corrected_index` (scores candidate insertion points against per-column value shapes) so header-keyed picks stay aligned, and drops position-triple / bare-number values where a name belongs. Same defensive posture as the crafting CSVs ([#5](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/5)).
 
 ## Streaming & caching

@@ -1,6 +1,6 @@
 """Per-item market price intelligence, built on the trades ledger (eco-app#49).
 
-The trades ledger (eco-app#6) reconstructs every individual `CurrencyTrade`
+The trades ledger (eco-app#6) reconstructs every attributable `CurrencyTrade`
 and derives a light per-item price-over-time series (mean unit price per day).
 This module goes a layer deeper for the price axis the DiscordLink-replacement
 epic asks for (eco-app#37): a **per-item, per-currency** price series with
