@@ -24,6 +24,7 @@ export default function Layout({ children, fetchedAtISO }: LayoutProps) {
         <nav className="topnav" aria-label="primary">
           <Link to="/">Home</Link>
           <Link to="/info">Info</Link>
+          <Link to="/mods">Mods</Link>
           <Link to="/jobs">Jobs</Link>
           <Link to="/trade">Trade</Link>
           <Link to="/items">Items</Link>

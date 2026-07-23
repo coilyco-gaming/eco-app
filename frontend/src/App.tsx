@@ -8,6 +8,7 @@ import Item from "./pages/Item"
 import Items from "./pages/Items"
 import Jobs from "./pages/Jobs"
 import MapPage from "./pages/Map"
+import Mods from "./pages/Mods"
 import Recipe from "./pages/Recipe"
 import Recipes from "./pages/Recipes"
 import Replay from "./pages/Replay"
@@ -42,6 +43,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/info" element={<Info />} />
+        <Route path="/mods" element={<Mods />} />
         {/* /server renamed to /info (eco-app#90); keep old links alive. */}
         <Route path="/server" element={<Navigate to="/info" replace />} />
         <Route path="/jobs/*" element={<Jobs />} />

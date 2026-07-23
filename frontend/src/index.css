@@ -333,6 +333,96 @@ a.dir-card:hover {
   font-variant-numeric: tabular-nums;
 }
 
+/* --- C# mods reference (/mods) ---------------------------------------- */
+
+.mod-docs {
+  display: grid;
+  gap: 1rem;
+}
+
+.mod-doc {
+  padding: 1.35rem 1.5rem;
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  background: var(--card);
+  backdrop-filter: blur(6px);
+}
+
+.mod-doc-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.mod-doc h2 {
+  margin: 0;
+  color: var(--leaf);
+  font-size: 1.3rem;
+}
+
+.mod-doc-heading p,
+.mod-doc-details dd,
+.mod-doc-links {
+  color: var(--ink-soft);
+  line-height: 1.55;
+}
+
+.mod-doc-heading p {
+  max-width: 62ch;
+  margin: 0.45rem 0 0;
+}
+
+.mod-doc code {
+  padding: 0.12rem 0.35rem;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--leaf);
+  font-size: 0.85em;
+}
+
+.mod-doc-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem 1.5rem;
+  margin: 1.25rem 0 0;
+}
+
+.mod-doc-details dt {
+  margin-bottom: 0.25rem;
+  color: var(--ink-faint);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.mod-doc-details dd {
+  margin: 0;
+  font-size: 0.94rem;
+}
+
+.mod-doc-details ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.mod-doc-links {
+  margin: 1.2rem 0 0;
+  font-weight: 600;
+}
+
+@media (max-width: 620px) {
+  .mod-doc {
+    padding: 1.15rem;
+  }
+
+  .mod-doc-details {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* --- Meteor banner --------------------------------------------------- */
 
 .meteor {
