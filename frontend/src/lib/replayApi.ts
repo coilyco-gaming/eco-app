@@ -20,7 +20,10 @@ export interface ReplayData {
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   const resp = await fetch(path, { signal })
   if (!resp.ok) {
-    throw new Error(`${path} failed: HTTP ${resp.status}`)
+    const payload = (await resp.json().catch(() => null)) as {
+      error?: { message?: string }
+    } | null
+    throw new Error(payload?.error?.message ?? `${path} failed: HTTP ${resp.status}`)
   }
   return (await resp.json()) as T
 }

@@ -129,5 +129,8 @@ describe("Replay", () => {
     await waitFor(() => {
       expect(screen.getByTestId("replay-error")).toBeInTheDocument()
     })
+    expect(screen.queryByTestId("replay-pill")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("replay-table")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("mock-banner")).not.toBeInTheDocument()
   })
 })
