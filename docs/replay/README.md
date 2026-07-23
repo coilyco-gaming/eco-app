@@ -37,9 +37,16 @@ Every `GameAction` Eco fires through `ActionUtil.ActionPerformed`. The recorder 
 - `unix_time` / `game_time` — when
 - `body_json` — best-effort flat JSON of the action's other properties (User/ItemStack/WorldObject references collapse to their `Name`)
 
+`ItemCraftedAction` is intentionally the exception to the generic body snapshot:
+each `WorkOrder.CompleteIteration` becomes one row with a fixed scalar
+`craft-iteration/v1` body (`item`, `station`, `byproduct`, `position`,
+`iterations: 1`). Its citizen and clocks remain in the row columns. This keeps
+every completed craft iteration attributable after the stats exporter rolls up,
+without serializing any live Eco object graph.
+
 ## Storage
 
-`Storage/EcoReplay.db` next to Eco's own `Game.db`. WAL mode, indexed on `unix_time`, `action_type`, and `citizen`. Rides Eco's existing `Storage/Backup/*` backup loop for free.
+`Storage/EcoReplay.db` next to Eco's own `Game.db`. WAL mode, indexed on `unix_time`, `action_type`, and `citizen`. Rides Eco's existing `Storage/Backup/*` backup loop for free. The background writer has a 4,096-row bounded queue; a saturated disk sheds new rows instead of blocking the game thread. The database retains the newest 2,000,000 rows (about 38 days at the cited cycle-14 craft rate), pruning in batches so pages are reused rather than allowing unbounded growth.
 
 ## Endpoints
 
