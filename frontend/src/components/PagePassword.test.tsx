@@ -29,13 +29,13 @@ function stubFetch({ required, accept }: { required: boolean; accept?: string })
 }
 
 beforeEach(() => {
-  localStorage.clear()
+  window.localStorage.clear()
 })
 
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
-  localStorage.clear()
+  window.localStorage.clear()
 })
 
 describe("PagePassword", () => {
@@ -56,7 +56,7 @@ describe("PagePassword", () => {
     fireEvent.click(screen.getByTestId("gate-submit"))
 
     await waitFor(() => expect(screen.getByTestId("protected")).toBeInTheDocument())
-    expect(localStorage.getItem("eco-app:page-unlocked")).toBe("1")
+    expect(window.localStorage.getItem("eco-app:page-unlocked")).toBe("1")
   })
 
   it("keeps the gate up and reports a mismatch on the wrong password", async () => {
@@ -72,7 +72,7 @@ describe("PagePassword", () => {
   })
 
   it("skips the prompt when the browser already unlocked", async () => {
-    localStorage.setItem("eco-app:page-unlocked", "1")
+    window.localStorage.setItem("eco-app:page-unlocked", "1")
     stubFetch({ required: true, accept: "open-sesame" })
     renderGate()
     await waitFor(() => expect(screen.getByTestId("protected")).toBeInTheDocument())
