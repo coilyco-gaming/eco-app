@@ -23,6 +23,8 @@ from starlette.testclient import TestClient
 from eco_mcp_app import server as eco_server
 from eco_mcp_app.http_app import create_app
 from eco_mcp_app.server import DEFAULT_ECO_INFO_URL
+from eco_replay import main as replay_main
+from eco_spec_tracker import upstream as jobs_upstream
 
 
 @pytest.fixture(autouse=True)
@@ -124,6 +126,36 @@ def test_replay_mount(client: TestClient) -> None:
     body = events.json()
     assert body["count"] >= 1
     assert {"id", "unixTime", "type", "citizen", "body"} <= body["events"][0].keys()
+
+
+@respx.mock
+def test_mounted_jobs_and_replay_use_distinct_upstreams(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One fused process keeps jobs skills and replay events independently addressed."""
+    monkeypatch.setattr(jobs_upstream, "UPSTREAM_URL", "http://jobs.test/api/v1/skills")
+    monkeypatch.setattr(replay_main, "ECO_REPLAY_DB", None)
+    monkeypatch.setattr(replay_main, "ECO_REPLAY_UPSTREAM_URL", "http://replay.test/api/v1/events")
+    jobs_route = respx.get("http://jobs.test/api/v1/skills").mock(
+        return_value=httpx.Response(200, json=[{"player": "Kai", "specialties": []}])
+    )
+    events_route = respx.get("http://replay.test/api/v1/events").mock(
+        return_value=httpx.Response(200, json={"events": [{"id": 7, "type": "Login"}]})
+    )
+    stats_route = respx.get("http://replay.test/api/v1/events/stats").mock(
+        return_value=httpx.Response(200, json={"ready": True, "total": 7})
+    )
+
+    jobs = client.get("/jobs/api/v1/players")
+    events = client.get("/replay/api/v1/events?limit=3")
+    stats = client.get("/replay/api/v1/events/stats")
+
+    assert jobs.status_code == 200
+    assert events.json() == {"events": [{"id": 7, "type": "Login"}], "count": 1}
+    assert stats.json() == {"ready": True, "total": 7}
+    assert jobs_route.called
+    assert events_route.called
+    assert stats_route.called
 
 
 @respx.mock

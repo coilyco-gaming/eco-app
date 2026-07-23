@@ -39,7 +39,12 @@ export default function Replay() {
         setMockData(data.mockData)
       })
       .catch((err) => {
-        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : String(err))
+        if (!controller.signal.aborted) {
+          setEvents(null)
+          setTotal(0)
+          setMockData(false)
+          setError(err instanceof Error ? err.message : String(err))
+        }
       })
     return () => controller.abort()
   }, [])
@@ -59,8 +64,8 @@ export default function Replay() {
       {mockData && (
         <div className="mock-banner" data-testid="mock-banner">
           ⚠️ MOCK DATA — every event on this page is fabricated. Set the{" "}
-          <code>ECO_REPLAY_DB</code> or <code>UPSTREAM_URL</code> env var on the service to pull the
-          real Chronicle. ⚠️
+          <code>ECO_REPLAY_DB</code> or <code>ECO_REPLAY_UPSTREAM_URL</code> env var on the service
+          to pull the real Chronicle. ⚠️
         </div>
       )}
 

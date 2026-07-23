@@ -66,6 +66,7 @@ http: ## Run the fused server (MCP + /jobs) with autoreload, eco target auto-res
 	ECO_ADMIN_BASE_URL="$${ECO_ADMIN_BASE_URL:-$$BASE}" \
 	ECO_MAP_BASE_URL="$${ECO_MAP_BASE_URL:-$$BASE}" \
 	UPSTREAM_URL="$${UPSTREAM_URL:-$$BASE/api/v1/skills}" \
+	ECO_REPLAY_UPSTREAM_URL="$${ECO_REPLAY_UPSTREAM_URL:-$$BASE/api/v1/events}" \
 	UPSTREAM_API_KEY="$$KEY" \
 	ECO_ADMIN_TOKEN="$${ECO_ADMIN_TOKEN:-$$KEY}" \
 	ECO_ADMIN_API_KEY="$${ECO_ADMIN_API_KEY:-$$KEY}" \

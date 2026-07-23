@@ -23,10 +23,15 @@ ward exec http                 # the fused service on :4000
 ward exec frontend-dev         # Vite dev server against it, open /replay
 ```
 
-Set `ECO_REPLAY_DB` (SQLite path) or `UPSTREAM_URL` (the mod's `/api/v1/events`
+Set `ECO_REPLAY_DB` (SQLite path) or `ECO_REPLAY_UPSTREAM_URL` (the mod's `/api/v1/events`
 endpoint) on the service to pull the real Chronicle. With neither set the API
 returns canned mock events so the `/replay` page can be developed without an Eco
-server (the SPA shows a mock-data banner).
+server (the SPA shows a mock-data banner). `ECO_REPLAY_UPSTREAM_URL` is
+deliberately separate from jobs' `UPSTREAM_URL`, so the fused process can read
+both mod endpoints at once. If the configured replay upstream rejects, times
+out, or returns malformed JSON, `/replay/api/v1/events` and `/stats` return a
+public-safe `503` response with `error.code: replay_upstream_unavailable`; the
+SPA clears the timeline and shows its unavailable state.
 
 ## What gets recorded
 
@@ -50,7 +55,7 @@ without serializing any live Eco object graph.
 
 ## Endpoints
 
-The C# mod serves these (consumed by the Python API as `UPSTREAM_URL`):
+The C# mod serves these (consumed by the Python API as `ECO_REPLAY_UPSTREAM_URL`):
 
 | Path | Description |
 |---|---|
