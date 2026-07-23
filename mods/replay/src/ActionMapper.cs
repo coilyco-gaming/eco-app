@@ -18,10 +18,31 @@ public static class ActionMapper
         if (action == null) return null;
 
         var actionType = action.GetType().Name;
-        var citizen = TryGetCitizenName(action);
         var nowUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var gameTime = action.Time;
-        var body = BodySerializer.Serialize(action);
+        string? citizen;
+        string body;
+
+        // A craft completion is the one high-volume action we intentionally do
+        // not send through the generic reflection snapshot. ItemCraftedAction
+        // fires once for WorkOrder.CompleteIteration, so one row is one output
+        // iteration (not the order's requested quantity). Keep its body fixed
+        // and scalar-only: this path runs hundreds of thousands of times per
+        // cycle and must never walk a station, item, or inventory graph.
+        if (action is ItemCraftedAction crafted)
+        {
+            citizen = crafted.Citizen?.Name;
+            body = CraftedIterationBody.Serialize(
+                item: crafted.ItemUsed?.Name,
+                station: crafted.WorldObjectItem?.Name,
+                byproduct: crafted.Byproduct?.Name,
+                position: crafted.ActionLocation.ToString());
+        }
+        else
+        {
+            citizen = TryGetCitizenName(action);
+            body = BodySerializer.Serialize(action);
+        }
 
         return new EventRow
         {
