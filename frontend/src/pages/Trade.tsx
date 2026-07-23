@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
+import ItemLink from "../components/ItemLink"
 import Layout from "../components/Layout"
 import { fetchMarket, type ItemMarket, type MarketIntelligence, type MarketTrend } from "../lib/marketApi"
 import { fetchStores, type StoreDirectory } from "../lib/storesApi"
@@ -63,7 +64,7 @@ const GAP: Record<GapReason, { glyph: string; label: string; color: string }> = 
 // needs it. A gap is only actionable if you know who is asking, so the buy-side
 // citizens and how much each still wants get their own line rather than being
 // crushed into the narrow count column.
-function SupplyGapRow({ gap, onPick }: { gap: SupplyGap; onPick: (item: string) => void }) {
+function SupplyGapRow({ gap }: { gap: SupplyGap }) {
   const g = GAP[gap.reason]
   const summary =
     gap.reason === "overpriced"
@@ -75,9 +76,9 @@ function SupplyGapRow({ gap, onPick }: { gap: SupplyGap; onPick: (item: string) 
   return (
     <li className="gap-row" data-testid="gap-row">
       <div className="gap-head">
-        <button className="linklike gap-name" onClick={() => onPick(gap.itemPretty)}>
+        <ItemLink className="linklike gap-name" item={gap.item}>
           {gap.itemPretty}
-        </button>
+        </ItemLink>
         <span className="gap-tag" style={{ color: g.color }} data-testid="gap-tag">
           <span aria-hidden="true">{g.glyph}</span> {g.label}
         </span>
@@ -154,9 +155,8 @@ function PriceChart({ points }: { points: Array<[number, number]> }) {
   )
 }
 
-// A ranked, clickable list of markets — used for movers and most-traded. A
-// click deep-links the drill-down via ?q=, the same interaction the /trades and
-// /crafting pages use.
+// A ranked market list used for movers and most-traded. Concrete item ids link
+// to their pivots; the surrounding row remains a non-interactive summary.
 function MarketList({
   rows,
   onPick,
@@ -174,13 +174,22 @@ function MarketList({
     <ul className="rank-rows" data-testid={testid}>
       {rows.map((m) => (
         <li key={`${m.item}-${m.currency}`}>
-          <button className="rank-row" onClick={() => onPick(m.itemPretty)} data-testid="market-row">
-            <span className="rank-name">{m.itemPretty}</span>
+          <div className="rank-row" data-testid="market-row">
+            <ItemLink className="rank-name linklike" item={m.item}>
+              {m.itemPretty}
+            </ItemLink>
             <span className="rank-count">
               {fmtPrice(m.latestPrice)} {m.currency} · <TrendTag trend={m.trend} delta={m.trendDeltaPct} />
             </span>
+            <button
+              className="linklike"
+              onClick={() => onPick(m.itemPretty)}
+              aria-label={`Filter trade ledger by ${m.itemPretty}`}
+            >
+              Filter
+            </button>
             <span className="rank-bar" style={{ width: `${(m.totalVolume / max) * 100}%` }} />
-          </button>
+          </div>
         </li>
       ))}
     </ul>
@@ -454,7 +463,9 @@ export default function Trade() {
       {drill && (
         <section data-testid="drill">
           <h2 className="section-title">
-            {drill.itemPretty}{" "}
+            <ItemLink className="linklike" item={drill.item}>
+              {drill.itemPretty}
+            </ItemLink>{" "}
             <span className="section-sub">
               ({drill.currency} · <TrendTag trend={drill.trend} delta={drill.trendDeltaPct} />)
             </span>
@@ -502,7 +513,7 @@ export default function Trade() {
           )}
           <p className="section-sub">
             <button className="linklike" onClick={() => setQuery(drill.itemPretty)}>
-              Filter the ledger below to every {drill.itemPretty} trade →
+              Filter this item's trades in the ledger below →
             </button>
           </p>
         </section>
@@ -536,9 +547,9 @@ export default function Trade() {
                         data-testid="arbitrage-row"
                       >
                         <td>
-                          <button className="linklike" onClick={() => setQuery(a.itemPretty)}>
+                          <ItemLink className="linklike" item={a.item}>
                             {a.itemPretty}
-                          </button>
+                          </ItemLink>
                         </td>
                         <td>
                           {fmtPrice(a.buyFrom.price)} — {a.buyFrom.store}
@@ -562,7 +573,7 @@ export default function Trade() {
                 </h3>
                 <ul className="gap-list" data-testid="gaps-list">
                   {logistics.supplyGaps.slice(0, GAP_ROWS).map((g) => (
-                    <SupplyGapRow key={`${g.item}-${g.currency}`} gap={g} onPick={setQuery} />
+                    <SupplyGapRow key={`${g.item}-${g.currency}`} gap={g} />
                   ))}
                 </ul>
               </>
@@ -669,9 +680,9 @@ export default function Trade() {
                     <td>{t.buyer || "—"}</td>
                     <td>
                       {t.item ? (
-                        <button className="linklike" onClick={() => setQuery(prettifyEcoName(t.item))}>
+                        <ItemLink className="linklike" item={t.item}>
                           {prettifyEcoName(t.item)}
-                        </button>
+                        </ItemLink>
                       ) : (
                         "—"
                       )}

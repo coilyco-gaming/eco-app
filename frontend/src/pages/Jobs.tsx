@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import type { ReactNode } from "react"
+import ItemLink from "../components/ItemLink"
 import Layout from "../components/Layout"
 import { useJobsData } from "../hooks/useJobsData"
 import { fetchLogistics, type GapReason, type LogisticsBoard } from "../lib/logisticsApi"
@@ -55,6 +56,7 @@ interface RankRow {
 
 interface ValueRow {
   key: string
+  item: string
   name: string
   score: number
   note: ReactNode
@@ -275,7 +277,13 @@ function RankList({
       {top.map((row) => (
         <li key={row.key}>
           <div className="rank-row" data-testid="rank-row">
-            <span className="rank-name">{pretty ? prettifyEcoName(row.name) : row.name}</span>
+            {"item" in row ? (
+              <ItemLink className="rank-name linklike" item={row.item}>
+                {row.name}
+              </ItemLink>
+            ) : (
+              <span className="rank-name">{pretty ? prettifyEcoName(row.name) : row.name}</span>
+            )}
             <span className="rank-count">{formatValue(valueFor(row))}</span>
             <span className="rank-bar" style={{ width: `${(valueFor(row) / max) * 100}%` }} />
           </div>
@@ -442,6 +450,7 @@ export default function Jobs() {
           if (!current || score > current.score) {
             bestByItem.set(item, {
               key: recipe.name,
+              item,
               name: recipe.product.displayName,
               score,
               note,

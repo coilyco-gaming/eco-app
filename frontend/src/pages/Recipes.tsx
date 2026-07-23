@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
+import ItemLink from "../components/ItemLink"
 import Layout from "../components/Layout"
 import { fetchRecipeIndex, type Recipe, type RecipeIndex } from "../lib/recipesApi"
 import { formatCount, formatDuration, prettifyEcoName } from "../lib/format"
@@ -25,11 +26,22 @@ function craftTime(minutes: number): string {
 
 // A one-line ingredient summary for the list row: the first few pretty names,
 // with a "+N more" tail so a long BOM stays on one line.
-function ingredientSummary(r: Recipe): string {
-  const names = r.ingredients.map((i) => i.displayName)
-  if (names.length === 0) return "—"
-  const head = names.slice(0, 3).join(", ")
-  return names.length > 3 ? `${head} +${names.length - 3} more` : head
+function ingredientSummary(r: Recipe) {
+  if (r.ingredients.length === 0) return "—"
+  const shown = r.ingredients.slice(0, 3)
+  return (
+    <>
+      {shown.map((ingredient, i) => (
+        <span key={`${ingredient.item}-${i}`}>
+          <ItemLink className="linklike" item={ingredient.isTag ? null : ingredient.item}>
+            {ingredient.displayName}
+          </ItemLink>
+          {i < shown.length - 1 ? ", " : ""}
+        </span>
+      ))}
+      {r.ingredients.length > shown.length ? ` +${r.ingredients.length - shown.length} more` : ""}
+    </>
+  )
 }
 
 export default function Recipes() {

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
+import ItemLink from "../components/ItemLink"
 import Layout from "../components/Layout"
 import { fetchStores, type StoreDirectory, type StoreProfile } from "../lib/storesApi"
 import { fetchMarket, type MarketIntelligence } from "../lib/marketApi"
@@ -240,7 +241,11 @@ export default function UsesShopCheck() {
                   const v = VERDICT[r.verdict]
                   return (
                     <tr key={r.item} data-testid="shop-row">
-                      <td>{r.pretty}</td>
+                      <td>
+                        <ItemLink className="linklike" item={r.item}>
+                          {r.pretty}
+                        </ItemLink>
+                      </td>
                       <td className="num">{r.avgUnitPrice != null ? fmtPrice(r.avgUnitPrice) : "—"}</td>
                       <td className="num">{r.median != null ? fmtPrice(r.median) : "—"}</td>
                       <td className="num">

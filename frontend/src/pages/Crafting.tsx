@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
+import ItemLink from "../components/ItemLink"
 import Layout from "../components/Layout"
 import { fetchCraftingAtlas, type CraftingAtlas } from "../lib/craftingApi"
 import { formatCount, prettifyEcoName } from "../lib/format"
@@ -20,8 +21,8 @@ interface RankTableProps {
   onPick: (name: string) => void
 }
 
-// Ranked bar list. With a filter active every match shows; without one the
-// list cuts at TOP_N. Row clicks push the name into ?q= so views deep-link.
+// Ranked bar list. Concrete item names open their pivots; the explicit Filter
+// control retains the atlas's existing in-page drill-down interaction.
 function RankTable({ rows, filter, emptyNote, onPick }: RankTableProps) {
   const needle = filter.trim().toLowerCase()
   const matches = needle
@@ -36,11 +37,20 @@ function RankTable({ rows, filter, emptyNote, onPick }: RankTableProps) {
     <ul className="rank-rows">
       {matches.map(([name, count]) => (
         <li key={name}>
-          <button className="rank-row" onClick={() => onPick(prettifyEcoName(name))}>
-            <span className="rank-name">{prettifyEcoName(name)}</span>
+          <div className="rank-row">
+            <ItemLink className="rank-name linklike" item={name}>
+              {prettifyEcoName(name)}
+            </ItemLink>
             <span className="rank-count">{formatCount(count)}</span>
+            <button
+              className="linklike"
+              onClick={() => onPick(prettifyEcoName(name))}
+              aria-label={`Filter crafting atlas by ${prettifyEcoName(name)}`}
+            >
+              Filter
+            </button>
             <span className="rank-bar" style={{ width: `${(count / max) * 100}%` }} />
-          </button>
+          </div>
         </li>
       ))}
     </ul>

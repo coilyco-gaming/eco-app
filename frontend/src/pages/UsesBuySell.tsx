@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
+import ItemLink from "../components/ItemLink"
 import Layout from "../components/Layout"
 import {
   fetchLogistics,
@@ -157,7 +158,10 @@ export default function UsesBuySell() {
         <h1 className="hero-title">
           {pretty ? (
             <>
-              Where to buy &amp; sell <span className="accent">{pretty}</span>
+              Where to buy &amp; sell{" "}
+              <ItemLink className="accent linklike" item={item}>
+                {pretty}
+              </ItemLink>
             </>
           ) : (
             <>
@@ -204,16 +208,21 @@ export default function UsesBuySell() {
               ) : (
                 visibleOptions.map((o) => (
                   <li key={o.item}>
-                    <button
-                      className="rank-row"
-                      onClick={() => pickItem(o.item)}
-                      data-testid="pick-item"
-                    >
-                      <span className="rank-name">{o.pretty}</span>
+                    <div className="rank-row" data-testid="pick-item">
+                      <ItemLink className="rank-name linklike" item={o.item}>
+                        {o.pretty}
+                      </ItemLink>
                       <span className="rank-count">
                         {formatCount(o.offers)} offer{o.offers === 1 ? "" : "s"}
                       </span>
-                    </button>
+                      <button
+                        className="linklike"
+                        onClick={() => pickItem(o.item)}
+                        aria-label={`Compare shelves for ${o.pretty}`}
+                      >
+                        Compare
+                      </button>
+                    </div>
                   </li>
                 ))
               )}
@@ -227,7 +236,11 @@ export default function UsesBuySell() {
           {!sellRow && !buyRow && (
             <section>
               <p className="empty-note" data-testid="buy-sell-none">
-                No live or history offers for {pretty} on either side right now.
+                No live or history offers for{" "}
+                <ItemLink className="linklike" item={item}>
+                  {pretty}
+                </ItemLink>{" "}
+                on either side right now.
               </p>
             </section>
           )}

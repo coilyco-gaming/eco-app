@@ -91,14 +91,15 @@ describe("Crafting", () => {
     expect(screen.getByTestId("atlas-filter")).toHaveValue("board")
   })
 
-  it("pushes a row click into the filter", async () => {
+  it("keeps the atlas filter action beside an item-pivot link", async () => {
     stubAtlasFetch()
     renderCrafting()
 
     await waitFor(() => {
       expect(screen.getByText("Dirt")).toBeInTheDocument()
     })
-    fireEvent.click(screen.getByText("Dirt"))
+    expect(screen.getByRole("link", { name: "Dirt" })).toHaveAttribute("href", "/item?item=DirtItem")
+    fireEvent.click(screen.getByRole("button", { name: "Filter crafting atlas by Dirt" }))
     expect(screen.getByTestId("atlas-filter")).toHaveValue("Dirt")
     expect(screen.queryByText("Board")).not.toBeInTheDocument()
   })

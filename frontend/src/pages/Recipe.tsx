@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
+import ItemLink, { itemHref } from "../components/ItemLink"
 import Layout from "../components/Layout"
 import {
   fetchRecipeIndex,
@@ -42,9 +43,9 @@ function ComponentRow({ c }: { c: RecipeComponent }) {
           {c.displayName} <span className="section-sub">(tag)</span>
         </span>
       ) : (
-        <Link className="linklike" to={`/item?item=${encodeURIComponent(c.item)}`}>
+        <ItemLink className="linklike" item={c.item}>
           {c.displayName}
-        </Link>
+        </ItemLink>
       )}{" "}
       <Link
         className="recipe-sublink"
@@ -114,7 +115,10 @@ export default function Recipe() {
         {recipe && (
           <p className="hero-pill" data-testid="recipe-pill">
             <span className="pulse-dot" aria-hidden="true" />
-            makes {formatCount(recipe.product.quantity)}× {recipe.product.displayName}
+            makes {formatCount(recipe.product.quantity)}×{" "}
+            <ItemLink className="linklike" item={recipe.product.item}>
+              {recipe.product.displayName}
+            </ItemLink>
             {recipe.station ? ` · at ${prettifyEcoName(recipe.station)}` : ""}
           </p>
         )}
@@ -232,7 +236,7 @@ export default function Recipe() {
           <section className="dir-cards">
             <Link
               className="dir-card"
-              to={`/item?item=${encodeURIComponent(recipe.product.item)}`}
+              to={itemHref(recipe.product.item)}
               data-testid="recipe-market-link"
             >
               <h3>{recipe.product.displayName} on the market →</h3>

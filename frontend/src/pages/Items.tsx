@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
+import ItemLink from "../components/ItemLink"
 import Layout from "../components/Layout"
 import { fetchItemIndex, type ItemIndex, type ItemStat } from "../lib/itemsApi"
 import { formatCount, prettifyEcoName } from "../lib/format"
@@ -178,9 +179,9 @@ export default function Items() {
                   {visible.map((r) => (
                     <tr key={r.item} data-testid="item-row">
                       <td>
-                        <Link className="linklike" to={`/item?item=${encodeURIComponent(r.item)}`}>
+                        <ItemLink className="linklike" item={r.item}>
                           {prettifyEcoName(r.item)}
-                        </Link>
+                        </ItemLink>
                       </td>
                       <td className="num">{formatCount(r.tradeCount)}</td>
                       <td className="num">

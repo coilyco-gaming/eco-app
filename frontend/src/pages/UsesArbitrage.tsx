@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
+import ItemLink from "../components/ItemLink"
 import Layout from "../components/Layout"
 import { fetchLogistics, type LogisticsBoard } from "../lib/logisticsApi"
 import { formatCount } from "../lib/format"
@@ -86,7 +87,11 @@ export default function UsesArbitrage() {
                   key={`${a.item}-${a.buyFrom.storeKey}-${a.sellTo.storeKey}`}
                   data-testid="arb-row"
                 >
-                  <td>{a.itemPretty}</td>
+                  <td>
+                    <ItemLink className="linklike" item={a.item}>
+                      {a.itemPretty}
+                    </ItemLink>
+                  </td>
                   <td>
                     {fmtPrice(a.buyFrom.price)} — {a.buyFrom.store}
                   </td>

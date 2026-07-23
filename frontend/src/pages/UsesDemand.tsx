@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
+import ItemLink from "../components/ItemLink"
 import Layout from "../components/Layout"
 import { fetchLogistics, type GapReason, type LogisticsBoard, type SupplyGap } from "../lib/logisticsApi"
 import { formatCount } from "../lib/format"
@@ -26,7 +27,9 @@ function DemandRow({ gap }: { gap: SupplyGap }) {
   return (
     <li className="gap-row" data-testid="demand-row">
       <div className="gap-head">
-        <span className="gap-name">{gap.itemPretty}</span>
+        <ItemLink className="linklike gap-name" item={gap.item}>
+          {gap.itemPretty}
+        </ItemLink>
         <span className="gap-tag" style={{ color: g.color }} data-testid="demand-tag">
           <span aria-hidden="true">{g.glyph}</span> {g.label}
         </span>

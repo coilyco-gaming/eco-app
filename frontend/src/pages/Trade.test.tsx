@@ -467,15 +467,16 @@ describe("Trade", () => {
     expect(within(drill).getByText("5.5")).toBeInTheDocument()
   })
 
-  it("pushes a market-row click into the drill", async () => {
+  it("links market names to their pivots while retaining the ledger filter action", async () => {
     stub()
     renderTrade()
 
     await waitFor(() => {
       expect(screen.getByTestId("most-traded")).toBeInTheDocument()
     })
-    const row = within(screen.getByTestId("most-traded")).getByText("Wheat")
-    fireEvent.click(row)
+    const list = within(screen.getByTestId("most-traded"))
+    expect(list.getByRole("link", { name: "Wheat" })).toHaveAttribute("href", "/item?item=WheatItem")
+    fireEvent.click(list.getByRole("button", { name: "Filter trade ledger by Wheat" }))
     expect(screen.getByTestId("trade-filter")).toHaveValue("Wheat")
   })
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useParams } from "react-router-dom"
+import ItemLink from "../components/ItemLink"
 import Layout from "../components/Layout"
 import {
   formatCount,
@@ -226,7 +227,9 @@ export default function User() {
                   {myOffers.sells.map((o, i) => (
                     <li key={`sell-${o.item}-${o.store}-${i}`}>
                       <div className="rank-row">
-                        <span className="rank-name">{o.itemPretty || prettifyEcoName(o.item)}</span>
+                        <ItemLink className="rank-name linklike" item={o.item}>
+                          {o.itemPretty || prettifyEcoName(o.item)}
+                        </ItemLink>
                         <span className="rank-count">
                           {formatCount(o.price)} {o.currency} · {formatCount(o.quantity)} in stock
                         </span>
@@ -241,7 +244,9 @@ export default function User() {
                     {trader!.topSells.slice(0, 6).map((it) => (
                       <li key={`ts-${it.item}`}>
                         <div className="rank-row">
-                          <span className="rank-name">{it.pretty || prettifyEcoName(it.item)}</span>
+                          <ItemLink className="rank-name linklike" item={it.item}>
+                            {it.pretty || prettifyEcoName(it.item)}
+                          </ItemLink>
                           <span className="rank-count">{formatCount(it.volume)} volume</span>
                         </div>
                       </li>
@@ -259,7 +264,9 @@ export default function User() {
                   {myOffers.buys.map((o, i) => (
                     <li key={`buy-${o.item}-${o.store}-${i}`}>
                       <div className="rank-row">
-                        <span className="rank-name">{o.itemPretty || prettifyEcoName(o.item)}</span>
+                        <ItemLink className="rank-name linklike" item={o.item}>
+                          {o.itemPretty || prettifyEcoName(o.item)}
+                        </ItemLink>
                         <span className="rank-count">
                           {formatCount(o.price)} {o.currency} · wants {formatCount(o.quantity)}
                         </span>
@@ -274,7 +281,9 @@ export default function User() {
                     {trader!.topBuys.slice(0, 6).map((it) => (
                       <li key={`tb-${it.item}`}>
                         <div className="rank-row">
-                          <span className="rank-name">{it.pretty || prettifyEcoName(it.item)}</span>
+                          <ItemLink className="rank-name linklike" item={it.item}>
+                            {it.pretty || prettifyEcoName(it.item)}
+                          </ItemLink>
                           <span className="rank-count">{formatCount(it.volume)} volume</span>
                         </div>
                       </li>
@@ -311,7 +320,9 @@ export default function User() {
                       return (
                         <li className="gap-row" key={`${g.item}-${g.currency}`}>
                           <div className="gap-head">
-                            <span className="gap-name">{g.itemPretty}</span>
+                            <ItemLink className="gap-name linklike" item={g.item}>
+                              {g.itemPretty}
+                            </ItemLink>
                             <span className="gap-tag" style={{ color: tag.color }}>
                               <span aria-hidden="true">{tag.glyph}</span> {tag.label}
                             </span>
@@ -340,7 +351,9 @@ export default function User() {
                   return (
                     <li key={`recent-${i}`}>
                       {formatRelativeTime(t.time as number, recentActivity.latest)} — {role}{" "}
-                      <strong>{t.item ? prettifyEcoName(t.item) : "an item"}</strong>
+                      <strong>
+                        <ItemLink item={t.item}>{t.item ? prettifyEcoName(t.item) : "an item"}</ItemLink>
+                      </strong>
                       {counterparty ? ` with ${counterparty}` : ""}
                     </li>
                   )

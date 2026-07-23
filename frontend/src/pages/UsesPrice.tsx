@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
+import ItemLink from "../components/ItemLink"
 import Layout from "../components/Layout"
 import { fetchFairPrice, type FairPriceResult } from "../lib/fairPriceApi"
 import { fetchJsonOrNull } from "../lib/api"
@@ -317,7 +318,14 @@ export default function UsesPrice() {
           </Link>
         </p>
         <h1 className="hero-title">
-          How should I price {pretty ? <span className="accent">{pretty}</span> : <span className="accent">X</span>}?
+          How should I price{" "}
+          {pretty ? (
+            <ItemLink className="accent linklike" item={item}>
+              {pretty}
+            </ItemLink>
+          ) : (
+            <span className="accent">X</span>
+          )}?
         </h1>
         {item && marketRow && (
           <p className="hero-pill" data-testid="price-pill">
@@ -351,10 +359,19 @@ export default function UsesPrice() {
           <ul className="rank-rows" data-testid="price-picker">
             {visibleOptions.map((o) => (
               <li key={o.item}>
-                <button className="rank-row" onClick={() => pickItem(o.item)} data-testid="pick-item">
-                  <span className="rank-name">{o.pretty}</span>
+                <div className="rank-row" data-testid="pick-item">
+                  <ItemLink className="rank-name linklike" item={o.item}>
+                    {o.pretty}
+                  </ItemLink>
                   <span className="rank-count">{o.detail}</span>
-                </button>
+                  <button
+                    className="linklike"
+                    onClick={() => pickItem(o.item)}
+                    aria-label={`Price ${o.pretty}`}
+                  >
+                    Price
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -526,7 +543,10 @@ export default function UsesPrice() {
                 <>
                   <p className="hero-pill" data-testid="price-cost-pill">
                     <span className="pulse-dot" aria-hidden="true" />
-                    {bestRecipe.displayName} ·{" "}
+                    <ItemLink className="linklike" item={bestRecipe.product.item}>
+                      {bestRecipe.displayName}
+                    </ItemLink>{" "}
+                    ·{" "}
                     {bestRecipe.cost?.perUnitCost !== null && bestRecipe.cost?.perUnitCost !== undefined
                       ? `${fmtPrice(bestRecipe.cost.perUnitCost)} ${moneyUnit}/unit`
                       : "unpriced"}
@@ -546,7 +566,9 @@ export default function UsesPrice() {
                       {bestRecipe.cost?.ingredients.map((line) => (
                         <tr key={`${line.item}-${line.displayName}`} data-testid="price-cost-row">
                           <td>
-                            {line.displayName}
+                            <ItemLink className="linklike" item={line.isTag ? null : line.item}>
+                              {line.displayName}
+                            </ItemLink>
                             {line.isTag ? <span className="section-sub"> (tag)</span> : null}
                           </td>
                           <td className="num">{formatCount(line.quantity)}</td>
