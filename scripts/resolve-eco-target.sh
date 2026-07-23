@@ -32,14 +32,12 @@ if probe "$LAN_BASE" 1; then
     exit 0
 fi
 
-if command -v coily >/dev/null 2>&1; then
-    FQDN="$(coily ops aws ssm get-parameter --name "$SSM_FQDN_PATH" \
-        --with-decryption --query Parameter.Value --output text 2>/dev/null || true)"
-    if [ -n "$FQDN" ] && probe "http://${FQDN}:${PORT}" 3; then
-        echo "eco target: tailnet (SSM-resolved FQDN, not echoed)" >&2
-        printf 'http://%s:%s\n' "$FQDN" "$PORT"
-        exit 0
-    fi
+FQDN="$(aws ssm get-parameter --name "$SSM_FQDN_PATH" \
+    --with-decryption --query Parameter.Value --output text 2>/dev/null || true)"
+if [ -n "$FQDN" ] && probe "http://${FQDN}:${PORT}" 3; then
+    echo "eco target: tailnet (SSM-resolved FQDN, not echoed)" >&2
+    printf 'http://%s:%s\n' "$FQDN" "$PORT"
+    exit 0
 fi
 
 echo "eco target: public (eco.coilysiren.me:${PORT})" >&2

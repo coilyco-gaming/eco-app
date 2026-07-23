@@ -62,7 +62,7 @@ frontend-lint: ## ESLint over frontend/src.
 
 http: ## Run the fused server (MCP + /jobs) with autoreload, eco target auto-resolved. Args - http_port=<int>.
 	@BASE=$$(scripts/resolve-eco-target.sh) && \
-	KEY="$${UPSTREAM_API_KEY:-$$(coily ops aws ssm get-parameter --name /eco-mcp-app/api-admin-token --with-decryption --query Parameter.Value --output text 2>/dev/null || true)}" && \
+	KEY="$${UPSTREAM_API_KEY:-$$(aws ssm get-parameter --name /eco-mcp-app/api-admin-token --with-decryption --query Parameter.Value --output text 2>/dev/null || true)}" && \
 	DEBUG=1 \
 	ECO_INFO_URL="$${ECO_INFO_URL:-$$BASE/info}" \
 	ECO_ADMIN_BASE_URL="$${ECO_ADMIN_BASE_URL:-$$BASE}" \
