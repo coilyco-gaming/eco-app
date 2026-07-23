@@ -42,7 +42,7 @@ def build_bot() -> Any:
     )
     bot = discord.Bot(intents=discord.Intents.none())
     eco = bot.create_group("eco", "Read-only Eco server information")
-    rich = eco.create_subgroup("rich", "Rich previews in #eco-info")
+    rich = eco.create_subgroup("rich", "Rich previews in #eco-app")
 
     @rich.command(name="status", description="Current server status")
     async def status(ctx: discord.ApplicationContext) -> None:

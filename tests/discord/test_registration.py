@@ -35,17 +35,22 @@ def test_worker_and_schema_have_matching_rich_command_names() -> None:
 
 def test_worker_registers_the_rich_subcommand_group() -> None:
     tree = ast.parse(Path("src/eco_discord/worker.py").read_text())
-    assert any(
-        isinstance(node.func, ast.Attribute)
+    rich_groups = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
         and isinstance(node.func.value, ast.Name)
         and node.func.value.id == "eco"
         and node.func.attr == "create_subgroup"
-        and node.args
-        and isinstance(node.args[0], ast.Constant)
-        and node.args[0].value == "rich"
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-    )
+    ]
+    assert len(rich_groups) == 1
+    worker_rich = rich_groups[0]
+    schema_rich = COMMAND_SCHEMA[0]["options"][0]
+    assert isinstance(worker_rich.args[0], ast.Constant)
+    assert isinstance(worker_rich.args[1], ast.Constant)
+    assert worker_rich.args[0].value == schema_rich["name"] == "rich"
+    assert worker_rich.args[1].value == schema_rich["description"] == "Rich previews in #eco-app"
 
 
 def test_worker_does_not_register_commands_during_startup() -> None:

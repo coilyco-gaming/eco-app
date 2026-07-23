@@ -16,7 +16,7 @@ COMMAND_SCHEMA: list[dict[str, Any]] = [
         "options": [
             {
                 "name": "rich",
-                "description": "Rich previews in #eco-info",
+                "description": "Rich previews in #eco-app",
                 "type": 2,
                 "options": [
                     {"name": "status", "description": "Current server status", "type": 1},

@@ -11,7 +11,7 @@ The first release provides read-only discovery. It does not parse ordinary messa
 ## User experience
 
 Discord registers one top-level `/eco` command group with a `rich` subcommand
-group. All five rich previews are dedicated to `#eco-info`:
+group. All five rich previews are dedicated to `#eco-app`:
 
 * `/eco rich status` - current server state, online-player count, meteor countdown, world age, and version. The embed links to `/info`.
 * `/eco rich world` - climate and world summary with the current world-preview image when Discord can fetch it. The embed links to `/map`.
@@ -20,7 +20,7 @@ group. All five rich previews are dedicated to `#eco-info`:
 * `/eco rich help` - a compact command directory. The embed links to the eco-app homepage.
 
 `ECO_DISCORD_INFO_CHANNEL_ID` is required at worker startup. A rich command
-outside that channel returns only a concise ephemeral redirect to `#eco-info`;
+outside that channel returns only a concise ephemeral redirect to `#eco-app`;
 the worker does not call eco-app or fetch Eco data for that request.
 
 The implementation may add commands after the first release only when an existing public eco-app data plane can supply the answer. The bot does not reach around eco-app to call the game server directly.
@@ -94,7 +94,7 @@ The worker accepts:
 * `ECO_DISCORD_ECO_APP_URL` - eco-app base URL. The deploy supplies the cluster-local service URL, while local development may use localhost.
 * `ECO_DISCORD_PUBLIC_URL` - canonical public SPA base URL used in embed links.
 * `ECO_DISCORD_SERVER_LABEL` - public-safe server name shown in footers.
-* `ECO_DISCORD_INFO_CHANNEL_ID` - required `#eco-info` channel identifier for rich previews.
+* `ECO_DISCORD_INFO_CHANNEL_ID` - required `#eco-app` channel identifier for rich previews.
 
 Published image entrypoints are `eco-discord-worker` (the gateway process) and
 `eco-discord-register` (the explicit **test-guild-only** schema registration
