@@ -4,11 +4,11 @@ Baseline inventory of headline features. Use to evaluate scope changes.
 
 ## What this app is
 
-MCP server exposing live data from Eco game servers. Reference implementation of MCP Apps spec in pure Python (no React, no bundler). Production: `https://eco-mcp.coilysiren.me/mcp/`. The MCP-app visual widget is **scoped to the world/region view only** ([#87](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/87)): only `get_eco_world`, `get_eco_map`, and `get_eco_ecoregion` (the SPA's `/map` surface) render an inline widget card; every other tool returns "just data" (markdown + structured JSON, no widget).
+MCP server exposing live data from Eco game servers. Production: `https://eco-mcp.coilysiren.me/mcp/`. Every tool returns markdown/text plus structured JSON; MCP Apps resources, widgets, and server-rendered cards were removed in [#113](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/113).
 
 ## MCP tools
 
-Defined in [src/eco_mcp_app/server.py](../../src/eco_mcp_app/server.py). All accept optional `server` arg. Only the **world/region** tools (`get_eco_world`, `get_eco_map`, `get_eco_ecoregion`) emit the MCP-app widget; the rest are data-only ([#87](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/87)).
+Defined in [src/eco_mcp_app/server.py](../../src/eco_mcp_app/server.py). All accept optional `server` arg and return data-only results.
 
 - **get_eco_server_status** - Meteor countdown, players, world dims, cycle progress, version, economy summary.
 - **get_eco_economy** - Trades/day, contract completion, loan defaults, wages, tax flow, volatility sparklines. Admin `/datasets/get`.
@@ -27,13 +27,6 @@ Defined in [src/eco_mcp_app/server.py](../../src/eco_mcp_app/server.py). All acc
 - **get_eco_currency** - Currency & money-supply surface, meets DiscordLink `Currencies` / `Currency <name>`. Roster split minted/backed vs personal/credit (each with issuance + trade activity), money-supply totals (player wealth + gov holdings) and 7d trade value. Optional `currency` arg gives the per-currency report, including the live top account holders (per-account balances from the `mods/stores` `/api/v1/currency-holdings` exporter, joined to citizen names; flagged unavailable rather than faked when that mod is not deployed - [#58](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/58)). Roster + issuance from the `CreateCurrency` / `MintCurrency` / `CurrencyTrade` action exporters, supply from `/datasets/get`; degrades to the public `/info` headline without an admin key. Probe: [docs/datasets/currency.md](../datasets/currency.md).
 - **list_public_eco_servers** - 6 known public servers with labels + notes.
 
-## MCP resources
-
-- **ui://eco/status.html** - Main MCP Apps shell document hosts load in their sandboxed iframe; per-tool Jinja cards swap into it via `_meta.ui.fragment`. This is the shell the world/region widget tools (`get_eco_world` / `get_eco_map` / `get_eco_ecoregion`) point at.
-- **ui://eco/economy.html** - Economy dashboard shell. Retained but no longer referenced by any tool since the widget was scoped to the world/region view ([#87](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/87)).
-- **ui://eco/climate.html** - Climate dashboard shell. Retained, unreferenced (see #87).
-- **ui://eco/currency.html** - Currency & money-supply dashboard shell. Retained, unreferenced (see #87).
-
 ## Runtime surfaces
 
 - **Stdio** - `python -m eco_mcp_app.__main__` for Claude Desktop.
@@ -44,11 +37,7 @@ Defined in [src/eco_mcp_app/server.py](../../src/eco_mcp_app/server.py). All acc
 
 ## UI rendering
 
-- **Jinja2 server-side** at [src/eco_mcp_app/templates/](../../src/eco_mcp_app/templates/), rendered only into the MCP `_meta.ui` card fragment for in-chat hosts, and only for the world/region widget tools ([#87](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/87)). The web UI is the React SPA (`frontend/`); the server renders no browser-facing HTML.
-- **Main shell** `eco.html` (~5KB). Hand-rolled MCP Apps handshake. Steam banner data URI for CSP.
-- **CSS** `eco.css` (~26KB). Responsive, animated starfield, cycle ring.
-- **22 partial templates** for per-card fragments.
-- **Connector icon** - the `initialize` metadata carries the official Eco game icon (48x48 PNG data URI, the blue/green world globe) as `serverInfo.icons`, so claude.ai and other URL-connected hosts brand the connector tile with the game icon. Asset: `templates/assets/eco_icon.png`.
+The React SPA (`frontend/`) is the product UI. The MCP service renders no HTML and registers no UI resources.
 
 ## External data sources
 
@@ -65,7 +54,7 @@ Defined in [src/eco_mcp_app/server.py](../../src/eco_mcp_app/server.py). All acc
 
 ## Source modules
 
-- **server.py** - Core MCP server, tool/resource handlers, TMP markup parsing, error rendering. ~2400 lines.
+- **server.py** - Core MCP server and tool handlers.
 - **http_app.py** - Starlette ASGI + NormalizeMcpPath middleware.
 - **crafting.py** / **map.py** / **ecoregion.py** / **species.py** / **fair_price.py** / **wikidata.py** / **telemetry.py** / **livereload.py**.
 

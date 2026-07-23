@@ -295,7 +295,7 @@ async def test_list_tools_advertises_get_eco_map() -> None:
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_get_eco_map_call_tool_returns_rendered_fragment() -> None:
+async def test_get_eco_map_call_tool_returns_data_only_result() -> None:
     respx.get(f"{ECO_BASE_URL_DEFAULT}/api/v1/map/dimension").mock(
         return_value=httpx.Response(200, json=_fake_dimension())
     )
@@ -329,13 +329,7 @@ async def test_get_eco_map_call_tool_returns_rendered_fragment() -> None:
     assert "gifDataUri" not in payload
     assert payload["view"] == "eco_map"
     assert payload["deedCount"] == 2
-    # Rendered partial (with polygons + image) ships in `_meta.ui.fragment`.
-    assert result.root.meta is not None
-    fragment = result.root.meta["ui"]["fragment"]
-    assert "<polygon" in fragment
-    assert "data:image/gif;base64" in fragment
-    assert "alice" in fragment
-    assert "gavin" in fragment
+    assert result.root.meta is None
 
 
 @pytest.mark.asyncio

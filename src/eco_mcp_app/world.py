@@ -576,7 +576,7 @@ def world_template_context(activity: WorldActivity, *, top: int = 10) -> dict[st
 
 
 def world_markdown(activity: WorldActivity) -> str:
-    """Plain-text fallback for hosts that don't render the MCP Apps iframe."""
+    """Summarize world activity for an MCP text result."""
     if activity.total_events == 0:
         return (
             f"**World activity** — no world-mutation events recorded yet "

@@ -190,7 +190,7 @@ def _corrected_index(header: list[str], row: list[str]) -> list[int]:
 
 @dataclass
 class CraftingAtlas:
-    """Shape consumed by the Jinja2 template. JSON-serializable."""
+    """Crafting activity summary. JSON-serializable."""
 
     fetched_at_iso: str
     source_base_url: str
@@ -687,6 +687,33 @@ def prettify_eco_name(name: str) -> str:
             out.append(" ")
         out.append(ch)
     return "".join(out)
+
+
+def atlas_markdown(atlas: CraftingAtlas) -> str:
+    """Summarize a crafting atlas for an MCP text result."""
+    if atlas.total_events == 0:
+        return f"**Crafting atlas** — no production events recorded yet ({atlas.source_base_url})."
+    lines = [
+        f"**Crafting atlas** — {atlas.total_events:,} events (`{atlas.source_base_url}`)",
+        "",
+        "**Top items crafted (units):**",
+    ]
+    for index, (name, count) in enumerate(atlas.by_crafted[:10], 1):
+        lines.append(f"{index}. {prettify_eco_name(name)} — {count:,.0f}")
+    if atlas.by_gathered:
+        lines.extend(["", "**Top resources gathered (events):**"])
+        for index, (name, count) in enumerate(atlas.by_gathered[:10], 1):
+            lines.append(f"{index}. {prettify_eco_name(name)} — {count:,} events")
+    if atlas.by_station:
+        lines.extend(["", "**Station utilization:**"])
+        for index, (name, count) in enumerate(atlas.by_station[:10], 1):
+            lines.append(f"{index}. {prettify_eco_name(name)} — {count:,} events")
+    if atlas.by_citizen:
+        lines.extend(["", "**Top crafters:**"])
+        for index, (name, count) in enumerate(atlas.by_citizen[:10], 1):
+            lines.append(f"{index}. {name} — {count:,.0f}")
+    lines.extend(f"- ⚠ {warning}" for warning in atlas.warnings)
+    return "\n".join(lines)
 
 
 def atlas_template_context(

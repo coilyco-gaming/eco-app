@@ -10,10 +10,8 @@ inserts by default. Middleware normalizes bare-path `/mcp` to the mount path
 so both forms work.
 
 Also exposes the `/preview*.json` data plane the React SPA consumes
-(`/preview.json`, `/preview-map.json`, `/preview/<tool>.json`). The old HTML
-`/preview` card pages were removed: product UX lives in the SPA (`frontend/`),
-and the Jinja cards survive only on the MCP `_meta.ui` fragment for in-chat
-hosts.
+(`/preview.json`, `/preview-map.json`, `/preview/<tool>.json`). Product UX
+lives in the SPA (`frontend/`); MCP results are data-only.
 """
 
 from __future__ import annotations
@@ -55,7 +53,6 @@ from .recipes import filter_index, load_recipe_index
 from .server import (
     ADMIN_API_KEY_ENV,
     DEFAULT_ECO_INFO_URL,
-    HTMX_PREFIX,
     _get_admin_token,
     build_server,
     fetch_eco_info,
@@ -718,14 +715,10 @@ def create_app() -> Starlette:
         return JSONResponse(payload)
 
     def _extract_json_block(call_result: mt.CallToolResult) -> Any:
-        # Each tool emits markdown + JSON TextContent blocks (see
-        # server.call_tool). Find the JSON one by skipping any HTMX-prefixed
-        # block and trying to parse each remaining text block; first that
-        # parses wins.
+        # Each tool emits markdown + JSON TextContent blocks. Find the JSON
+        # block by trying to parse each text block; first that parses wins.
         for block in call_result.content:
             text = getattr(block, "text", "") or ""
-            if text.startswith(HTMX_PREFIX):
-                continue
             try:
                 return json.loads(text)
             except (ValueError, TypeError):
@@ -738,8 +731,7 @@ def create_app() -> Starlette:
         The SPA consumes `/preview/<tool>.json?<args>` — query-string args pass
         straight through as the tool's `arguments`, so
         `/preview/get_eco_species.json?name=Bison` works. The `.json` suffix is
-        required; the HTML card variant was removed (the in-chat card now lives
-        only on the MCP `_meta.ui` fragment, and the web UI is the SPA).
+        required; the product UI is the SPA.
         """
         raw_name = request.path_params["tool"]
         if not raw_name.endswith(".json"):

@@ -74,15 +74,13 @@ artifact) are dropped rather than rendered, mirroring the crafting atlas.
 ## Surfaces
 
 - **`get_eco_world` MCP tool** - `world.py` + `server.py` wiring. Returns a
-  markdown summary + the structured `WorldActivity.to_dict()` JSON, plus an
-  `_meta.ui` Jinja card (`templates/partials/world.html`) for MCP Apps hosts.
+  markdown summary + the structured `WorldActivity.to_dict()` JSON.
   Requires an admin API key server-side (`ECO_ADMIN_API_KEY`, SSM in the homelab
   deploy).
 - **`/preview/world.json` data plane** - a dedicated short path (passing
   `?server=` straight through) so the SPA hits a stable URL.
 - **`/world` SPA page** - `frontend/src/pages/World.tsx`, consuming
-  `/preview/world.json`. Product UX lives here (the Jinja card is only the in-chat
-  fragment). The stacked timeline is a static inline SVG (no chart lib, CSP
+  `/preview/world.json`. Product UX lives here. The stacked timeline is a static inline SVG (no chart lib, CSP
   trivial) with a legend, a 2px surface gap between segments, and per-segment
   hover labels - the secondary encoding the categorical palette's CVD floor needs
   (hues are the dataviz skill's validated dark-mode theme, assigned by category

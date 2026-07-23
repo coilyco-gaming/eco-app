@@ -8,8 +8,8 @@ and when. Filed as [#6](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/iss
 
 ## Surfaces
 
-- **`get_eco_trades` MCP tool** - `src/eco_mcp_app/trades.py` + `server.py` wiring. Returns a markdown summary + the structured `TradesLedger.to_dict()` JSON. Trades is a "just data" tool - it emits no MCP-app widget ([#87](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/87); the widget is scoped to the world/region view). Requires an admin API key server-side (`ECO_ADMIN_API_KEY`, SSM in the homelab deploy).
-- **Trades ledger in the `/trade` SPA page** - `frontend/src/pages/Trade.tsx`, consuming `/preview/get_eco_trades.json`. The standalone `/trades` page was folded into the trade & store logistics surface in the [#90](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/90) IA cleanup (`/trades` now redirects to `/trade`), so the market price-intelligence view and the row-level ledger share one page and one `?q=` filter. Product UX lives here (the Jinja card is only the in-chat fragment). The row-level table and the top-buyers/sellers leaderboards render below the market overview; the per-item price-over-time chart comes from the market drill.
+- **`get_eco_trades` MCP tool** - `src/eco_mcp_app/trades.py` + `server.py` wiring. Returns a markdown summary + the structured `TradesLedger.to_dict()` JSON. Requires an admin API key server-side (`ECO_ADMIN_API_KEY`, SSM in the homelab deploy).
+- **Trades ledger in the `/trade` SPA page** - `frontend/src/pages/Trade.tsx`, consuming `/preview/get_eco_trades.json`. The standalone `/trades` page was folded into the trade & store logistics surface in the [#90](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/90) IA cleanup (`/trades` now redirects to `/trade`), so the market price-intelligence view and the row-level ledger share one page and one `?q=` filter. Product UX lives here. The row-level table and the top-buyers/sellers leaderboards render below the market overview; the per-item price-over-time chart comes from the market drill.
 
 ## Data source
 
