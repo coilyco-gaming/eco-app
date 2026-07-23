@@ -40,7 +40,10 @@ describe("Home", () => {
     expect(screen.getByTestId("dir-jobs")).toHaveAttribute("href", "/jobs")
     // The eco-gnome calculator is a homepage card that links out to the gnome
     // service, not a /calculator route anymore (eco-app#90).
-    expect(screen.getByTestId("dir-gnome")).toHaveAttribute("href", "https://eco-gnome.com")
+    expect(screen.getByTestId("dir-gnome")).toHaveAttribute(
+      "href",
+      "https://eco-gnome.coilysiren.me/",
+    )
     // /economy is gone entirely (eco-app#90) — no economy card. The standalone
     // trades and climate cards folded into Trade and World respectively.
     expect(screen.queryByTestId("dir-economy")).not.toBeInTheDocument()

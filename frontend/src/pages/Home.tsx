@@ -14,7 +14,7 @@ const STEAM_URL = "https://store.steampowered.com/app/382310/Eco/"
 // Eco Gnome (MIT) is the crafting-cost calculator. It used to be its own
 // /calculator page; eco-app#90 demoted it to this homepage card that links out
 // to the gnome service. Roadmap (#40) self-hosts it at eco-gnome.coilysiren.me.
-const ECO_GNOME_URL = "https://eco-gnome.com"
+const ECO_GNOME_URL = "https://eco-gnome.coilysiren.me/"
 
 // The homepage is a thin directory: a short hero and one card per surface.
 // The heavy live content lives on the subpages it points at.
