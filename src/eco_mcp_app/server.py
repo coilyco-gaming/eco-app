@@ -33,6 +33,7 @@ from mcp.types import (
     Resource,
     TextContent,
     Tool,
+    ToolAnnotations,
 )
 from pydantic import AnyUrl
 
@@ -135,6 +136,36 @@ KNOWN_PUBLIC_SERVERS: list[dict[str, str]] = [
         "notes": "No markup in the title; meteor already passed.",
     },
 ]
+
+# This directory is static data bundled with the MCP server.  Advertise its
+# safety properties explicitly so hosts do not infer write, destructive, or
+# open-world behavior from the protocol defaults.
+PUBLIC_SERVERS_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=True,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=False,
+)
+PUBLIC_SERVERS_OUTPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "servers": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string"},
+                    "host": {"type": "string"},
+                    "notes": {"type": "string"},
+                },
+                "required": ["label", "host", "notes"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["servers"],
+    "additionalProperties": False,
+}
 
 # The MCP Apps spec puts the resource URI under _meta.ui.resourceUri. Some hosts
 # only honor the legacy flat form `_meta["ui/resourceUri"]` (claude-ai-mcp#71),
@@ -2832,6 +2863,8 @@ def build_server() -> Server:
                     "properties": {},
                     "additionalProperties": False,
                 },
+                outputSchema=PUBLIC_SERVERS_OUTPUT_SCHEMA,
+                annotations=PUBLIC_SERVERS_ANNOTATIONS,
             ),
         ]
         # eco-app#87: only the world/region tools advertise a widget resource.
@@ -3223,6 +3256,7 @@ def build_server() -> Server:
                         text=json.dumps({"servers": KNOWN_PUBLIC_SERVERS}),
                     ),
                 ],
+                structuredContent={"servers": KNOWN_PUBLIC_SERVERS},
             )
 
         if name == "get_eco_economy":
