@@ -1,41 +1,25 @@
-"""MCP server + UI resource for any public Eco game server.
-
-Rendering flow: server-side Jinja2 templates produce both the initial iframe
-shell (served as an MCP resource) and the per-tool-call HTML fragment (shipped
-inside the tool result and swapped into #root client-side). HTMX is loaded in
-the shell and used to `htmx.process()` new fragments — future interactive bits
-can be expressed declaratively with `hx-*` attributes on the partials.
-"""
+"""MCP server for public Eco game servers."""
 
 from __future__ import annotations
 
-import base64
 import json
 import os
 import re
 from datetime import UTC, datetime
-from importlib.resources import files
-from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 import httpx
 from cachetools import TTLCache
-from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PackageLoader, select_autoescape
-from markupsafe import Markup, escape
 from mcp.server.lowlevel import NotificationOptions, Server
-from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
 from mcp.types import (
     CallToolResult,
-    Icon,
-    Resource,
     TextContent,
     Tool,
     ToolAnnotations,
 )
-from pydantic import AnyUrl
 
 from . import climate as climate_mod
 from . import currency as currency_mod
@@ -43,14 +27,14 @@ from . import ecoregion as ecoregion_mod
 from . import fair_price as fair_price_mod
 from . import market as market_mod
 from . import species as species_mod
-from .civics import civics_markdown, civics_template_context, fetch_civics
-from .crafting import atlas_template_context, fetch_atlas
-from .logistics import fetch_logistics, logistics_markdown, logistics_template_context
+from .civics import civics_markdown, fetch_civics
+from .crafting import atlas_markdown, fetch_atlas
+from .logistics import fetch_logistics, logistics_markdown
 from .map import build_map_payload, fetch_map_bundle
-from .progression import fetch_history, history_markdown, history_template_context
-from .social import fetch_social, social_markdown, social_template_context
-from .stores import directory_markdown, directory_template_context, fetch_directory
-from .trades import fetch_ledger, ledger_markdown, ledger_template_context
+from .progression import fetch_history, history_markdown
+from .social import fetch_social, social_markdown
+from .stores import directory_markdown, fetch_directory
+from .trades import fetch_ledger, ledger_markdown
 from .watchers import (
     WatcherError,
     build_query,
@@ -61,7 +45,7 @@ from .watchers import (
     remove_watcher,
     watchers_list_markdown,
 )
-from .world import fetch_world, world_markdown, world_template_context
+from .world import fetch_world, world_markdown
 
 DEFAULT_ECO_INFO_URL = os.environ.get("ECO_INFO_URL", "http://eco.coilysiren.me:3001/info")
 DEFAULT_ECO_PORT = int(os.environ.get("ECO_INFO_PORT", "3001"))
@@ -69,10 +53,6 @@ DEFAULT_ECO_PORT = int(os.environ.get("ECO_INFO_PORT", "3001"))
 # DEFAULT_ECO_INFO_URL at import time so overriding ECO_INFO_URL in tests or
 # deploys redirects every endpoint consistently.
 DEFAULT_ECO_BASE_URL = DEFAULT_ECO_INFO_URL.rsplit("/info", 1)[0]
-STEAM_URL = "https://store.steampowered.com/app/382310/Eco/"
-RESOURCE_URI = "ui://eco/status.html"
-ECONOMY_RESOURCE_URI = "ui://eco/economy.html"
-RESOURCE_MIME = "text/html;profile=mcp-app"
 
 # Economy dashboard: datasets pulled from the admin /datasets/get endpoint.
 # Listed here so both tool wiring and tests share one source of truth; each
@@ -167,208 +147,6 @@ PUBLIC_SERVERS_OUTPUT_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
 }
 
-# The MCP Apps spec puts the resource URI under _meta.ui.resourceUri. Some hosts
-# only honor the legacy flat form `_meta["ui/resourceUri"]` (claude-ai-mcp#71),
-# so set both — servers that do this render in every host we've tested.
-UI_META: dict[str, Any] = {
-    "ui": {"resourceUri": RESOURCE_URI},
-    "ui/resourceUri": RESOURCE_URI,
-}
-
-# Only the world/region page renders the MCP-app visual widget; every other
-# tool is "just data" — the text + JSON blocks it already carries, with no
-# `_meta.ui` widget resource emitted (eco-app#87). The world/region page is the
-# SPA's `/map` surface, which fuses three tools: get_eco_world (industry
-# activity + hotspots), get_eco_map (world preview + deed polygons), and
-# get_eco_ecoregion (biome donut + ecoregion match). Those three keep the
-# widget; the list_tools advertisement and the per-call `_meta` are stripped for
-# all others by the gate in `build_server` below.
-WIDGET_TOOLS: frozenset[str] = frozenset({"get_eco_world", "get_eco_map", "get_eco_ecoregion"})
-
-# Legacy prefix from when the rendered HTML was shipped as a `TextContent`
-# block. Kept exported because http_app's preview path and older tests still
-# import it. The widget HTML now travels in `_meta.ui.fragment` instead - see
-# `_ui_meta()` and the iframe handshake in `templates/eco.html`. The prior
-# attempt to hide the block from the model with `audience=["user"]` (commit
-# 7542e67) caused Claude Desktop to drop the block from the iframe payload
-# entirely (issue #6), so the bytes had to move off the content array.
-HTMX_PREFIX = "HTMX:"
-
-
-def _ui_meta(fragment: str | None = None) -> dict[str, Any]:
-    """Build the per-call `_meta` block, optionally carrying the widget HTML.
-
-    `_meta` is host-scoped and not forwarded to the model, so this keeps the
-    50KB+ of inlined-image HTML out of the LLM context while still reaching
-    the MCP Apps iframe.
-    """
-    if fragment is None:
-        return UI_META
-    ui = {**UI_META["ui"], "fragment": fragment}
-    return {**UI_META, "ui": ui}
-
-
-# Eco server descriptions use TextMeshPro-style rich-text markup (the game is
-# built in Unity). Public servers routinely ship titles like
-#   "<color=green>Eco</color> via <color=blue>Sirens</color> | Cycle 13 ..."
-# and also `<b>`, `<i>`, `<size=20>`, `<sprite name="...">`, `<icon name="...">`
-# etc. We only translate <color=...> into inline-styled spans (since that's
-# the only tag that carries visible meaning in a plain-text card); everything
-# else is stripped. Contents are always escape-then-interpolated so the output
-# stays XSS-safe even though it's marked Markup.
-# TMP accepts both `<color=…>` and the shorthand `<#RRGGBB>` / `<#RRGGBBAA>`.
-# Both open forms share the same color stack and </color> closes either.
-# Capture group 1 = value from `<color=…>`, group 2 = value from `<#…>`.
-_TMP_TOKEN = re.compile(
-    r"<color=#?([A-Za-z0-9]+)>|<#([0-9a-fA-F]{3,8})>|</color>",
-    re.IGNORECASE,
-)
-_TMP_OTHER_TAG = re.compile(
-    r"</?(?:b|i|u|s|size|sprite|icon|style|mark|lowercase|uppercase|smallcaps)"
-    r"(?:[\s=][^>]*)?/?>",
-    re.IGNORECASE,
-)
-
-# Map TMP named colors to CSS colors. Unknown names pass through so CSS named
-# colors work directly; hex values are handled by prefixing `#` if missing.
-_TMP_NAMED_COLORS = {
-    "black",
-    "white",
-    "red",
-    "green",
-    "blue",
-    "yellow",
-    "cyan",
-    "magenta",
-    "gray",
-    "grey",
-    "orange",
-    "purple",
-    "pink",
-    "brown",
-    "lightblue",
-    "lightgreen",
-    "lightyellow",
-    "darkblue",
-    "darkgreen",
-    "darkred",
-    "darkgray",
-    "darkgrey",
-}
-
-
-def format_eco_markup(text: str | None) -> Markup:
-    """Convert Eco / Unity TextMeshPro markup to safe HTML.
-
-    Keeps <color=...>…</color> as styled spans; strips all other TMP tags.
-    Single-pass tokenizer so close tags are handled as tags (not literals) and
-    unbalanced markup doesn't leak `</color>` into the output.
-    """
-    if not text:
-        return Markup("")
-    # Drop the tags we don't render. Do this before coloring so stripped tags
-    # can't nest inside color spans in weird ways.
-    text = _TMP_OTHER_TAG.sub("", text)
-    out: list[str] = []
-    depth = 0
-    pos = 0
-    for m in _TMP_TOKEN.finditer(text):
-        out.append(str(escape(text[pos : m.start()])))
-        color_word = m.group(1)  # from <color=...>
-        hex_short = m.group(2)  # from <#RRGGBB>
-        if color_word is not None or hex_short is not None:
-            raw = color_word if color_word is not None else hex_short
-            assert raw is not None
-            if raw.lower() in _TMP_NAMED_COLORS:
-                color = raw.lower()
-            elif re.fullmatch(r"[0-9a-fA-F]{3,8}", raw):
-                color = f"#{raw}"
-            else:
-                color = raw.lower()
-            out.append(f'<span style="color:{escape(color)}">')
-            depth += 1
-        else:  # </color>
-            if depth > 0:
-                out.append("</span>")
-                depth -= 1
-        pos = m.end()
-    out.append(str(escape(text[pos:])))
-    out.extend(["</span>"] * depth)
-    return Markup("".join(out))
-
-
-def _fmt_number(n: Any) -> str:
-    if n is None:
-        return "—"
-    try:
-        n = int(n)
-    except (TypeError, ValueError):
-        return str(n)
-    if n >= 1_000_000:
-        return f"{n / 1_000_000:.1f}M"
-    if n >= 10_000:
-        return f"{n / 1000:.0f}k"
-    return f"{n:,}"
-
-
-def _build_jinja_env() -> Environment:
-    """Build a Jinja2 Environment that works from both installed package and src tree."""
-    here = Path(__file__).resolve().parent
-    loaders = [
-        PackageLoader("eco_mcp_app", "templates"),
-        FileSystemLoader(here / "templates"),
-    ]
-    env = Environment(
-        loader=ChoiceLoader(loaders),
-        autoescape=select_autoescape(["html", "xml"]),
-        trim_blocks=True,
-        lstrip_blocks=True,
-    )
-    env.globals["any"] = lambda *xs: any(
-        x is not None and x != "" and x != 0 and x != "0" for x in xs
-    )
-    env.globals["fmt"] = _fmt_number
-    # Dev-only browser livereload. Empty string in production so the
-    # `{{ livereload_script | safe }}` in the shell is a no-op.
-    from .livereload import DEBUG as _DEBUG
-    from .livereload import LIVERELOAD_SCRIPT as _LIVERELOAD_SCRIPT
-
-    env.globals["livereload_script"] = _LIVERELOAD_SCRIPT if _DEBUG else ""
-    return env
-
-
-_JINJA = _build_jinja_env()
-
-
-def _load_asset_data_uri(filename: str, mime: str) -> str:
-    """Read a file from templates/assets/ and return it as a data URI.
-
-    Claude Desktop's sandbox CSP blocks external origins (claude-ai-mcp#40), so
-    HTMX and the Steam banner must be inlined. Rendered once at startup.
-    """
-    try:
-        asset_bytes = (files("eco_mcp_app.templates.assets") / filename).read_bytes()  # type: ignore[union-attr]
-    except (FileNotFoundError, ModuleNotFoundError):
-        here = Path(__file__).resolve().parent
-        asset_bytes = (here / "templates" / "assets" / filename).read_bytes()
-    b64 = base64.b64encode(asset_bytes).decode()
-    return f"data:{mime};base64,{b64}"
-
-
-# Computed once at startup — both are large (banner ~46KB, htmx ~50KB) so
-# re-encoding per render is wasteful.
-_HTMX_SRC = _load_asset_data_uri("htmx.min.js", "application/javascript")
-_BANNER_SRC = _load_asset_data_uri("eco_header.jpg", "image/jpeg")
-# play.eco's ecofavicon.ico, inlined because Claude Desktop's CSP blocks
-# external origins (claude-ai-mcp#40).
-_FAVICON_SRC = _load_asset_data_uri("favicon.ico", "image/x-icon")
-# The official Eco game icon (the blue/green world globe), 48x48 PNG, wired
-# into the MCP initialize serverInfo.icons so the claude.ai connector tile
-# shows the game icon rather than a generic placeholder. A PNG at tile size,
-# not the 16x16 favicon.ico, because connector tiles do not render tiny ICOs.
-_ECO_ICON_SRC = _load_asset_data_uri("eco_icon.png", "image/png")
-_ECO_ICONS = [Icon(src=_ECO_ICON_SRC, mimeType="image/png", sizes=["48x48"])]
-
 
 def normalize_server_url(server: str | None) -> str:
     """Turn a user-supplied server string into a full /info URL.
@@ -427,7 +205,6 @@ async def fetch_eco_info(server: str | None = None) -> dict[str, Any]:
 # we see in practice on the live server (`<link=...>`, `<icon ...>`,
 # `<color=...>`, `<style=...>`, plus bare `<i>`, `<u>`, `<linktext>`,
 # `<foldout>`, `<title>`) and leaves surrounding text intact. See
-# `format_eco_markup` for the richer renderer used by the /info card title.
 # The post-name character class is `[\s=]` because Eco emits attribute forms
 # like `<style="Header">` / `<color=#FFF>` with no whitespace before the `=`.
 _LAW_MARKUP = re.compile(
@@ -644,22 +421,6 @@ def _law_preview_lines(text: str) -> list[str]:
     return entries
 
 
-def _render_government_card(payload: dict[str, Any]) -> str:
-    fetched_at = "—"
-    if payload.get("fetchedAtISO"):
-        try:
-            fetched_at = (
-                datetime.fromisoformat(payload["fetchedAtISO"]).astimezone().strftime("%H:%M:%S")
-            )
-        except ValueError:
-            fetched_at = payload["fetchedAtISO"]
-    return _JINJA.get_template("partials/government.html").render(
-        gov=payload,
-        fetched_at=fetched_at,
-        source_url=payload.get("sourceUrl"),
-    )
-
-
 def _format_government_markdown(payload: dict[str, Any]) -> str:
     lines = [f"**{payload['scope']} — Government**", ""]
     if payload["titles"]:
@@ -827,27 +588,6 @@ def build_milestones_payload(info: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _render_milestones(payload: dict[str, Any]) -> str:
-    """Render the milestone card fragment via Jinja2."""
-    fetched_at = "—"
-    if payload.get("fetchedAtISO"):
-        try:
-            fetched_at = (
-                datetime.fromisoformat(payload["fetchedAtISO"]).astimezone().strftime("%H:%M:%S")
-            )
-        except ValueError:
-            fetched_at = payload["fetchedAtISO"]
-    ctx = {
-        "total_culture": payload["totalCulture"],
-        "milestones": payload["milestones"],
-        "fetched_at": fetched_at,
-        "source_url": payload.get("sourceUrl"),
-        "steam_url": STEAM_URL,
-        "banner_src": _BANNER_SRC,
-    }
-    return _JINJA.get_template("partials/milestones.html").render(**ctx)
-
-
 def _format_milestones_markdown(payload: dict[str, Any]) -> str:
     lines = [
         f"**Eco milestones** — TotalCulture: **{payload['totalCulture']:.1f}**",
@@ -861,59 +601,6 @@ def _format_milestones_markdown(payload: dict[str, Any]) -> str:
         target = "?" if row["target"] is None else str(row["target"])
         lines.append(f"- **{row['name']}**: {current} / {target} Culture ({row['pct']:.0f}%)")
     return "\n".join(lines)
-
-
-def _render_card(payload: dict[str, Any]) -> str:
-    """Render the full card HTML fragment via Jinja2."""
-    server = payload["server"]
-    players = payload["players"]
-    world = payload["world"]
-    cycle = payload["cycle"]
-    economy = payload["economy"]
-    has_meteor = bool(cycle.get("hasMeteor")) and cycle.get("daysUntilMeteor") is not None
-    meteor_pct = (
-        max(0.0, min(100.0, 100.0 - (cycle["daysUntilMeteor"] / 60.0) * 100.0))
-        if has_meteor
-        else 0.0
-    )
-    player_pct = (players["online"] / players["total"] * 100.0) if players.get("total") else 0.0
-    fetched_at = "—"
-    if payload.get("fetchedAtISO"):
-        try:
-            fetched_at = (
-                datetime.fromisoformat(payload["fetchedAtISO"]).astimezone().strftime("%H:%M:%S")
-            )
-        except ValueError:
-            fetched_at = payload["fetchedAtISO"]
-    ctx = {
-        "title": format_eco_markup(
-            server.get("description") or server.get("category") or "Eco server"
-        ),
-        "server": server,
-        "players": players,
-        "world": world,
-        "cycle": cycle,
-        "economy": economy,
-        "has_meteor": has_meteor,
-        "meteor_pct": meteor_pct,
-        "player_pct": player_pct,
-        "fetched_at": fetched_at,
-        "achievements_count": len(payload.get("achievements") or []),
-        "source_url": payload.get("sourceUrl"),
-        "steam_url": STEAM_URL,
-        "banner_src": _BANNER_SRC,
-        "known_servers": KNOWN_PUBLIC_SERVERS,
-    }
-    return _JINJA.get_template("partials/card.html").render(**ctx)
-
-
-def _render_error(message: str) -> str:
-    return _JINJA.get_template("partials/error.html").render(message=message)
-
-
-def _render_map(payload: dict[str, Any]) -> str:
-    """Render the map card fragment."""
-    return _JINJA.get_template("partials/map.html").render(**payload)
 
 
 def _format_map_markdown(payload: dict[str, Any]) -> str:
@@ -958,63 +645,6 @@ def _resolve_species_id(name: str) -> str:
     return joined
 
 
-def _render_sparkline_svg(
-    samples: list[tuple[float, int]],
-    width: int = 320,
-    height: int = 60,
-) -> Markup:
-    """Inline SVG sparkline for a species population series.
-
-    Done as SVG (not Chart.js) because Claude Desktop's CSP blocks external
-    script origins — no-dep SVG is the lowest-risk path that still looks fine.
-    """
-    if not samples:
-        return Markup("")
-    xs = [s[0] for s in samples]
-    ys = [s[1] for s in samples]
-    x_min, x_max = min(xs), max(xs)
-    y_min, y_max = min(ys), max(ys)
-    x_range = x_max - x_min or 1.0
-    y_range = y_max - y_min or 1.0
-    pad = 4
-    points: list[str] = []
-    for x, y in samples:
-        px = pad + (x - x_min) / x_range * (width - 2 * pad)
-        py = height - pad - (y - y_min) / y_range * (height - 2 * pad)
-        points.append(f"{px:.1f},{py:.1f}")
-    poly = " ".join(points)
-    return Markup(
-        f'<svg class="species-spark" viewBox="0 0 {width} {height}" '
-        f'width="100%" height="{height}" preserveAspectRatio="none" '
-        'xmlns="http://www.w3.org/2000/svg">'
-        f'<polyline fill="none" stroke="var(--accent, #4ade80)" '
-        f'stroke-width="2" points="{poly}" />'
-        "</svg>"
-    )
-
-
-def _render_species_card(payload: dict[str, Any]) -> str:
-    population = payload.get("population") or []
-    samples = [(float(p["day"]), int(p["value"])) for p in population]
-    spark = _render_sparkline_svg(samples)
-    ctx = {
-        "name": payload.get("name") or payload.get("speciesId") or "Species",
-        "species_id": payload.get("speciesId") or "",
-        "photo_data_uri": payload.get("photoDataUri"),
-        "wiki_extract": payload.get("wikiExtract"),
-        "wiki_url": payload.get("wikiUrl"),
-        "source": payload.get("source") or "none",
-        "taxonomy": payload.get("taxonomy") or [],
-        "conservation_status": payload.get("conservationStatus"),
-        "population": population,
-        "population_latest": payload.get("populationLatest"),
-        "population_delta": payload.get("populationDelta"),
-        "sparkline_svg": spark,
-        "error": payload.get("error"),
-    }
-    return _JINJA.get_template("partials/species.html").render(**ctx)
-
-
 def _format_species_markdown(payload: dict[str, Any]) -> str:
     lines = [f"**{payload.get('name', 'Species')}** — `{payload.get('speciesId', '?')}`"]
     source = payload.get("source") or "none"
@@ -1052,106 +682,6 @@ def _format_species_markdown(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _render_ecopedia(card_dict: dict[str, Any]) -> str:
-    """Render the ecopedia card fragment for `explain_eco_item`."""
-    facts = card_dict.get("facts") or []
-    card_dict = {
-        **card_dict,
-        "facts": [(pair[0], pair[1]) for pair in facts if len(pair) == 2],
-    }
-    return _JINJA.get_template("partials/ecopedia_card.html").render(card=card_dict)
-
-
-def _render_crafting_atlas(ctx: dict[str, Any]) -> str:
-    return _JINJA.get_template("partials/crafting.html").render(**ctx)
-
-
-def _render_world_activity(ctx: dict[str, Any]) -> str:
-    return _JINJA.get_template("partials/world.html").render(**ctx)
-
-
-def _render_trades_ledger(ctx: dict[str, Any]) -> str:
-    return _JINJA.get_template("partials/trades.html").render(**ctx)
-
-
-def _render_stores_directory(ctx: dict[str, Any]) -> str:
-    return _JINJA.get_template("partials/stores.html").render(**ctx)
-
-
-def _render_civics_card(ctx: dict[str, Any]) -> str:
-    return _JINJA.get_template("partials/civics.html").render(**ctx)
-
-
-def _render_progression(ctx: dict[str, Any]) -> str:
-    return _JINJA.get_template("partials/progression.html").render(**ctx)
-
-
-def _render_social(ctx: dict[str, Any]) -> str:
-    return _JINJA.get_template("partials/social.html").render(**ctx)
-
-
-def _format_crafting_markdown(ctx: dict[str, Any]) -> str:
-    """Plain-text fallback for hosts that don't render the MCP Apps iframe."""
-    if ctx["empty"]:
-        return f"**Crafting atlas** — no production events recorded yet ({ctx['source_base_url']})."
-    lines = [
-        f"**Crafting atlas** — {ctx['total_events']:,} events (`{ctx['source_base_url']}`)",
-        "",
-        "**Top items crafted (units):**",
-    ]
-    for i, item in enumerate(ctx["top_crafted"][:10], 1):
-        lines.append(f"{i}. {item['pretty']} — {item['count']:,.0f}")
-    if ctx["top_gathered"]:
-        lines.append("")
-        lines.append("**Top resources gathered (harvest/chop/dig events):**")
-        for i, item in enumerate(ctx["top_gathered"][:10], 1):
-            lines.append(f"{i}. {item['pretty']} — {item['count']:,} events")
-    if ctx["top_stations"]:
-        lines.append("")
-        lines.append("**Station utilization:**")
-        for i, st in enumerate(ctx["top_stations"][:10], 1):
-            lines.append(f"{i}. {st['pretty']} — {st['count']:,} events")
-    if ctx["top_citizens"]:
-        lines.append("")
-        lines.append("**Top crafters:**")
-        for i, c in enumerate(ctx["top_citizens"][:10], 1):
-            lines.append(f"{i}. {c['name']} — {c['count']:,.0f}")
-    if ctx["warnings"]:
-        lines.append("")
-        for w in ctx["warnings"]:
-            lines.append(f"- ⚠ {w}")
-    return "\n".join(lines)
-
-
-def _render_fair_price(result: fair_price_mod.FairPriceResult) -> str:
-    return _JINJA.get_template("partials/fair_price.html").render(
-        item=result.item,
-        series_id=result.series_id,
-        display_name=result.display_name,
-        display_unit=result.display_unit,
-        frequency=result.frequency,
-        latest_value=result.latest_value,
-        latest_date=result.latest_date,
-        changes=result.changes,
-        changes_label=result.changes_label,
-        narrative=result.narrative,
-        cached=result.cached,
-        error=result.error,
-        in_game_median=result.in_game_median,
-        in_game_currency=result.in_game_currency,
-        in_game_trend=result.in_game_trend,
-        in_game_verdict=result.in_game_verdict,
-    )
-
-
-def _render_market(ctx: dict[str, Any]) -> str:
-    return _JINJA.get_template("partials/market.html").render(**ctx)
-
-
-def _render_logistics(ctx: dict[str, Any]) -> str:
-    return _JINJA.get_template("partials/logistics.html").render(**ctx)
-
-
 async def _in_game_reference_for(
     item: str | None, server_arg: str | None
 ) -> market_mod.InGameReference | None:
@@ -1175,53 +705,8 @@ async def _in_game_reference_for(
     return market_mod.in_game_reference(intel, eco_item)
 
 
-# Circumference of the donut's r=40 circle — baked in so Jinja can reference
-# it as a plain number without us having to expose math.pi as a template global.
-_DONUT_CIRCUMFERENCE = 2 * 3.141592653589793 * 40
-
-
-def _render_ecoregion_card(payload: dict[str, Any]) -> str:
-    """Render the biodiversity + ecoregion card fragment."""
-    biomes = payload.get("biomes") or []
-    raw_sum = float(payload.get("rawSumPercent") or 0.0)
-    # Donut shows normalized share (slices sum to 100% of classified area).
-    # The classified-vs-transitional split lives in the hint line below.
-    slices: list[dict[str, Any]] = []
-    cursor_pct = 0.0
-    for b in biomes:
-        share = float(b.get("sharePercent") or 0.0)
-        if share <= 0:
-            continue
-        length = _DONUT_CIRCUMFERENCE * (share / 100.0)
-        slices.append(
-            {
-                "color": b.get("color"),
-                "length": length,
-                "gap": _DONUT_CIRCUMFERENCE - length,
-                "offset": -_DONUT_CIRCUMFERENCE * (cursor_pct / 100.0),
-            }
-        )
-        cursor_pct += share
-    ctx = {
-        "biomes": biomes,
-        "biomes_have_data": any(float(b.get("sharePercent") or 0.0) > 0 for b in biomes),
-        "donut_slices": slices,
-        "raw_sum_percent": raw_sum,
-        "classified_percent": float(payload.get("classifiedPercent") or raw_sum),
-        "unclassified_percent": float(payload.get("unclassifiedPercent") or 0.0),
-        "ecoregion_matches": payload.get("ecoregionMatches") or [],
-        "drift_boom": (payload.get("drift") or {}).get("boom") or [],
-        "drift_bust": (payload.get("drift") or {}).get("bust") or [],
-        "species_seen": (payload.get("drift") or {}).get("speciesSeen") or 0,
-        "species_with_drift": (payload.get("drift") or {}).get("speciesWithDrift") or 0,
-        "admin_available": bool(payload.get("adminAvailable")),
-        "source_url": payload.get("sourceUrl"),
-    }
-    return _JINJA.get_template("partials/ecoregion_card.html").render(**ctx)
-
-
 def _format_ecoregion_markdown(payload: dict[str, Any]) -> str:
-    """Plain-text fallback for hosts without MCP Apps iframe support."""
+    """Summarize an ecoregion payload for an MCP text result."""
     lines = ["**Biome composition**"]
     for b in payload.get("biomes") or []:
         pct = float(b.get("percent") or 0.0)
@@ -1291,24 +776,6 @@ def _get_admin_token() -> str | None:
     except Exception:
         _ECO_ADMIN_TOKEN = None
     return _ECO_ADMIN_TOKEN
-
-
-def _render_shell(prerendered: str | None = None) -> str:
-    """Render the iframe shell — what the MCP `ui://eco/*` resource returns.
-
-    This is the document MCP Apps hosts (e.g. Claude Desktop) load in their
-    sandboxed iframe; it runs the handshake and swaps the tool's
-    `_meta.ui.fragment` card into #root.
-
-    `prerendered`: if given, placed inside #root instead of the empty state.
-    """
-    return _JINJA.get_template("eco.html").render(
-        htmx_src=_HTMX_SRC,
-        banner_src=_BANNER_SRC,
-        favicon_src=_FAVICON_SRC,
-        steam_url=STEAM_URL,
-        prerendered=Markup(prerendered) if prerendered else None,
-    )
 
 
 def _format_markdown(payload: dict[str, Any]) -> str:
@@ -1564,46 +1031,6 @@ def _wow_activity_delta(
     return round((trailing_rate / prior_rate - 1.0) * 100.0, 1)
 
 
-def _sparkline_svg(points: list[tuple[float, float]], width: int = 180, height: int = 40) -> str:
-    """Render a series as a minimal inline SVG sparkline.
-
-    Empty / single-point series render as a flat dashed baseline so we always
-    emit a DOM node of the same footprint (prevents layout thrash between
-    empty and filled states).
-    """
-    if len(points) < 2:
-        return (
-            f'<svg class="spark" viewBox="0 0 {width} {height}" '
-            f'preserveAspectRatio="none" role="img" aria-label="no data">'
-            f'<line x1="0" y1="{height // 2}" x2="{width}" y2="{height // 2}" '
-            f'stroke="var(--fg-faint)" stroke-dasharray="3 4" stroke-width="1"/>'
-            f"</svg>"
-        )
-    xs = [t for t, _ in points]
-    ys = [v for _, v in points]
-    x_min, x_max = min(xs), max(xs)
-    y_min, y_max = min(ys), max(ys)
-    x_span = max(x_max - x_min, 1e-9)
-    y_span = max(y_max - y_min, 1e-9)
-    pad = 2
-    coords = []
-    for t, v in points:
-        x = pad + (t - x_min) / x_span * (width - 2 * pad)
-        y = height - pad - (v - y_min) / y_span * (height - 2 * pad)
-        coords.append(f"{x:.1f},{y:.1f}")
-    path = "M " + " L ".join(coords)
-    # Fill area under line for visual weight.
-    area = path + f" L {coords[-1].split(',')[0]},{height - pad} L {pad},{height - pad} Z"
-    return (
-        f'<svg class="spark" viewBox="0 0 {width} {height}" '
-        f'preserveAspectRatio="none" role="img" aria-label="sparkline">'
-        f'<path d="{area}" fill="var(--leaf)" fill-opacity="0.18"/>'
-        f'<path d="{path}" fill="none" stroke="var(--leaf-bright)" '
-        f'stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>'
-        f"</svg>"
-    )
-
-
 def compute_economy_payload(raw: dict[str, Any]) -> dict[str, Any]:
     """Turn a fetch_economy() result into the dict consumed by the card template.
 
@@ -1691,7 +1118,6 @@ def compute_economy_payload(raw: dict[str, Any]) -> dict[str, Any]:
             "label": _HUMAN_STAT_LABELS.get(name, name),
             "last": _series_last(pts),
             "total": _series_total(pts),
-            "svg": Markup(_sparkline_svg(pts)),
         }
         for name, _sd, pts in candidates[:4]
     ]
@@ -1752,75 +1178,8 @@ _HUMAN_STAT_LABELS: dict[str, str] = {
 }
 
 
-def _render_economy_card(payload: dict[str, Any]) -> str:
-    fetched_at = datetime.now(UTC).astimezone().strftime("%H:%M:%S")
-    return _JINJA.get_template("partials/economy_card.html").render(
-        server=payload["server"],
-        kpis=payload["kpis"],
-        sparks=payload["sparks"],
-        health=payload["health"],
-        narrative=payload["narrative"],
-        admin_ok=payload["admin_ok"],
-        days_elapsed=payload["days_elapsed"],
-        economy_desc=payload["economy_desc"],
-        fetched_at=fetched_at,
-        steam_url=STEAM_URL,
-        banner_src=_BANNER_SRC,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Climate / atmosphere card (CO2 + sea level + pollution + Earth anchor)
-# ---------------------------------------------------------------------------
-
-
-CLIMATE_RESOURCE_URI = "ui://eco/climate.html"
-
-
-def _attach_climate_sparklines(payload: dict[str, Any]) -> dict[str, Any]:
-    """Render inline-SVG sparklines for the three climate series.
-
-    Done in server.py rather than climate.py to avoid pulling the Markup /
-    Jinja-aware sparkline renderer into the data module — same split as the
-    economy card, where compute_economy_payload returns raw points and the
-    render path attaches SVG.
-    """
-    for slot in ("co2", "sea_level", "pollution", "temperature"):
-        section = payload.get(slot) or {}
-        pts_raw = section.get("series") or []
-        pts = [(float(t), float(v)) for t, v in pts_raw if v is not None]
-        section["spark_svg"] = Markup(_sparkline_svg(pts))
-        payload[slot] = section
-    return payload
-
-
-def _render_climate_card(payload: dict[str, Any]) -> str:
-    fetched_at = datetime.now(UTC).astimezone().strftime("%H:%M:%S")
-    return _JINJA.get_template("partials/climate_card.html").render(
-        server=payload["server"],
-        days_elapsed=payload["days_elapsed"],
-        admin_ok=payload["admin_ok"],
-        status=payload["status"],
-        narrative=payload["narrative"],
-        co2=payload["co2"],
-        sea_level=payload["sea_level"],
-        pollution=payload["pollution"],
-        temperature=payload.get("temperature") or {},
-        breakdown=payload.get("breakdown") or {},
-        effects=payload.get("effects") or {},
-        explainer=payload.get("explainer") or [],
-        earth_match=payload.get("earth_match"),
-        attribution=payload["attribution"],
-        warnings=payload.get("warnings") or [],
-        available_climate_datasets=payload.get("available_climate_datasets") or [],
-        fetched_at=fetched_at,
-        steam_url=STEAM_URL,
-        banner_src=_BANNER_SRC,
-    )
-
-
 def _format_climate_markdown(payload: dict[str, Any]) -> str:
-    """Plain-text fallback for hosts without the MCP Apps iframe."""
+    """Summarize a climate payload for an MCP text result."""
     server = payload["server"].get("description") or payload["server"].get("category") or "Eco"
     co2 = payload["co2"]
     sea = payload["sea_level"]
@@ -1910,38 +1269,8 @@ def _format_economy_markdown(payload: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
-CURRENCY_RESOURCE_URI = "ui://eco/currency.html"
-
-
-def _render_currency_card(payload: dict[str, Any]) -> str:
-    fetched_at = datetime.now(UTC).astimezone().strftime("%H:%M:%S")
-    return _JINJA.get_template("partials/currency_card.html").render(
-        mode=payload["mode"],
-        query=payload.get("query"),
-        not_found=payload.get("notFound"),
-        selected=payload.get("selected"),
-        server=payload["server"],
-        days_elapsed=payload["days_elapsed"],
-        admin_ok=payload["admin_ok"],
-        economy_desc=payload["economy_desc"],
-        money=payload["money"],
-        narrative=payload["narrative"],
-        currencies=payload["currencies"],
-        minted=payload["minted"],
-        personal=payload["personal"],
-        counts=payload["counts"],
-        holders_reachable=payload.get("holders_reachable", False),
-        holders_unavailable_note=payload.get("holders_unavailable_note", ""),
-        available_currency_datasets=payload.get("available_currency_datasets") or [],
-        warnings=payload.get("warnings") or [],
-        fetched_at=fetched_at,
-        steam_url=STEAM_URL,
-        banner_src=_BANNER_SRC,
-    )
-
-
 def _format_currency_markdown(payload: dict[str, Any]) -> str:
-    """Plain-text fallback for hosts without the MCP Apps iframe."""
+    """Summarize a currency payload for an MCP text result."""
     server = payload["server"].get("description") or payload["server"].get("category") or "Eco"
     money = payload["money"]
     if payload["mode"] == "report":
@@ -2024,10 +1353,7 @@ def build_server() -> Server:
     Separated from `serve()` so it can be mounted in both the stdio transport
     (Claude Desktop) and the Streamable-HTTP transport (homelab FastAPI deploy).
     """
-    server: Server = Server(
-        "eco-mcp-app",
-        icons=_ECO_ICONS,
-    )
+    server: Server = Server("eco-mcp-app")
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
@@ -2041,8 +1367,7 @@ def build_server() -> Server:
                     "Defaults to the server configured via ECO_INFO_URL; pass `server` "
                     "(host, host:port, or full URL — IPs are fine, most public Eco "
                     "servers advertise as bare IPs) to target a different one. "
-                    "Returns a plain-text summary plus structured JSON (the "
-                    "MCP-app visual widget is reserved for the world/region view)."
+                    "Returns a plain-text summary plus structured JSON."
                 ),
                 inputSchema={
                     "type": "object",
@@ -2059,7 +1384,6 @@ def build_server() -> Server:
                     },
                     "additionalProperties": False,
                 },
-                **{"_meta": UI_META},
             ),
             Tool(
                 name="get_eco_economy",
@@ -2083,12 +1407,6 @@ def build_server() -> Server:
                         },
                     },
                     "additionalProperties": False,
-                },
-                **{
-                    "_meta": {
-                        "ui": {"resourceUri": ECONOMY_RESOURCE_URI},
-                        "ui/resourceUri": ECONOMY_RESOURCE_URI,
-                    }
                 },
             ),
             Tool(
@@ -2116,7 +1434,6 @@ def build_server() -> Server:
                     },
                     "additionalProperties": False,
                 },
-                **{"_meta": UI_META},
             ),
             Tool(
                 name="get_eco_milestones",
@@ -2145,7 +1462,6 @@ def build_server() -> Server:
                     },
                     "additionalProperties": False,
                 },
-                **{"_meta": UI_META},
             ),
             Tool(
                 name="get_eco_species",
@@ -2173,15 +1489,14 @@ def build_server() -> Server:
                     "required": ["name"],
                     "additionalProperties": False,
                 },
-                **{"_meta": UI_META},
             ),
             Tool(
                 name="explain_eco_item",
                 title="Eco — explain item (Wikidata + Wikipedia)",
                 description=(
                     "Look up any Eco item (material, plant, animal, mineral, or "
-                    "food) on Wikidata and Wikipedia and render a card with an "
-                    "image, short description, and category-specific facts. Use "
+                    "food) on Wikidata and Wikipedia and return its image, short "
+                    "description, and category-specific facts. Use "
                     "`category` to disambiguate (e.g. `name='Iron', category="
                     "'material'` pins to the chemical element rather than any "
                     "mythological figure sharing the name). All results are "
@@ -2215,7 +1530,6 @@ def build_server() -> Server:
                     "required": ["name"],
                     "additionalProperties": False,
                 },
-                **{"_meta": UI_META},
             ),
             Tool(
                 name="get_eco_crafting_atlas",
@@ -2248,7 +1562,6 @@ def build_server() -> Server:
                     },
                     "additionalProperties": False,
                 },
-                **{"_meta": UI_META},
             ),
             Tool(
                 name="get_eco_world",
@@ -2270,8 +1583,7 @@ def build_server() -> Server:
                     "crafting atlas's streamed-CSV plumbing, so it stays bounded "
                     "on late-cycle logs. Requires an admin API key configured "
                     "server-side (ECO_ADMIN_API_KEY, populated from SSM in the "
-                    "homelab deploy). Renders as an inline widget via the MCP "
-                    "Apps spec; falls back to a markdown summary otherwise."
+                    "homelab deploy). Returns a markdown summary plus structured JSON."
                 ),
                 inputSchema={
                     "type": "object",
@@ -2287,7 +1599,6 @@ def build_server() -> Server:
                     },
                     "additionalProperties": False,
                 },
-                **{"_meta": UI_META},
             ),
             Tool(
                 name="get_eco_trades",
@@ -2323,7 +1634,6 @@ def build_server() -> Server:
                     },
                     "additionalProperties": False,
                 },
-                **{"_meta": UI_META},
             ),
             Tool(
                 name="get_eco_stores",
@@ -2359,7 +1669,6 @@ def build_server() -> Server:
                     },
                     "additionalProperties": False,
                 },
-                **{"_meta": UI_META},
             ),
             Tool(
                 name="get_eco_progression",
@@ -2396,7 +1705,6 @@ def build_server() -> Server:
                     },
                     "additionalProperties": False,
                 },
-                **{"_meta": UI_META},
             ),
             Tool(
                 name="get_eco_social",
@@ -2440,7 +1748,6 @@ def build_server() -> Server:
                     },
                     "additionalProperties": False,
                 },
-                **{"_meta": UI_META},
             ),
             Tool(
                 name="fair_price",
@@ -2484,7 +1791,6 @@ def build_server() -> Server:
                     "required": ["item"],
                     "additionalProperties": False,
                 },
-                **{"_meta": UI_META},
             ),
             Tool(
                 name="get_eco_market",
@@ -2530,7 +1836,6 @@ def build_server() -> Server:
                     },
                     "additionalProperties": False,
                 },
-                **{"_meta": UI_META},
             ),
             Tool(
                 name="find_eco_trade",
@@ -2582,7 +1887,6 @@ def build_server() -> Server:
                     },
                     "additionalProperties": False,
                 },
-                **{"_meta": UI_META},
             ),
             Tool(
                 name="get_eco_ecoregion",
@@ -2610,7 +1914,6 @@ def build_server() -> Server:
                     },
                     "additionalProperties": False,
                 },
-                **{"_meta": UI_META},
             ),
             Tool(
                 name="get_eco_climate",
@@ -2639,12 +1942,6 @@ def build_server() -> Server:
                         },
                     },
                     "additionalProperties": False,
-                },
-                **{
-                    "_meta": {
-                        "ui": {"resourceUri": CLIMATE_RESOURCE_URI},
-                        "ui/resourceUri": CLIMATE_RESOURCE_URI,
-                    }
                 },
             ),
             Tool(
@@ -2690,12 +1987,6 @@ def build_server() -> Server:
                     },
                     "additionalProperties": False,
                 },
-                **{
-                    "_meta": {
-                        "ui": {"resourceUri": CURRENCY_RESOURCE_URI},
-                        "ui/resourceUri": CURRENCY_RESOURCE_URI,
-                    }
-                },
             ),
             Tool(
                 name="get_eco_government",
@@ -2723,7 +2014,6 @@ def build_server() -> Server:
                     },
                     "additionalProperties": False,
                 },
-                **{"_meta": UI_META},
             ),
             Tool(
                 name="get_eco_civics",
@@ -2763,7 +2053,6 @@ def build_server() -> Server:
                     },
                     "additionalProperties": False,
                 },
-                **{"_meta": UI_META},
             ),
             Tool(
                 name="eco_trade_watchers",
@@ -2869,49 +2158,7 @@ def build_server() -> Server:
                 annotations=PUBLIC_SERVERS_ANNOTATIONS,
             ),
         ]
-        # eco-app#87: only the world/region tools advertise a widget resource.
-        # Every other tool drops its `_meta.ui` hint so hosts render it as plain
-        # data. The underlying tool payloads are unchanged.
-        for tool in tools:
-            if tool.name not in WIDGET_TOOLS:
-                tool.meta = None
         return tools
-
-    @server.list_resources()
-    async def list_resources() -> list[Resource]:
-        return [
-            Resource(
-                uri=AnyUrl(RESOURCE_URI),
-                name=RESOURCE_URI,
-                mimeType=RESOURCE_MIME,
-            ),
-            Resource(
-                uri=AnyUrl(ECONOMY_RESOURCE_URI),
-                name=ECONOMY_RESOURCE_URI,
-                mimeType=RESOURCE_MIME,
-            ),
-            Resource(
-                uri=AnyUrl(CLIMATE_RESOURCE_URI),
-                name=CLIMATE_RESOURCE_URI,
-                mimeType=RESOURCE_MIME,
-            ),
-            Resource(
-                uri=AnyUrl(CURRENCY_RESOURCE_URI),
-                name=CURRENCY_RESOURCE_URI,
-                mimeType=RESOURCE_MIME,
-            ),
-        ]
-
-    @server.read_resource()
-    async def read_resource(uri: AnyUrl) -> list[ReadResourceContents]:
-        if str(uri) in (
-            RESOURCE_URI,
-            ECONOMY_RESOURCE_URI,
-            CLIMATE_RESOURCE_URI,
-            CURRENCY_RESOURCE_URI,
-        ):
-            return [ReadResourceContents(content=_render_shell(), mime_type=RESOURCE_MIME)]
-        raise ValueError(f"Unknown resource: {uri}")
 
     async def _dispatch_call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
         if name == "explain_eco_item":
@@ -2947,7 +2194,6 @@ def build_server() -> Server:
                     TextContent(type="text", text="\n".join(md_lines)),
                     TextContent(type="text", text=json.dumps(card_dict)),
                 ],
-                **{"_meta": _ui_meta(_render_ecopedia(card_dict))},
             )
 
         if name == "get_eco_crafting_atlas":
@@ -2966,15 +2212,12 @@ def build_server() -> Server:
                         TextContent(type="text", text=json.dumps(err_payload)),
                     ],
                     isError=True,
-                    **{"_meta": _ui_meta(_render_error(str(e)))},
                 )
-            ctx = atlas_template_context(atlas)
             return CallToolResult(
                 content=[
-                    TextContent(type="text", text=_format_crafting_markdown(ctx)),
+                    TextContent(type="text", text=atlas_markdown(atlas)),
                     TextContent(type="text", text=json.dumps(atlas.to_dict())),
                 ],
-                **{"_meta": _ui_meta(_render_crafting_atlas(ctx))},
             )
 
         if name == "get_eco_world":
@@ -2993,15 +2236,12 @@ def build_server() -> Server:
                         TextContent(type="text", text=json.dumps(err_payload)),
                     ],
                     isError=True,
-                    **{"_meta": _ui_meta(_render_error(str(e)))},
                 )
-            ctx = world_template_context(activity)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=world_markdown(activity)),
                     TextContent(type="text", text=json.dumps(activity.to_dict())),
                 ],
-                **{"_meta": _ui_meta(_render_world_activity(ctx))},
             )
 
         if name == "get_eco_trades":
@@ -3020,15 +2260,12 @@ def build_server() -> Server:
                         TextContent(type="text", text=json.dumps(err_payload)),
                     ],
                     isError=True,
-                    **{"_meta": _ui_meta(_render_error(str(e)))},
                 )
-            ctx = ledger_template_context(ledger)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=ledger_markdown(ledger)),
                     TextContent(type="text", text=json.dumps(ledger.to_dict())),
                 ],
-                **{"_meta": _ui_meta(_render_trades_ledger(ctx))},
             )
 
         if name == "get_eco_civics":
@@ -3047,15 +2284,12 @@ def build_server() -> Server:
                         TextContent(type="text", text=json.dumps(err_payload)),
                     ],
                     isError=True,
-                    **{"_meta": _ui_meta(_render_error(str(e)))},
                 )
-            ctx = civics_template_context(civics_report)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=civics_markdown(civics_report)),
                     TextContent(type="text", text=json.dumps(civics_report.to_dict())),
                 ],
-                **{"_meta": _ui_meta(_render_civics_card(ctx))},
             )
 
         if name == "get_eco_progression":
@@ -3074,15 +2308,12 @@ def build_server() -> Server:
                         TextContent(type="text", text=json.dumps(err_payload)),
                     ],
                     isError=True,
-                    **{"_meta": _ui_meta(_render_error(str(e)))},
                 )
-            ctx = history_template_context(history)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=history_markdown(history)),
                     TextContent(type="text", text=json.dumps(history.to_dict())),
                 ],
-                **{"_meta": _ui_meta(_render_progression(ctx))},
             )
 
         if name == "eco_trade_watchers":
@@ -3205,15 +2436,12 @@ def build_server() -> Server:
                         TextContent(type="text", text=json.dumps(err_payload)),
                     ],
                     isError=True,
-                    **{"_meta": _ui_meta(_render_error(str(e)))},
                 )
-            ctx = directory_template_context(directory)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=directory_markdown(directory)),
                     TextContent(type="text", text=json.dumps(directory.to_dict())),
                 ],
-                **{"_meta": _ui_meta(_render_stores_directory(ctx))},
             )
 
         if name == "get_eco_social":
@@ -3235,15 +2463,12 @@ def build_server() -> Server:
                         TextContent(type="text", text=json.dumps(err_payload)),
                     ],
                     isError=True,
-                    **{"_meta": _ui_meta(_render_error(str(e)))},
                 )
-            ctx = social_template_context(surface)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=social_markdown(surface)),
                     TextContent(type="text", text=json.dumps(surface.to_dict())),
                 ],
-                **{"_meta": _ui_meta(_render_social(ctx))},
             )
 
         if name == "list_public_eco_servers":
@@ -3273,7 +2498,6 @@ def build_server() -> Server:
                         TextContent(type="text", text=json.dumps(err_payload)),
                     ],
                     isError=True,
-                    **{"_meta": _ui_meta(_render_error(str(e)))},
                 )
             payload = compute_economy_payload(raw)
             return CallToolResult(
@@ -3281,7 +2505,6 @@ def build_server() -> Server:
                     TextContent(type="text", text=_format_economy_markdown(payload)),
                     TextContent(type="text", text=json.dumps(payload, default=str)),
                 ],
-                **{"_meta": _ui_meta(_render_economy_card(payload))},
             )
 
         if name == "get_eco_map":
@@ -3296,7 +2519,6 @@ def build_server() -> Server:
                         TextContent(type="text", text=json.dumps(err_payload)),
                     ],
                     isError=True,
-                    **{"_meta": _ui_meta(_render_error(str(e)))},
                 )
             payload = build_map_payload(bundle)
             json_payload = {
@@ -3307,7 +2529,6 @@ def build_server() -> Server:
                     TextContent(type="text", text=_format_map_markdown(payload)),
                     TextContent(type="text", text=json.dumps(json_payload)),
                 ],
-                **{"_meta": _ui_meta(_render_map(payload))},
             )
 
         if name == "get_eco_ecoregion":
@@ -3328,14 +2549,12 @@ def build_server() -> Server:
                         TextContent(type="text", text=json.dumps(err_payload)),
                     ],
                     isError=True,
-                    **{"_meta": _ui_meta(_render_error(str(e)))},
                 )
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=_format_ecoregion_markdown(payload)),
                     TextContent(type="text", text=json.dumps(payload)),
                 ],
-                **{"_meta": _ui_meta(_render_ecoregion_card(payload))},
             )
 
         if name == "get_eco_species":
@@ -3351,7 +2570,6 @@ def build_server() -> Server:
                         TextContent(type="text", text=json.dumps(err_payload)),
                     ],
                     isError=True,
-                    **{"_meta": _ui_meta(_render_error(str(e)))},
                 )
             species_payload = species_payload_obj.to_dict()
             return CallToolResult(
@@ -3359,7 +2577,6 @@ def build_server() -> Server:
                     TextContent(type="text", text=_format_species_markdown(species_payload)),
                     TextContent(type="text", text=json.dumps(species_payload)),
                 ],
-                **{"_meta": _ui_meta(_render_species_card(species_payload))},
             )
 
         if name == "get_eco_government":
@@ -3374,7 +2591,6 @@ def build_server() -> Server:
                         TextContent(type="text", text=json.dumps(err_payload)),
                     ],
                     isError=True,
-                    **{"_meta": _ui_meta(_render_error(str(e)))},
                 )
             gov_payload = to_government_payload(
                 raw_gov, fetched_at_iso=datetime.now(UTC).isoformat()
@@ -3384,7 +2600,6 @@ def build_server() -> Server:
                     TextContent(type="text", text=_format_government_markdown(gov_payload)),
                     TextContent(type="text", text=json.dumps(gov_payload)),
                 ],
-                **{"_meta": _ui_meta(_render_government_card(gov_payload))},
             )
 
         if name == "get_eco_climate":
@@ -3399,7 +2614,6 @@ def build_server() -> Server:
                         TextContent(type="text", text=json.dumps(err_payload)),
                     ],
                     isError=True,
-                    **{"_meta": _ui_meta(_render_error(str(e)))},
                 )
             # /info already gives DaysRunning; fall back to TimeSinceStart for
             # bootstrap servers that haven't ticked the daily counter yet.
@@ -3420,19 +2634,11 @@ def build_server() -> Server:
                 default_admin_base=default_admin_base,
             )
             payload = climate_mod.compute_climate_payload(snapshot)
-            # Serialize the computed payload (status, narrative, KPI blocks,
-            # source/sink breakdown, CO2-effects, explainer) as the JSON block
-            # — that's what the SPA's /economy-style Climate page consumes. We
-            # dump it *before* attaching sparkline SVGs, which are Jinja Markup
-            # and only needed for the iframe card render.
-            climate_json_text = json.dumps(payload, default=str)
-            payload = _attach_climate_sparklines(payload)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=_format_climate_markdown(payload)),
-                    TextContent(type="text", text=climate_json_text),
+                    TextContent(type="text", text=json.dumps(payload, default=str)),
                 ],
-                **{"_meta": _ui_meta(_render_climate_card(payload))},
             )
 
         if name == "get_eco_currency":
@@ -3448,7 +2654,6 @@ def build_server() -> Server:
                         TextContent(type="text", text=json.dumps(err_payload)),
                     ],
                     isError=True,
-                    **{"_meta": _ui_meta(_render_error(str(e)))},
                 )
             days_elapsed = int(info.get("DaysRunning") or 0)
             if days_elapsed <= 0:
@@ -3474,7 +2679,6 @@ def build_server() -> Server:
                     TextContent(type="text", text=_format_currency_markdown(payload)),
                     TextContent(type="text", text=json.dumps(payload, default=str)),
                 ],
-                **{"_meta": _ui_meta(_render_currency_card(payload))},
             )
 
         if name == "fair_price":
@@ -3490,7 +2694,6 @@ def build_server() -> Server:
                 in_game_trend=ref.trend if ref else None,
             )
             payload = fair_price_mod.to_payload(result)
-            fragment = _render_fair_price(result)
             is_error = result.error is not None
             return CallToolResult(
                 content=[
@@ -3498,7 +2701,6 @@ def build_server() -> Server:
                     TextContent(type="text", text=json.dumps(payload)),
                 ],
                 isError=is_error,
-                **{"_meta": _ui_meta(fragment)},
             )
 
         if name == "get_eco_market":
@@ -3524,15 +2726,12 @@ def build_server() -> Server:
                         TextContent(type="text", text=json.dumps(err_payload)),
                     ],
                     isError=True,
-                    **{"_meta": _ui_meta(_render_error(str(e)))},
                 )
-            ctx = market_mod.market_template_context(intel)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=market_mod.market_markdown(intel)),
                     TextContent(type="text", text=json.dumps(intel.to_dict(), default=str)),
                 ],
-                **{"_meta": _ui_meta(_render_market(ctx))},
             )
 
         if name == "find_eco_trade":
@@ -3558,15 +2757,12 @@ def build_server() -> Server:
                         TextContent(type="text", text=json.dumps(err_payload)),
                     ],
                     isError=True,
-                    **{"_meta": _ui_meta(_render_error(str(e)))},
                 )
-            ctx = logistics_template_context(report)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=logistics_markdown(report)),
                     TextContent(type="text", text=json.dumps(report.to_dict(), default=str)),
                 ],
-                **{"_meta": _ui_meta(_render_logistics(ctx))},
             )
 
         if name not in ("get_eco_server_status", "get_eco_milestones"):
@@ -3583,7 +2779,6 @@ def build_server() -> Server:
                     TextContent(type="text", text=json.dumps(err_payload)),
                 ],
                 isError=True,
-                **{"_meta": _ui_meta(_render_error(str(e)))},
             )
 
         info = redact(raw)
@@ -3596,7 +2791,6 @@ def build_server() -> Server:
                     TextContent(type="text", text=_format_milestones_markdown(milestones_payload)),
                     TextContent(type="text", text=json.dumps(milestones_payload)),
                 ],
-                **{"_meta": _ui_meta(_render_milestones(milestones_payload))},
             )
 
         payload = to_payload(info)
@@ -3605,19 +2799,11 @@ def build_server() -> Server:
                 TextContent(type="text", text=_format_markdown(payload)),
                 TextContent(type="text", text=json.dumps(payload)),
             ],
-            **{"_meta": _ui_meta(_render_card(payload))},
         )
 
     @server.call_tool()
     async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
         result = await _dispatch_call_tool(name, arguments)
-        # eco-app#87: only the world/region page (the SPA `/map` surface —
-        # get_eco_world + get_eco_map + get_eco_ecoregion) keeps the MCP-app
-        # widget. Every other tool is "just data": drop the widget resource so
-        # the text + JSON blocks stand on their own as the plain render. The
-        # data payloads are untouched — only the `_meta.ui` fragment is removed.
-        if name not in WIDGET_TOOLS and result.meta is not None:
-            result.meta = None
         return result
 
     return server
@@ -3627,7 +2813,6 @@ def build_initialization_options(server: Server) -> InitializationOptions:
     return InitializationOptions(
         server_name="eco-mcp-app",
         server_version="0.1.0",
-        icons=_ECO_ICONS,
         capabilities=server.get_capabilities(
             notification_options=NotificationOptions(),
             experimental_capabilities={},

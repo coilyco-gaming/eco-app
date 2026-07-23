@@ -23,7 +23,7 @@ import respx
 from eco_mcp_app import ecoregion as eco
 from eco_mcp_app.server import (
     DEFAULT_ECO_INFO_URL,
-    _render_ecoregion_card,
+    _format_ecoregion_markdown,
     build_server,
 )
 
@@ -374,8 +374,8 @@ async def test_gather_ecoregion_handles_admin_403() -> None:
     assert payload["drift"]["boom"] == []
 
 
-def test_render_ecoregion_card_smoke() -> None:
-    """The card template renders against a minimal payload without errors."""
+def test_format_ecoregion_markdown_smoke() -> None:
+    """The data-only summary handles a minimal payload."""
     payload = {
         "view": "eco_ecoregion",
         "sourceUrl": "http://eco.example.com:3001/info",
@@ -396,11 +396,10 @@ def test_render_ecoregion_card_smoke() -> None:
         },
         "adminAvailable": False,
     }
-    html = _render_ecoregion_card(payload)
-    assert "Biodiversity" in html
-    assert "Indo-Pacific archipelago" in html
-    # Empty state for drift when admin unavailable.
-    assert "Admin endpoints unavailable" in html
+    markdown = _format_ecoregion_markdown(payload)
+    assert "Biodiversity" in markdown
+    assert "Indo-Pacific archipelago" in markdown
+    assert "Admin endpoints unavailable" in markdown
 
 
 @respx.mock
@@ -430,8 +429,6 @@ async def test_mcp_tool_call_end_to_end(monkeypatch: pytest.MonkeyPatch) -> None
     assert isinstance(blocks[1], mt.TextContent)
     md = blocks[0].text
     payload = json.loads(blocks[1].text)
-    assert result.root.meta is not None
-    fragment = result.root.meta["ui"]["fragment"]
     assert "Biome composition" in md
     assert payload["view"] == "eco_ecoregion"
-    assert "ecoregion" in fragment
+    assert result.root.meta is None

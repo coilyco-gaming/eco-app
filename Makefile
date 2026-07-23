@@ -37,13 +37,11 @@ precommit: ## Run all pre-commit hooks against every file.
 
 smoke: ## End-to-end smoke test the MCP server via stdio.
 	(printf '%s\n' \
-	  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{"extensions":{"io.modelcontextprotocol/ui":{"mimeTypes":["text/html;profile=mcp-app"]}}},"clientInfo":{"name":"claude-ai","version":"0.1.0"}}}' \
+	  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"claude-ai","version":"0.1.0"}}}' \
 	  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
 	  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
-	  '{"jsonrpc":"2.0","id":3,"method":"resources/read","params":{"uri":"ui://eco/status.html"}}' \
-	  '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"get_eco_server_status","arguments":{}}}' \
-	  '{"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":"ui://eco/economy.html"}}' \
-	  '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"get_eco_economy","arguments":{}}}'; sleep 8) | uv run python -m eco_mcp_app
+	  '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_eco_server_status","arguments":{}}}' \
+	  '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"get_eco_economy","arguments":{}}}'; sleep 8) | uv run python -m eco_mcp_app
 
 frontend-install: ## Install frontend deps into frontend/node_modules (pnpm).
 	cd frontend && pnpm install

@@ -273,8 +273,8 @@ def test_compute_sparks_pick_most_volatile() -> None:
     names = [s["name"] for s in payload["sparks"]]
     # The flat series should NOT be first; the spiky one should.
     assert names[0] == "TransferMoney"
-    # SVG is rendered (not empty placeholder path).
-    assert "<path" in payload["sparks"][0]["svg"]
+    # The structured result retains only data needed by API consumers.
+    assert "svg" not in payload["sparks"][0]
 
 
 def test_compute_sparks_skips_empty_series() -> None:

@@ -290,8 +290,7 @@ async def test_tool_call_returns_two_text_blocks(monkeypatch: pytest.MonkeyPatch
     assert len(blocks) == 2
     assert isinstance(blocks[0], mt.TextContent)
     assert "World activity" in blocks[0].text
-    assert result.root.meta is not None
-    assert "World &amp; industry activity" in result.root.meta["ui"]["fragment"]
+    assert result.root.meta is None
 
 
 @pytest.mark.asyncio

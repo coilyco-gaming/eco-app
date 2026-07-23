@@ -50,7 +50,6 @@ from eco_mcp_app.server import (
 _DEFAULT_BASE = DEFAULT_ECO_INFO_URL.rsplit("/info", 1)[0]
 _DATASET_URL = f"{_DEFAULT_BASE}/datasets/get"
 _FLATLIST_URL = f"{_DEFAULT_BASE}/datasets/flatlist"
-_CURRENCY_RESOURCE_URI = "ui://eco/currency.html"
 
 
 @pytest.fixture(autouse=True)
@@ -605,12 +604,9 @@ async def test_tool_declaration_uses_currency_uri() -> None:
 
 
 @pytest.mark.asyncio
-async def test_currency_resource_registered() -> None:
+async def test_no_mcp_app_resources_registered() -> None:
     mcp = build_server()
-    handler = mcp.request_handlers[mt.ListResourcesRequest]
-    result = await handler(mt.ListResourcesRequest(method="resources/list"))
-    uris = {str(r.uri) for r in result.root.resources}
-    assert _CURRENCY_RESOURCE_URI in uris
+    assert mt.ListResourcesRequest not in mcp.request_handlers
 
 
 # ---------------------------------------------------------------------------
@@ -677,7 +673,6 @@ def test_preview_currency_json_sanitizes_nested_nonfinite_values(
         return payload
 
     monkeypatch.setattr(currency_mod, "compute_currency_payload", _compute_with_nonfinite)
-    monkeypatch.setattr(eco_server, "_render_currency_card", lambda _: "")
     respx.get(DEFAULT_ECO_INFO_URL).mock(return_value=httpx.Response(200, json=_info()))
     _route_datasets({ACTIVE_CURRENCIES_DATASET: [1, 2, 3]})
     _route_flatlist([])
