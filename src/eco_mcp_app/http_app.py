@@ -449,7 +449,7 @@ def create_app() -> Starlette:
         payload = _extract_json_block(cast(mt.CallToolResult, result.root))
         if payload is None:
             return JSONResponse({"error": "no JSON block from get_eco_currency"}, status_code=502)
-        return JSONResponse(payload)
+        return JSONResponse(_sanitize_nonfinite(payload))
 
     async def preview_market_json(request: Request) -> JSONResponse:
         """`/preview/market.json` — the SPA's `/trade` price-intelligence plane.
