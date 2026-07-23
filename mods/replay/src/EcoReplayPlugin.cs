@@ -29,6 +29,7 @@ public class EcoReplayPlugin : IModKitPlugin, IInitializablePlugin, IShutdownabl
     {
         if (!Store.IsReady) return "not initialized";
         var status = $"recording (total events: {Store.RowCount()})";
+        status += $", retention: newest {Store.RetentionMaxRows:N0} rows";
         if (Store.DroppedCount > 0) status += $", dropped: {Store.DroppedCount}";
         if (Store.WriteErrorCount > 0) status += $", write errors: {Store.WriteErrorCount}";
         return status;

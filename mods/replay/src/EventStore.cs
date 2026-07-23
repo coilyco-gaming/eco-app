@@ -30,29 +30,49 @@ public class EventStore
     // the ASP.NET request thread, and teardown. SqliteConnection is not safe
     // for concurrent commands, so all access is serialized here.
     private readonly object connLock = new();
+    private readonly object queueCountLock = new();
 
     // Bounded hand-off between the game thread (Insert) and the background
-    // writer. DropOldest means a burst can never block the game tick or grow
-    // unbounded: under sustained overload we shed the oldest un-written rows
-    // rather than stall gameplay.
+    // writer. Under sustained overload we shed the newest un-written row
+    // rather than stall gameplay or grow memory. Keeping older rows preserves
+    // chronology for the historical log and makes the overload count exact.
     private Channel<EventRow>? channel;
     private Task? drainTask;
     private CancellationTokenSource? cts;
     private long droppedOnClosed;
     private long writeErrors;
+    private int queuedRows;
+    private int peakQueuedRows;
+    private int rowsSincePrune;
 
-    private const int ChannelCapacity = 4096;
+    public const int ChannelCapacity = 4096;
+    public const int DefaultRetentionMaxRows = 2_000_000;
     private const int BatchSize = 100;
     private const int BatchLingerMs = 250;
+    private readonly int retentionMaxRows;
+    private readonly int retentionPruneEveryRows;
 
     public bool IsReady => conn != null;
 
-    public string DatabasePath { get; private set; } = "Storage/EcoReplay.db";
+    public string DatabasePath { get; }
 
-    // Rows that arrived after the store was closing, plus batches that failed to
-    // flush. Surfaced in the plugin status for observability.
+    public EventStore(
+        string databasePath = "Storage/EcoReplay.db",
+        int retentionMaxRows = DefaultRetentionMaxRows)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
+        ArgumentOutOfRangeException.ThrowIfLessThan(retentionMaxRows, 1);
+        DatabasePath = databasePath;
+        this.retentionMaxRows = retentionMaxRows;
+        retentionPruneEveryRows = Math.Min(retentionMaxRows, 10_000);
+    }
+
+    // Rows dropped because the queue was full or closing, plus batches that
+    // failed to flush. Surfaced in the plugin status for observability.
     public long DroppedCount => Interlocked.Read(ref droppedOnClosed);
     public long WriteErrorCount => Interlocked.Read(ref writeErrors);
+    public int PeakQueuedRows => Volatile.Read(ref peakQueuedRows);
+    public int RetentionMaxRows => retentionMaxRows;
 
     public void Open()
     {
@@ -82,7 +102,7 @@ public class EventStore
 
         channel = Channel.CreateBounded<EventRow>(new BoundedChannelOptions(ChannelCapacity)
         {
-            FullMode = BoundedChannelFullMode.DropOldest,
+            FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,
             SingleWriter = false,
         });
@@ -108,6 +128,9 @@ public class EventStore
 
         lock (connLock)
         {
+            // The last batch can be smaller than the normal prune interval.
+            // Enforce the row cap on every clean shutdown as well.
+            PruneRetainedRows();
             conn?.Close();
             conn?.Dispose();
             conn = null;
@@ -126,12 +149,18 @@ public class EventStore
         var writer = channel?.Writer;
         if (writer == null) return;
 
-        // With FullMode=DropOldest, TryWrite only fails once the channel is
-        // completed (store closing). A silently dropped oldest row is the
-        // intended overload behaviour and isn't counted here.
-        if (!writer.TryWrite(row))
+        // TryWrite against a Wait-mode bounded channel is non-blocking: it
+        // fails when the queue is full, letting the game tick continue.
+        lock (queueCountLock)
         {
-            Interlocked.Increment(ref droppedOnClosed);
+            if (!writer.TryWrite(row))
+            {
+                Interlocked.Increment(ref droppedOnClosed);
+                return;
+            }
+
+            var queued = ++queuedRows;
+            ObservePeakQueue(queued);
         }
     }
 
@@ -145,7 +174,7 @@ public class EventStore
             while (await reader.WaitToReadAsync(ct).ConfigureAwait(false))
             {
                 batch.Clear();
-                while (batch.Count < BatchSize && reader.TryRead(out var row))
+                while (batch.Count < BatchSize && TryRead(reader, out var row))
                     batch.Add(row);
 
                 // Linger briefly to coalesce a burst into one transaction, but
@@ -159,7 +188,7 @@ public class EventStore
                         while (batch.Count < BatchSize
                                && await reader.WaitToReadAsync(linger.Token).ConfigureAwait(false))
                         {
-                            while (batch.Count < BatchSize && reader.TryRead(out var row))
+                            while (batch.Count < BatchSize && TryRead(reader, out var row))
                                 batch.Add(row);
                         }
                     }
@@ -179,7 +208,7 @@ public class EventStore
 
         // Final drain: flush anything left after completion or cancellation.
         batch.Clear();
-        while (reader.TryRead(out var row))
+        while (TryRead(reader, out var row))
         {
             batch.Add(row);
             if (batch.Count >= BatchSize)
@@ -236,7 +265,54 @@ public class EventStore
             }
 
             tx.Commit();
+
+            rowsSincePrune += batch.Count;
+            if (rowsSincePrune >= retentionPruneEveryRows)
+            {
+                PruneRetainedRows();
+                rowsSincePrune = 0;
+            }
         }
+    }
+
+    private bool TryRead(ChannelReader<EventRow> reader, out EventRow row)
+    {
+        lock (queueCountLock)
+        {
+            if (reader.TryRead(out row!))
+            {
+                queuedRows--;
+                return true;
+            }
+        }
+
+        row = default!;
+        return false;
+    }
+
+    private void ObservePeakQueue(int queued)
+    {
+        while (queued > Volatile.Read(ref peakQueuedRows))
+        {
+            if (Interlocked.CompareExchange(ref peakQueuedRows, queued, peakQueuedRows) < queued)
+                return;
+        }
+    }
+
+    private void PruneRetainedRows()
+    {
+        if (conn == null) return;
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            DELETE FROM events
+            WHERE id < COALESCE(
+                (SELECT id FROM events ORDER BY id DESC LIMIT 1 OFFSET $keep),
+                0
+            );
+            """;
+        cmd.Parameters.AddWithValue("$keep", retentionMaxRows - 1);
+        cmd.ExecuteNonQuery();
     }
 
     public long RowCount()

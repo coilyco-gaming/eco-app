@@ -9,15 +9,19 @@
     <RootNamespace>EcoReplay.Tests</RootNamespace>
   </PropertyGroup>
 
-  <!-- Link the serializer source directly instead of referencing the mod
-       project. BodySerializer is deliberately Eco-free, so the tests compile
-       against Newtonsoft alone and never need the Eco.ReferenceAssemblies feed
-       or the AspNetCore FrameworkReference the mod pulls in. -->
+  <!-- Link selected Eco-free sources directly instead of referencing the mod
+       project. The serializer, fixed craft body, and writer tests never need
+       the Eco.ReferenceAssemblies feed or the AspNetCore FrameworkReference
+       the production mod pulls in. -->
   <ItemGroup>
     <Compile Include="../src/BodySerializer.cs" />
+    <Compile Include="../src/CraftedIterationBody.cs" />
+    <Compile Include="../src/EventStore.cs" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
