@@ -90,6 +90,10 @@ The worker accepts:
 * `ECO_DISCORD_PUBLIC_URL` - canonical public SPA base URL used in embed links.
 * `ECO_DISCORD_SERVER_LABEL` - public-safe server name shown in footers.
 
+Published image entrypoints are `eco-discord-worker` (the gateway process) and
+`eco-discord-register` (the explicit **test-guild-only** schema registration
+operation). The normal web entrypoint remains `uvicorn eco_mcp_app.http_app:app`.
+
 AWS SSM owns the opaque Discord token and identifiers. The deploy repo maps those parameters into the worker through an ExternalSecret. Tracked files use meaningful environment-variable names and test-only placeholders, never live values.
 
 The Discord application invite requests only the `bot` and `applications.commands` OAuth scopes. The initial permission set allows the bot to view the selected channel, send messages, and embed links. The operator does not grant Administrator.
