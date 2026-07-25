@@ -4,7 +4,7 @@
 Backs up the existing file with a timestamp, then adds an mcpServers.eco-mcp-app
 entry that spawns `uv run python -m eco_mcp_app` from this project's root.
 
-Usage: python scripts/install-desktop-config.py
+Usage: python scripts/install_desktop_config.py
 """
 
 from __future__ import annotations

@@ -110,7 +110,7 @@ harness: ## Serve static/harness.html, the local Claude-Desktop-mimicking iframe
 	python3 -m http.server $(or $(harness_port),8765)
 
 install-desktop: ## Wire eco-mcp-app into Claude Desktop's claude_desktop_config.json.
-	python3 scripts/install-desktop-config.py
+	python3 scripts/install_desktop_config.py
 
 build-docker: ## Build the eco-app docker image locally.
 	docker build --progress plain --build-arg MOD_SOURCE_REVISION=$(git-hash) -t $(name):$(git-hash) -t $(name):latest .
