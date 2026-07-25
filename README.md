@@ -8,7 +8,7 @@ The application monorepo for the "Eco via Sirens" game server's companion servic
 
 One fused service ships from this repo. `eco_mcp_app` is the core: a data-only MCP server (Claude Desktop over stdio, hosts over Streamable-HTTP at `/mcp/`) whose tools return markdown and structured JSON. The jobs JSON API (`eco_spec_tracker`, row-shaping over the in-game skills mod) mounts inside it at `/jobs/api`; the jobs UI is the SPA's `/jobs` page. `eco_replay` is a small FastAPI browser for the replay mod's SQLite event log, runnable locally and not yet wired into the fused service.
 
-`frontend/` is the browser face: a Vite + React + TypeScript SPA the fused service serves at `/`, headed for `eco-app.coilysiren.me`. Today it is a placeholder landing page; the real design lands through rapid iteration.
+`frontend/` is the browser face: a Vite + React + TypeScript SPA the fused service serves at `/`, headed for `eco-app.coilysiren.me`. It is the intelligence and companion layer for serious Eco servers, turning live world, trade, crafting, civics, and player data into practical answers.
 
 The in-game halves live under `mods/` as C# Eco server plugins: `mods/jobs` (skills API the tracker consumes), `mods/replay` (player-action event store), `mods/stores` (live store and currency export), and `mods/telemetry` (logs, metrics, and exception capture). The Docker build compiles and packages every real mod project, and main CI publishes the install-ready ZIPs to Forgejo Packages using the contract in [docs/mod-packages.md](docs/mod-packages.md). Gameplay mods live in the sibling [eco-mods](https://forgejo.coilysiren.me/coilyco-gaming/eco-mods) repo, not here.
 

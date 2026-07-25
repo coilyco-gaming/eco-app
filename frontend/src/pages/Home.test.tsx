@@ -36,6 +36,9 @@ describe("Home", () => {
 
     renderHome()
 
+    expect(
+      screen.getByText(/intelligence and companionship for serious Eco servers/i),
+    ).toHaveTextContent("what happened while you were away")
     expect(screen.getByTestId("dir-info")).toHaveAttribute("href", "/info")
     expect(screen.getByTestId("dir-jobs")).toHaveAttribute("href", "/jobs")
     // The eco-gnome calculator is a homepage card that links out to the gnome
