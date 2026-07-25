@@ -1,7 +1,6 @@
-ARG AOS_REGISTRY=forgejo.coilysiren.me/coilyco-flight-deck/agentic-os
-ARG AOS_TAG=v0.255.0
+ARG AOS_IMAGE=forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release
 
-FROM ${AOS_REGISTRY}:lang-node-${AOS_TAG} AS frontend
+FROM ${AOS_IMAGE} AS frontend
 
 WORKDIR /frontend
 
@@ -13,7 +12,7 @@ RUN pnpm install --frozen-lockfile
 COPY frontend/ /frontend/
 RUN pnpm build
 
-FROM ${AOS_REGISTRY}:lang-dotnet-${AOS_TAG} AS mods
+FROM ${AOS_IMAGE} AS mods
 
 ARG MOD_SOURCE_REVISION=dev
 
@@ -28,7 +27,7 @@ RUN python3 scripts/mod_packages.py package \
     --output /mod-packages \
     --revision "${MOD_SOURCE_REVISION}"
 
-FROM ${AOS_REGISTRY}:core-${AOS_TAG} AS runtime
+FROM ${AOS_IMAGE} AS runtime
 
 WORKDIR /app
 

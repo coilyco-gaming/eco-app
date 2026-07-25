@@ -6,10 +6,10 @@ the source artifacts for later mod.io promotion.
 
 ## Build contract
 
-The Dockerfile's `mods` stage uses the same pinned agentic-os release as the
-rest of the image, selecting the `lang-dotnet` tier. The stage discovers every
-project under `mods/` that references `Eco.ReferenceAssemblies`, restores it,
-builds it in `Release`, and packages the complete build output.
+The Dockerfile's `mods` stage uses the same moving `agentic-os:release` full
+image as the rest of the build. The stage discovers every project under `mods/`
+that references `Eco.ReferenceAssemblies`, restores it, builds it in `Release`,
+and packages the complete build output.
 
 Each archive has this layout:
 

@@ -14,7 +14,7 @@ on:
 jobs:
   test:
     runs-on: docker
-    # CI parity: run the Python validation gate inside the pinned aos dev-base
+    # CI parity: run the Python validation gate inside the :release aos dev-base
     # image, through the same `ward exec` verbs a headless agent runs, so this
     # gate IS the gate dispatched `warded` runs must pass. CI (`runs-on: docker`
     # + `astral-sh/setup-uv`) stayed green while three dispatched runs died on
@@ -22,13 +22,11 @@ jobs:
     # have caught it on a PR instead of in a silent dispatch failure. See
     # eco-app#57 and the aos CI-parity umbrella (agentic-os#328).
     #
-    # The tag is PINNED, not `:latest`, on purpose: a dev-base bump is then a
-    # deliberate PR that re-validates eco-app against the new image, never a
-    # silent drift under a moving tag. Bump it in lockstep with the ward version
-    # the agents actually run. dev-base bakes ward + uv + managed Pythons, so no
-    # setup-uv / sync step is needed - `ward exec` (make -> uv run) syncs the
-    # dev group on demand.
-    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.255.0
+    # The promoted :release alias matches the AOS launcher and avoids the
+    # compatibility-only :latest alias. dev-base bakes ward + uv + managed
+    # Pythons, so no setup-uv / sync step is needed - `ward exec` (make -> uv
+    # run) syncs the dev group on demand.
+    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release
     steps:
       - uses: actions/checkout@v4
       - run: ward exec test
@@ -98,7 +96,7 @@ jobs:
   publish-mod:
     name: publish-${{ matrix.package }}
     runs-on: docker
-    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.255.0
+    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release
     needs: [build-image]
     strategy:
       fail-fast: false
@@ -219,7 +217,7 @@ jobs:
           PY
   frontend:
     runs-on: docker
-    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.255.0
+    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release
     steps:
       - uses: actions/checkout@v4
       # dev-base ships Node/npm. corepack activates the pinned pnpm from
@@ -297,7 +295,7 @@ jobs:
           PY
   build-image:
     runs-on: docker
-    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.255.0
+    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release
     # The Docker build compiles every real Eco mod in the pinned AOS .NET tier,
     # packages install-ready ZIPs, and copies those exact bytes into the final
     # app image. The per-mod publisher jobs pull this exact image and promote

@@ -47,7 +47,7 @@ on:
 jobs:
   promote:
     runs-on: docker
-    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:v0.255.0
+    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release
     steps:
       - uses: actions/checkout@v4
       - name: Require promotion credentials
