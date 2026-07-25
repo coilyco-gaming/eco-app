@@ -1,12 +1,12 @@
 # Use-case hub + demand-side pages
 
-The practical-usefulness layer: a `/uses` hub plus task-framed pages that turn
-the live economy into a decision. This is the first, no-dependency slice -
-follow-up **F** (and the shared hub it needs) from the design in
+The practical-usefulness layer: a `/uses` hub plus task-framed links that turn
+the live economy and recipe graph into a decision. The five dedicated use-case
+pages came from follow-up **F** in the design from
 [#98](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/98), filed as
-[#99](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/99). Every
-panel reads data eco-app already hydrates (the same planes `/trade` renders), so
-it ships ahead of the recipe-dependent use cases.
+[#99](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/99). The hub
+also routes recipe and profession-value decisions to the completed `/recipes`
+and `/jobs` surfaces.
 
 ## The hub
 
@@ -15,15 +15,13 @@ it ships ahead of the recipe-dependent use cases.
 `Home.tsx`) - the five pages below are **URL-only**, reached from the hub,
 mirroring how `/item` is only reached from `/items`.
 
-The five demand-side pages show as live, linked cards. The recipe-dependent Tier
-B/C use cases from [#98](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/98)
-(what X is made from / used in, value per profession) show as
-muted "coming soon" cards so the hub reads as the full roadmap without
-pretending they are built. They are gated on the recipe exporter and are
-the remaining recipe-dependent follow-ups on
-[#98](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/98). The
-priced-use case now ships as the live `/uses/price` page and is the hub's fifth
-linked card.
+The five demand-side pages show as live, linked cards. The hub also links the
+recipe graph at `/recipes` for "what is X made from / used in" and the
+profession-value board on `/jobs`. Those recipe-dependent capabilities shipped
+through [#100](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/100)
+to [#103](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/103), so
+the hub no longer presents them as future work. The priced use case ships as
+the live `/uses/price` page.
 
 ## The demand-side pages
 
@@ -40,12 +38,12 @@ linked card.
 - **Deep-linkable** via `?item=` / `?store=` so QA can share a link to an exact view. `formatCount` / `prettifyEcoName` from `lib/format.ts` do the number and item-name rendering.
 - **Tests** - one vitest component test per page (`*.test.tsx`), each covering the happy path (ranking / joining / deep-link) and the degraded-when-null branch, mirroring `pages/Trade.test.tsx` and `pages/Items.test.tsx`.
 
-## Where it does not go
+## Product boundary
 
-The recipe-dependent follow-ups on [#98](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/98)
-still gate the remaining roadmap items. This slice stays demand-side focused,
-but `/uses/price` now spans the live market, shelf comparison, fair-price
-bonus, and craft-cost roll-up.
+The five dedicated `/uses/*` pages stay demand-side focused. The hub reuses the
+existing `/recipes` and `/jobs` surfaces for recipe exploration and
+profession-value decisions instead of duplicating those capabilities under new
+routes.
 
 ## See also
 

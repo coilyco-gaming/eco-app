@@ -6,11 +6,9 @@ import Layout from "../components/Layout"
 // individual pages are URL-only, reached from here, mirroring how /item is only
 // reached from /items.
 //
-// The four demand-side pages below read data eco-app already hydrates (the same
-// planes /trade renders), so they ship in this no-dependency slice. The
-// recipe-dependent use cases (follow-ups A–E on eco-app#98, gated on the recipe
-// exporter) show as muted "coming soon" cards so the hub reads as the full
-// roadmap without pretending they are built.
+// The demand-side pages below read data eco-app already hydrates (the same
+// planes /trade renders). The recipe graph and profession-value board shipped
+// through eco-app#100-#103, so the hub links those existing product surfaces too.
 
 interface UseCard {
   to: string
@@ -50,19 +48,17 @@ const LIVE: UseCard[] = [
     title: "Is my shop priced right?",
     blurb: "Pick your store, compare every item's price against the market median.",
   },
-]
-
-// The recipe-dependent Tier B/C use cases from eco-app#98 — gated on the recipe
-// exporter, deliberately not built here. Listed muted so the hub is the whole
-// roadmap, not just the slice that shipped.
-const SOON: Array<{ title: string; blurb: string }> = [
   {
+    to: "/recipes",
+    testid: "use-recipe-graph",
     title: "What's X made from / used in",
-    blurb: "The recipe tree around an item — ingredients up, products down.",
+    blurb: "Search the recipe graph by product or ingredient, then open the complete craft.",
   },
   {
+    to: "/jobs",
+    testid: "use-profession-value",
     title: "Value per profession",
-    blurb: "Which skills earn the most per craft, from recipe cost and market price.",
+    blurb: "See which liquid supply-gap crafts offer the best margin for each profession.",
   },
 ]
 
@@ -85,20 +81,6 @@ export default function Uses() {
             <p>{c.blurb}</p>
           </Link>
         ))}
-      </section>
-
-      <section>
-        <h2 className="section-title">
-          Coming soon <span className="section-sub">(needs the recipe exporter — eco-app#98)</span>
-        </h2>
-        <div className="dir-cards" aria-label="coming soon">
-          {SOON.map((c) => (
-            <div className="dir-card dir-card-static" key={c.title} data-testid="use-soon">
-              <h3>{c.title}</h3>
-              <p>{c.blurb}</p>
-            </div>
-          ))}
-        </div>
       </section>
     </Layout>
   )

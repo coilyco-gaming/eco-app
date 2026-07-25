@@ -30,13 +30,14 @@ describe("Uses hub", () => {
       "href",
       "/uses/shop-check",
     )
-  })
-
-  it("shows the recipe-dependent use cases as muted, unlinked coming-soon cards", () => {
-    renderUses()
-    const soon = screen.getAllByTestId("use-soon")
-    expect(soon).toHaveLength(2)
-    // Coming-soon cards are static divs, not links.
-    soon.forEach((card) => expect(card.closest("a")).toBeNull())
+    expect(screen.getByTestId("use-recipe-graph").closest("a")).toHaveAttribute(
+      "href",
+      "/recipes",
+    )
+    expect(screen.getByTestId("use-profession-value").closest("a")).toHaveAttribute(
+      "href",
+      "/jobs",
+    )
+    expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument()
   })
 })
