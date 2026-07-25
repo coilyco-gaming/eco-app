@@ -52,8 +52,13 @@ export interface EcoStatus {
   achievements: Array<{ name: string; text: string }>
 }
 
-export async function fetchEcoStatus(signal?: AbortSignal): Promise<EcoStatus> {
-  const resp = await fetch("/preview.json", { signal })
+export async function fetchEcoStatus(
+  server = "",
+  signal?: AbortSignal,
+): Promise<EcoStatus> {
+  const target = server.trim()
+  const query = target ? `?${new URLSearchParams({ server: target })}` : ""
+  const resp = await fetch(`/preview.json${query}`, { signal })
   if (!resp.ok) {
     throw new Error(`status fetch failed: HTTP ${resp.status}`)
   }

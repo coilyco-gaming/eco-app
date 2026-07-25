@@ -1,12 +1,12 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
 import Info from "./Info"
 import { SAMPLE_STATUS } from "../test/fixtures"
 
-function renderServer() {
+function renderServer(initialEntry = "/info") {
   return render(
-    <MemoryRouter initialEntries={["/info"]}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <Info />
     </MemoryRouter>,
   )
@@ -36,6 +36,9 @@ describe("Info", () => {
 
     renderServer()
 
+    expect(
+      screen.getByRole("heading", { name: "Inspect another Eco server" }),
+    ).toBeInTheDocument()
     await waitFor(() => {
       expect(screen.getByTestId("meteor-count")).toHaveTextContent("3 days until the meteor")
     })
@@ -47,6 +50,36 @@ describe("Info", () => {
       "href",
       "https://discord.gg/example",
     )
+  })
+
+  it("inspects another public Eco server through the shared preview endpoint", async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify(SAMPLE_STATUS), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    renderServer()
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Eco server address" }), {
+      target: { value: "eco.example.test:3001" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Inspect server" }))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/preview.json?server=eco.example.test%3A3001",
+        expect.objectContaining({ signal: expect.anything() }),
+      )
+    })
+    expect(screen.getByTestId("server-target")).toHaveTextContent(
+      "Inspecting eco.example.test:3001",
+    )
+    expect(screen.getByRole("button", { name: "Use Sirens server" })).toBeInTheDocument()
   })
 
   it("keeps the shell useful when the snapshot fetch fails", async () => {

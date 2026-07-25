@@ -1,3 +1,5 @@
+import type { FormEvent } from "react"
+import { useSearchParams } from "react-router-dom"
 import Layout from "../components/Layout"
 import { useEcoStatus } from "../hooks/useEcoStatus"
 import { safeHttpUrl } from "../lib/format"
@@ -11,12 +13,58 @@ const STEAM_URL = "https://store.steampowered.com/app/382310/Eco/"
 // level down so the homepage stays a thin directory. Formerly "/server";
 // renamed to "/info" in the eco-app#90 IA cleanup (the old path redirects here).
 export default function Info() {
-  const { status, error, loading } = useEcoStatus()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const targetServer = searchParams.get("server")?.trim() ?? ""
+  const { status, error, loading } = useEcoStatus(targetServer)
   const discordUrl = safeHttpUrl(status?.server.discord)
+
+  function inspectServer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const server = String(new FormData(event.currentTarget).get("server") ?? "").trim()
+    setSearchParams(server ? { server } : {})
+  }
+
+  function useSirensServer() {
+    setSearchParams({})
+  }
 
   return (
     <Layout fetchedAtISO={status?.fetchedAtISO}>
       <Hero status={status} error={error} />
+
+      <section className="server-inspector" aria-labelledby="server-inspector-heading">
+        <h2 className="section-title" id="server-inspector-heading">
+          Inspect another Eco server
+        </h2>
+        <p className="section-subcopy">
+          Enter any public Eco server address to see its status, online players, meteor
+          timing, and world totals. No admin access is needed.
+        </p>
+        <form className="filter-row server-inspector-form" onSubmit={inspectServer}>
+          <input
+            aria-label="Eco server address"
+            className="filter-input"
+            defaultValue={targetServer}
+            key={targetServer}
+            name="server"
+            placeholder="host, host:port, or full /info URL"
+            type="text"
+          />
+          <button className="button" type="submit">
+            Inspect server
+          </button>
+          {targetServer && (
+            <button className="button" onClick={useSirensServer} type="button">
+              Use Sirens server
+            </button>
+          )}
+        </form>
+        {targetServer && (
+          <p className="empty-note" data-testid="server-target">
+            Inspecting {targetServer}
+          </p>
+        )}
+      </section>
 
       {loading && (
         <p className="loading" data-testid="loading">
