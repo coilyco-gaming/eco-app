@@ -175,10 +175,10 @@ def test_preview_json_returns_payload(client: TestClient) -> None:
     r = client.get("/preview.json")
     assert r.status_code == 200
     body = r.json()
-    # Payload shape comes from to_payload(); just sanity-check it's structured
-    # data, not HTML, and that redaction still applies.
+    # Payload shape comes from to_payload(); sanity-check that it is structured
+    # data, not HTML, and carries the complete live roster from Eco /info.
     assert isinstance(body, dict)
-    assert "alice" not in r.text
+    assert body["players"]["onlineNames"] == ["alice", "bob"]
     assert "<html" not in r.text.lower()
 
 

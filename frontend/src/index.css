@@ -333,6 +333,15 @@ a.dir-card:hover {
   font-variant-numeric: tabular-nums;
 }
 
+.online-player-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 /* --- C# mods reference (/mods) ---------------------------------------- */
 
 .mod-docs {

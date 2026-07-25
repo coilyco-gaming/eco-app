@@ -15,6 +15,7 @@ export interface EcoServerInfo {
 
 export interface EcoPlayers {
   online: number
+  onlineNames: string[]
   total: number
   activeAndOnline: number
   peakActive: number

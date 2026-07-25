@@ -448,15 +448,8 @@ def _format_government_markdown(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def redact(info: dict[str, Any]) -> dict[str, Any]:
-    """Strip player names. Counts are fine — individual identities are not."""
-    out = dict(info)
-    out.pop("OnlinePlayersNames", None)
-    return out
-
-
 def to_payload(info: dict[str, Any]) -> dict[str, Any]:
-    """Shape the payload the iframe consumes. Pure subset of /info minus names."""
+    """Shape the public status payload from a bounded subset of ``/info``."""
     per_day = info.get("ExhaustionHoursGainPerWeekday") or {}
     return {
         "view": "eco_status",
@@ -475,6 +468,9 @@ def to_payload(info: dict[str, Any]) -> dict[str, Any]:
         },
         "players": {
             "online": int(info.get("OnlinePlayers") or 0),
+            "onlineNames": [
+                str(name) for name in (info.get("OnlinePlayersNames") or []) if str(name).strip()
+            ],
             "total": int(info.get("TotalPlayers") or 0),
             "activeAndOnline": int(info.get("ActiveAndOnlinePlayers") or 0),
             "peakActive": int(info.get("PeakActivePlayers") or 0),
@@ -2781,11 +2777,10 @@ def build_server() -> Server:
                 isError=True,
             )
 
-        info = redact(raw)
-        info["_fetchedAtISO"] = datetime.now(UTC).isoformat()
+        raw["_fetchedAtISO"] = datetime.now(UTC).isoformat()
 
         if name == "get_eco_milestones":
-            milestones_payload = build_milestones_payload(info)
+            milestones_payload = build_milestones_payload(raw)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=_format_milestones_markdown(milestones_payload)),
@@ -2793,7 +2788,7 @@ def build_server() -> Server:
                 ],
             )
 
-        payload = to_payload(info)
+        payload = to_payload(raw)
         return CallToolResult(
             content=[
                 TextContent(type="text", text=_format_markdown(payload)),

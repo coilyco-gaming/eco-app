@@ -40,6 +40,7 @@ describe("Info", () => {
       expect(screen.getByTestId("meteor-count")).toHaveTextContent("3 days until the meteor")
     })
     expect(screen.getByTestId("live-pill")).toHaveTextContent("1 online now")
+    expect(screen.getByTestId("online-player-list")).toHaveTextContent("coilysiren")
     expect(screen.getByText("Eco via Sirens | Cycle 13")).toBeInTheDocument()
     expect(screen.getByText("64,342")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Join the Discord" })).toHaveAttribute(

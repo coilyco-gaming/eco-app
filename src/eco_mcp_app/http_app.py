@@ -56,7 +56,6 @@ from .server import (
     _get_admin_token,
     build_server,
     fetch_eco_info,
-    redact,
     to_payload,
 )
 from .telemetry import init_sentry
@@ -412,9 +411,8 @@ def create_app() -> Starlette:
             raw = await fetch_eco_info(server_arg)
         except httpx.HTTPError as e:
             return JSONResponse({"error": str(e)}, status_code=502)
-        info = redact(raw)
-        info["_fetchedAtISO"] = datetime.now(UTC).isoformat()
-        return JSONResponse(to_payload(info))
+        raw["_fetchedAtISO"] = datetime.now(UTC).isoformat()
+        return JSONResponse(to_payload(raw))
 
     async def preview_map_json(request: Request) -> JSONResponse:
         server_arg = request.query_params.get("server")

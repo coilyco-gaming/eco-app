@@ -28,6 +28,24 @@ export default function Info() {
         <>
           <MeteorBanner cycle={status.cycle} />
           <StatGrid status={status} />
+          <section aria-labelledby="online-players-heading">
+            <h2 className="section-title" id="online-players-heading">
+              Online now
+            </h2>
+            {status.players.onlineNames.length > 0 ? (
+              <ul className="online-player-list" data-testid="online-player-list">
+                {status.players.onlineNames.map((name) => (
+                  <li className="mini-pill" key={name}>
+                    {name}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="empty-note" data-testid="online-player-empty">
+                Nobody is online right now.
+              </p>
+            )}
+          </section>
         </>
       )}
 

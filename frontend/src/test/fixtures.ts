@@ -15,7 +15,13 @@ export const SAMPLE_STATUS: EcoStatus = {
     hasPassword: false,
     adminOnline: false,
   },
-  players: { online: 1, total: 114, activeAndOnline: 4, peakActive: 38 },
+  players: {
+    online: 1,
+    onlineNames: ["coilysiren"],
+    total: 114,
+    activeAndOnline: 4,
+    peakActive: 38,
+  },
   world: { size: "0.52km²", plants: 64342, animals: 0, laws: 10, totalCulture: 2254.76 },
   cycle: {
     daysRunning: 56,
