@@ -30,18 +30,18 @@ Three pieces: a C# Eco mod exposing a read-only HTTP endpoint of every player's 
 
 ## Deploy and ops
 
-- **Canonical deploy reference for the homelab** - Other `coilysiren/*` repos copy this Dockerfile, Makefile, `deploy/main.yml`, GHA pipeline.
+- **Canonical deploy reference for the homelab** - `coilyco-bridge/deploy/services/eco-app` owns manifests and rollout. This repo owns the application image and Ward development surface.
 - **k3s + ExternalSecrets** - Pulls `SENTRY_DSN` + `UPSTREAM_API_KEY` from AWS SSM via ClusterSecretStore.
 - **Image publish** - Builds + pushes to `ghcr.io/coilysiren/eco-spec-tracker/...`, git-SHA tagged.
 - **Tailscale + Traefik + cert-manager** - Inherited from `backend` template.
-- **`coily eco mod push` path** - `make build-mod`, zip with `Mods/EcoJobsTracker/` prefix, push, `coily eco restart`.
+- **Mod package path** - `ward exec package-mods` builds deterministic install-ready ZIPs with the `Mods/EcoJobsTracker/` prefix. `ward exec publish-mod-packages` publishes the immutable package.
 
 ## Dev-loop tooling
 
-- **`make build-native` / `run-native`** - `uv sync --group dev`, uvicorn `--reload` on `:4100`.
-- **`make run-shell`** - C# shell harness on `:5100`.
-- **`make build-mod`** - Production mod DLL.
-- **`make build-docker` / `deploy`** - Container build/push + k3s rollout.
+- **`ward exec sync` / `ward exec http`** - `uv sync --group dev`, then uvicorn with reload on `:4000`.
+- **`ward exec run-shell-jobs`** - C# shell harness on `:5100`.
+- **`ward exec build-mod-jobs`** - Production mod DLL.
+- **`ward exec build-docker`** - Local application image build. Deployment stays in `coilyco-bridge/deploy`.
 - **Pre-commit** - ruff + mypy on Python, `dotnet format` on C#.
 - **Smoke suite** - `tests/test_smoke.py`: every page, every JSON, parser fixture.
 

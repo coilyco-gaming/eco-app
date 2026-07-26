@@ -2,26 +2,24 @@
 
 Two projects share one solution (`eco-jobs-tracker.sln`):
 
-| Project | Purpose | Runs where |
-|---|---|---|
-| `src/EcoJobsTracker.csproj` | The real mod. Exposes `GET /api/v1/skills` (learned specialties) and `GET /api/v1/citizens` (numeric user id → name, for the crafting atlas's citizen join, [eco-app#5](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/5)) from inside the Eco server process by declaring `[ApiController]`s that Eco's ASP.NET Core host picks up via `AddApplicationPart`. | Eco dedicated server, after `dotnet build -c Release` and dropping the resulting DLL into `Server/Mods/<Name>/`. |
-| `shell/EcoJobsTracker.Shell.csproj` | Standalone ASP.NET Core harness. Same routes, same DTOs, mock data. Lets the Python tracker iterate against a real C# HTTP server without booting Eco. | `localhost:5100`, launched by `make run-shell` from the repo root. |
+* **`src/EcoJobsTracker.csproj`** - The real mod. It exposes `GET /api/v1/skills` (learned specialties) and `GET /api/v1/citizens` (numeric user id to name, for the crafting atlas's citizen join, [eco-app#5](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/5)) from inside the Eco server process by declaring `[ApiController]`s that Eco's ASP.NET Core host picks up via `AddApplicationPart`. The Eco dedicated server runs the compiled DLL from `Server/Mods/<Name>/`.
+* **`shell/EcoJobsTracker.Shell.csproj`** - Standalone ASP.NET mock with the same routes, DTOs, and mock data. It runs on `localhost:5100` through `ward exec run-shell-jobs`, so the Python tracker can iterate without booting Eco.
 
 DTOs (`src/Dtos.cs`) are shared — the shell project `<Compile Include>`s the file, so any change to the shape propagates to both.
 
 ## Local harness
 
 ```sh
-make run-shell       # -> http://localhost:5100/api/v1/skills
+ward exec run-shell-jobs
 ```
 
 ## Building the real mod
 
 ```sh
-cd mod
-dotnet build src/EcoJobsTracker.csproj -c Release
-# -> mod/src/bin/Release/net10.0/EcoJobsTracker.dll
+ward exec build-mod-jobs
 ```
+
+The output is `mods/jobs/src/bin/Release/net10.0/EcoJobsTracker.dll`.
 
 Copy the DLL into the Eco server's `Server/Mods/EcoJobsTracker/` directory and restart the server. Eco's `ModKitPlugin` discovers mod DLLs on boot and registers their MVC application parts automatically.
 

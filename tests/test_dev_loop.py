@@ -18,7 +18,7 @@ def _command(tmp_path: Path, name: str, body: str) -> None:
 
 def _resolve(tmp_path: Path) -> subprocess.CompletedProcess[str]:
     env = os.environ | {
-        "AWS_ARGS": str(tmp_path / "AWS_ARGS"),
+        "AWS_OPERATOR_ARGS": str(tmp_path / "AWS_OPERATOR_ARGS"),
         "ECO_INFO_PORT": "3001",
         "PATH": str(tmp_path),
     }
@@ -31,11 +31,11 @@ def _resolve(tmp_path: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_resolver_uses_ssm_tailnet_target_without_retired_coily_cli(tmp_path: Path) -> None:
+def test_resolver_uses_guarded_ssm_tailnet_target(tmp_path: Path) -> None:
     _command(
         tmp_path,
-        "aws",
-        'printf "%s\\n" "$*" > "$AWS_ARGS"\nprintf "%s\\n" "tailnet.example.test"',
+        "ward-kdl",
+        'printf "%s\\n" "$*" > "$AWS_OPERATOR_ARGS"\nprintf "%s\\n" "tailnet.example.test"',
     )
     _command(tmp_path, "curl", 'case "$*" in *tailnet.example.test*) exit 0 ;; *) exit 1 ;; esac')
 
@@ -45,14 +45,13 @@ def test_resolver_uses_ssm_tailnet_target_without_retired_coily_cli(tmp_path: Pa
     assert result.stdout == "http://tailnet.example.test:3001\n"
     assert "SSM-resolved FQDN, not echoed" in result.stderr
     assert "tailnet.example.test" not in result.stderr
-    assert (tmp_path / "AWS_ARGS").read_text() == (
-        "ssm get-parameter --name /coilysiren/kai-server/tailnet-fqdn "
-        "--with-decryption --query Parameter.Value --output text\n"
-    )
+    operator_args = (tmp_path / "AWS_OPERATOR_ARGS").read_text()
+    assert operator_args.startswith("ops aws ssm get-parameter ")
+    assert "--with-decryption --query Parameter.Value --output text" in operator_args
 
 
 def test_resolver_falls_back_to_public_host_when_ssm_is_unavailable(tmp_path: Path) -> None:
-    _command(tmp_path, "aws", "exit 1")
+    _command(tmp_path, "ward-kdl", "exit 1")
     _command(tmp_path, "curl", "exit 1")
 
     result = _resolve(tmp_path)
@@ -62,9 +61,11 @@ def test_resolver_falls_back_to_public_host_when_ssm_is_unavailable(tmp_path: Pa
     assert result.stderr == "eco target: public (eco.coilysiren.me:3001)\n"
 
 
-def test_http_key_fetch_uses_aws_not_the_retired_coily_cli() -> None:
-    makefile = (ROOT / "Makefile").read_text()
+def test_http_key_fetch_uses_guarded_aws_operator() -> None:
+    dispatcher = (ROOT / "scripts" / "ward-command.sh").read_text()
 
-    http_recipe = makefile.split("http:", maxsplit=1)[1].split("http-offline:", maxsplit=1)[0]
-    assert "aws ssm get-parameter --name /eco-mcp-app/api-admin-token" in http_recipe
-    assert "coily" not in http_recipe
+    http_action = dispatcher.split("run_http() {", maxsplit=1)[1].split(
+        "snapshot_temp_dir=", maxsplit=1
+    )[0]
+    assert "ward-kdl ops aws ssm get-parameter" in http_action
+    assert "coily" not in http_action

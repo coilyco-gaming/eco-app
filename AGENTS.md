@@ -24,7 +24,7 @@ This repo is the application layer (`infra -> eco-app -> deploy`). Its deploy su
 
 ## Commands
 
-Route every dev command through the ward gate as `ward exec <verb>`. The canonical allowlist is [`.ward/ward.yaml`](.ward/ward.yaml). `ward lint` ties each verb to its Makefile target and `## desc` comment.
+Route every dev command through the ward gate as `ward exec <verb>`. The canonical allowlist is [`.ward/ward.yaml`](.ward/ward.yaml). Each verb invokes one tool directly or delegates shell behavior to the focused [`scripts/ward-command.sh`](scripts/ward-command.sh) dispatcher.
 
 ## Validation
 

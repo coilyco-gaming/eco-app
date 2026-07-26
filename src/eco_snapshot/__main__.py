@@ -2,8 +2,8 @@
 
 The admin key is read from `UPSTREAM_API_KEY` (same env var the rest of the
 dev loop uses), never from argv, so it stays out of process listings and
-shell history. S3 push/pull live in the Makefile (`snapshot-push` /
-`snapshot-pull`) - they are one-line `aws s3 cp` wrappers, not Python.
+shell history. S3 push/pull live in the Ward command dispatcher
+(`snapshot-push` / `snapshot-pull`) and route AWS access through ward-kdl.
 """
 
 from __future__ import annotations

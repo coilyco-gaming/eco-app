@@ -320,7 +320,7 @@ def create_app() -> Starlette:
     # the root and every client route. A checkout without a frontend build
     # has no HTML surface at all (the dev `/preview` cards were removed) — it
     # serves the JSON/MCP APIs only and points the visitor at the build verb.
-    # Path is cwd-relative because the image WORKDIR and local `make http`
+    # Path is cwd-relative because the image WORKDIR and local `ward exec http`
     # both run from the repo root; FRONTEND_DIST overrides for anything else.
     frontend_dist = Path(os.getenv("FRONTEND_DIST", "frontend/dist"))
     frontend_index = frontend_dist / "index.html"

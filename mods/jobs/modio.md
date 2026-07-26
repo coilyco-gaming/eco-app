@@ -83,9 +83,7 @@ this mod is not affiliated with Strange Loop Games.
 Build:
 
 ```sh
-make build-mod
-cd mod/src/bin/Release/net10.0
-zip -r ../../../../EcoJobsTracker-0.1.0.zip Mods/EcoJobsTracker/
+ward exec package-mods
 ```
 
 Zip layout (mod.io extracts straight into the server root):
@@ -99,9 +97,8 @@ EcoJobsTracker-0.1.0.zip
         └── EcoJobsTracker.pdb
 ```
 
-(The repo's existing `make build-mod` drops the three files at
-`mod/src/bin/Release/net10.0/`. Zip from there with the `Mods/EcoJobsTracker/`
-prefix - same convention `coily eco mod push` already expects.)
+The Ward package verb writes a deterministic archive under
+`.build/mod-packages/` with the `Mods/EcoJobsTracker/` prefix.
 
 ## Version bumps
 

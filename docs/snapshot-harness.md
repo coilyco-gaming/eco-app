@@ -10,7 +10,7 @@ The app's only upstream is the live Eco game server (plus its in-game mods). Ite
 
 * `ward exec snapshot-capture` - resolves the eco target (same path as `http`), pulls every endpoint into `.snapshots/current/`, byte-for-byte, indexed by `manifest.json`. Failures are recorded in the manifest, never silently skipped.
 * `ward exec snapshot-push` - tars the dir and uploads `s3://kai-game-backups/eco-app/snapshots/<utc-stamp>.tar.gz`, then server-side copies it over `latest.tar.gz`.
-* `ward exec snapshot-pull` - downloads `latest` (or `snap=<stamp>`) and extracts into `.snapshots/current/`.
+* `ward exec snapshot-pull` - downloads `latest` and extracts into `.snapshots/current/`. Pass `-- --snapshot <stamp>` to select another capture.
 * `ward exec snapshot-serve` - replays the snapshot as a fixture eco server on `localhost:3101`.
 * `ward exec http-offline` - runs the fused server with `ECO_INFO_URL` pointed at the fixture and a dummy admin token, so every surface (MCP tools, `/preview/*.json`, `/jobs`, SPA data plane) serves from the snapshot.
 
@@ -39,9 +39,9 @@ Auth is ignored on purpose. The snapshot already dropped everything the admin ke
 
 ## Conventions
 
-* The admin key rides `UPSTREAM_API_KEY` from SSM `/eco-mcp-app/api-admin-token`, fetched inside the `snapshot-capture` make target. It never lands in the snapshot or argv.
+* The admin key rides `UPSTREAM_API_KEY` from SSM `/eco-mcp-app/api-admin-token`, fetched inside the `snapshot-capture` Ward verb. It never lands in the snapshot or argv.
 * Snapshots are prod-shaped public-safe game data plus player names, same exposure class as the live public endpoints they mirror. The bucket stays private regardless.
-* S3 verbs live in the Makefile as plain `aws s3 cp` one-liners, mirroring how the dev loop already shells out for SSM reads.
+* S3 verbs live in `scripts/ward-command.sh` and route AWS access through `ward-kdl ops aws`.
 
 ## See also
 
