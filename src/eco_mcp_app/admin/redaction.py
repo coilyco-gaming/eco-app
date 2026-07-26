@@ -50,8 +50,17 @@ _SECRET_KEY = re.compile(r"token|secret|password|passwd|api[_-]?key|apikey|crede
 # shown from ``operator`` up. Deliberately broad: over-hashing at the public
 # level is harmless, under-hashing leaks identity.
 _NAME_KEY = re.compile(
-    r"name|description|discord|admin|whitelist|blacklist|user|owner|player|email|address|steam",
+    r"name|description|discord|admin|whitelist|blacklist|user|owner|player|citizen|actor|"
+    r"email|address|steam",
     re.I,
+)
+
+# Unstructured log/RCON text cannot be walked by JSON key. Strip common
+# key/value secret assignments at every non-raw level. The whole matching line
+# is retained for operational context, but the value is replaced.
+_TEXT_SECRET = re.compile(
+    r"(?i)\b(token|secret|password|passwd|api[_-]?key|apikey|credential)\b"
+    r"(\s*[:=]\s*)([^\s,;]+)"
 )
 
 
@@ -118,3 +127,17 @@ def redact_config(data: Any, level: RedactionLevel, *, _key: str = "") -> Any:
     if _is_name_key(_key) and isinstance(data, str) and data:
         return hash_name(data) if level is RedactionLevel.PUBLIC else data
     return data
+
+
+def redact_text(text: str, level: RedactionLevel) -> str:
+    """Strip secret-looking assignments from unstructured output.
+
+    Public callers are denied the identity-bearing log tools entirely, so this
+    helper does not pretend it can reliably hash arbitrary names in prose.
+    """
+    if level is RedactionLevel.RAW:
+        return text
+    return _TEXT_SECRET.sub(
+        lambda match: f"{match.group(1)}{match.group(2)}{SECRET_SENTINEL}",
+        text,
+    )

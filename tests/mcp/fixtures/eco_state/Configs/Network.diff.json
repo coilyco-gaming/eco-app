@@ -1,0 +1,7 @@
+{
+  "Config": {
+    "PublicServer": true,
+    "Description": "Sample operator-visible description",
+    "ServerApiToken": "not-a-real-token"
+  }
+}

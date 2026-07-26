@@ -1,0 +1,7 @@
+{
+  "Config": {
+    "Enabled": true,
+    "OwnerName": "SampleAdminOne",
+    "ApiKey": "not-a-real-key"
+  }
+}
