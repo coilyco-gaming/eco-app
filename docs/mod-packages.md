@@ -32,6 +32,21 @@ Every task pulls the already-built image, extracts that directory, and publishes
 only its assigned manifest record. No publisher recompiles a mod or publishes a
 different copy.
 
+## Required CI policy
+
+The application image build is the required C# compile gate. It discovers every
+real Eco mod project, restores and builds each project once, and fails on the
+first broken restore or compile phase. Keeping compilation together is
+deliberate: the shipped application image contains one coherent set of mod
+packages from one source revision.
+
+Publication fans out after that shared build. One independent matrix task
+publishes each package, with fail-fast disabled so a registry failure for one
+mod does not hide the status of the others. The build-image job has a 30-minute
+timeout and each publisher has a 20-minute timeout. Those bounds leave room for
+the normal proxied NuGet and image-transfer path while preventing a stalled
+restore, Docker operation, or upload from becoming an indefinite CI sink.
+
 ## Versions and registry coordinates
 
 The source version is each project's `<Version>` property. A main-branch build

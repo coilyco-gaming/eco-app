@@ -96,6 +96,7 @@ jobs:
   publish-mod:
     name: publish-${{ matrix.package }}
     runs-on: docker
+    timeout-minutes: 20
     container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release
     needs: [build-image]
     strategy:
@@ -295,6 +296,7 @@ jobs:
           PY
   build-image:
     runs-on: docker
+    timeout-minutes: 30
     container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release
     # The Docker build compiles every real Eco mod in the pinned AOS .NET tier,
     # packages install-ready ZIPs, and copies those exact bytes into the final
