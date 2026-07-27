@@ -5,6 +5,8 @@ venv/
 .pytest_cache/
 __pycache__/
 .build/
+frontend/node_modules/
+frontend/dist/
 investigation/
 # C# plugin sources are image-build inputs. Keep host build outputs out of the
 # context so the AOS .NET stage always performs the authoritative clean build.
