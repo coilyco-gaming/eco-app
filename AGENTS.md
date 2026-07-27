@@ -45,7 +45,12 @@ Keep every artifact public-safe. Opaque ids, tokens, and sensitive hosts go in A
 
 ## Release
 
-Canonical history lives on Forgejo (`coilyco-gaming/eco-app`). CI tests, builds, and publishes the image to the in-cluster registry on every push to `main`. A commit to `main` is not a deploy - rollout is driven from `coilyco-bridge/deploy`.
+Canonical history lives on Forgejo (`coilyco-gaming/eco-app`). CI tests,
+builds, and publishes the private single-architecture image as
+`forgejo.coilysiren.me/coilyco-gaming/eco-app:<full-source-sha>` on every push
+to `main`. The trusted publisher verifies the remote manifest. A commit to
+`main` is not a deploy. Rollout is driven from `coilyco-bridge/deploy` through
+a separate read-only package credential.
 
 ## Agent rules
 

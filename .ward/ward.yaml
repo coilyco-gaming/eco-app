@@ -65,6 +65,9 @@ commands:
   build-docker:
     run: bash scripts/ward-command.sh build-docker
     description: Build the eco-app docker image locally. Native args - [--name NAME] [--revision REVISION].
+  check-publish:
+    run: bash -n scripts/publish-image.sh scripts/publish-mod-from-image.sh
+    description: Validate the trusted Forgejo OCI application and mod publisher contracts.
   build-mods:
     run: sh scripts/mods-gate.sh build-mods
     description: Discover, restore, and build every real Eco mod project with per-project timings.

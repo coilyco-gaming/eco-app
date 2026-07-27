@@ -1,9 +1,9 @@
 name: build-publish
 
-# Tests, builds, and publishes the fused eco-app image to the in-cluster
-# registry on every push to main. There is deliberately NO deploy stage here:
-# rollout is driven from coilyco-bridge/deploy/services/eco-app per the layer
-# invariant (infra -> eco-app -> deploy). See coilysiren/inbox#101.
+# Tests, builds, and publishes the fused eco-app image to Forgejo OCI on every
+# push to main. There is deliberately no deploy stage here. Rollout is driven
+# from coilyco-bridge/deploy/services/eco-app per the layer invariant
+# (infra -> eco-app -> deploy). See coilysiren/inbox#101.
 
 on:
   push:
@@ -49,9 +49,8 @@ jobs:
         run: "python3 -c 'exec(\"import os\\nimport sys\\nimport urllib.error\\nimport urllib.parse\\nimport urllib.request\\n\\ndef build_message():\\n    return \\\"\\\\n\\\".join([\\n        \\\"CI failed on main\\\",\\n        f\\\"repo: {os.environ['\"'\"'REPO'\"'\"']}\\\",\\n        f\\\"workflow: {os.environ['\"'\"'WORKFLOW'\"'\"']}\\\",\\n        f\\\"job: {os.environ['\"'\"'JOB'\"'\"']}\\\",\\n        f\\\"ref: {os.environ['\"'\"'REF'\"'\"']}\\\",\\n        f\\\"sha: {os.environ['\"'\"'SHA'\"'\"']}\\\",\\n        f\\\"run: {os.environ['\"'\"'RUN_URL'\"'\"']}\\\",\\n    ])\\n\\ndef main():\\n    bot_token = os.environ.get(\\\"BOT_TOKEN\\\", \\\"\\\")\\n    chat_id = os.environ.get(\\\"CHAT_ID\\\", \\\"\\\")\\n    if not bot_token or not chat_id:\\n        print(\\\"telegram alert missing required secret\\\", file=sys.stderr)\\n        return 2\\n    proxy_url = os.environ.get(\\\"FORGEJO_EGRESS_PROXY\\\", \\\"\\\").strip()\\n    payload = urllib.parse.urlencode(\\n        {\\n            \\\"chat_id\\\": chat_id,\\n            \\\"text\\\": build_message(),\\n            \\\"disable_web_page_preview\\\": \\\"true\\\",\\n        }\\n    ).encode(\\\"utf-8\\\")\\n    api_base = os.environ.get(\\\"API_BASE\\\", \\\"https://api.telegram.org\\\").rstrip(\\\"/\\\")\\n    request = urllib.request.Request(\\n        f\\\"{api_base}/bot{bot_token}/sendMessage\\\",\\n        data=payload,\\n        method=\\\"POST\\\",\\n    )\\n    opener = urllib.request.build_opener(\\n        urllib.request.ProxyHandler({\\\"https\\\": proxy_url})\\n        if proxy_url\\n        else urllib.request.ProxyHandler()\\n    )\\n    try:\\n        with opener.open(request, timeout=15) as response:\\n            response.read()\\n    except urllib.error.URLError as exc:\\n        print(f\\\"telegram alert failed ({type(exc).__name__})\\\", file=sys.stderr)\\n        return 1\\n    return 0\\n\\nraise SystemExit(main())\\n\")'"
   publish-mod:
     name: publish-${{ matrix.package }}
-    runs-on: docker
+    runs-on: deploy
     timeout-minutes: 20
-    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release
     needs: [build-image]
     strategy:
       fail-fast: false
@@ -63,53 +62,11 @@ jobs:
           - eco-telemetry
     steps:
       - uses: actions/checkout@v4
-      - name: Require the Forgejo package publisher
+      - name: Publish immutable mod package
         env:
           FORGEJO_PACKAGE_TOKEN: ${{ secrets.ECO_MOD_PACKAGE_TOKEN }}
-        run: |
-          set -eu
-          if [ -z "$FORGEJO_PACKAGE_TOKEN" ]; then
-            echo "FORGEJO_PACKAGE_TOKEN is required and must grant write:package" >&2
-            exit 1
-          fi
-      - name: Resolve docker host
-        run: |
-          set -euo pipefail
-          gw=$(node -e "const fs=require('fs');const l=(fs.readFileSync('/proc/net/route','utf8').split('\n').find(x=>x.split('\t')[1]==='00000000'))||'';const h=l.split(/\s+/)[2]||'';if(h){console.log(h.match(/../g).reverse().map(x=>parseInt(x,16)).join('.'))}" || true)
-          for h in "tcp://${gw}:2375" "${DOCKER_HOST:-}" tcp://localhost:2375 unix:///var/run/docker.sock; do
-            [ -z "$h" ] && continue
-            [ "$h" = "tcp://:2375" ] && continue
-            if docker -H "$h" info >/dev/null 2>&1; then
-              echo "docker daemon reachable at $h"
-              echo "DOCKER_HOST=$h" >> "$GITHUB_ENV"
-              exit 0
-            fi
-            echo "no docker daemon at $h"
-          done
-          echo "no reachable docker daemon" >&2
-          exit 1
-      - name: Extract packages from application image
-        run: |
-          set -euo pipefail
-          IMAGE=192.168.0.194:30500/coilysiren-eco-app:${{ github.sha }}
-          docker pull "$IMAGE"
-          mkdir -p .build/mod-packages
-          container_id=$(docker create "$IMAGE")
-          cleanup() { docker rm -f "$container_id" >/dev/null 2>&1 || true; }
-          trap cleanup EXIT
-          docker cp "$container_id:/mod-packages/." .build/mod-packages/
-          cleanup
-          trap - EXIT
-          python3 -m json.tool .build/mod-packages/manifest.json >/dev/null
-      - name: Publish ${{ matrix.package }}
-        env:
-          FORGEJO_PACKAGE_URL: ${{ github.server_url }}
-          FORGEJO_PACKAGE_OWNER: coilyco-gaming
-          FORGEJO_PACKAGE_USER: coilyco-ops
-          FORGEJO_PACKAGE_TOKEN: ${{ secrets.ECO_MOD_PACKAGE_TOKEN }}
-          MOD_PACKAGE_DIR: .build/mod-packages
           MOD_PACKAGE_NAME: ${{ matrix.package }}
-        run: ward exec publish-mod-packages
+        run: bash scripts/publish-mod-from-image.sh
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}
         continue-on-error: true
@@ -157,9 +114,8 @@ jobs:
           API_BASE: https://api.telegram.org
         run: "python3 -c 'exec(\"import os\\nimport sys\\nimport urllib.error\\nimport urllib.parse\\nimport urllib.request\\n\\ndef build_message():\\n    return \\\"\\\\n\\\".join([\\n        \\\"CI failed on main\\\",\\n        f\\\"repo: {os.environ['\"'\"'REPO'\"'\"']}\\\",\\n        f\\\"workflow: {os.environ['\"'\"'WORKFLOW'\"'\"']}\\\",\\n        f\\\"job: {os.environ['\"'\"'JOB'\"'\"']}\\\",\\n        f\\\"ref: {os.environ['\"'\"'REF'\"'\"']}\\\",\\n        f\\\"sha: {os.environ['\"'\"'SHA'\"'\"']}\\\",\\n        f\\\"run: {os.environ['\"'\"'RUN_URL'\"'\"']}\\\",\\n    ])\\n\\ndef main():\\n    bot_token = os.environ.get(\\\"BOT_TOKEN\\\", \\\"\\\")\\n    chat_id = os.environ.get(\\\"CHAT_ID\\\", \\\"\\\")\\n    if not bot_token or not chat_id:\\n        print(\\\"telegram alert missing required secret\\\", file=sys.stderr)\\n        return 2\\n    proxy_url = os.environ.get(\\\"FORGEJO_EGRESS_PROXY\\\", \\\"\\\").strip()\\n    payload = urllib.parse.urlencode(\\n        {\\n            \\\"chat_id\\\": chat_id,\\n            \\\"text\\\": build_message(),\\n            \\\"disable_web_page_preview\\\": \\\"true\\\",\\n        }\\n    ).encode(\\\"utf-8\\\")\\n    api_base = os.environ.get(\\\"API_BASE\\\", \\\"https://api.telegram.org\\\").rstrip(\\\"/\\\")\\n    request = urllib.request.Request(\\n        f\\\"{api_base}/bot{bot_token}/sendMessage\\\",\\n        data=payload,\\n        method=\\\"POST\\\",\\n    )\\n    opener = urllib.request.build_opener(\\n        urllib.request.ProxyHandler({\\\"https\\\": proxy_url})\\n        if proxy_url\\n        else urllib.request.ProxyHandler()\\n    )\\n    try:\\n        with opener.open(request, timeout=15) as response:\\n            response.read()\\n    except urllib.error.URLError as exc:\\n        print(f\\\"telegram alert failed ({type(exc).__name__})\\\", file=sys.stderr)\\n        return 1\\n    return 0\\n\\nraise SystemExit(main())\\n\")'"
   build-image:
-    runs-on: docker
+    runs-on: deploy
     timeout-minutes: 30
-    container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release
     # The Docker build compiles every real Eco mod in the pinned AOS .NET tier,
     # packages install-ready ZIPs, and copies those exact bytes into the final
     # app image. The per-mod publisher jobs pull this exact image and promote
@@ -167,47 +123,8 @@ jobs:
     needs: [test, frontend]
     steps:
       - uses: actions/checkout@v4
-      # The DinD sidecar shares the runner pod's netns and listens on :2375
-      # there, but the job container sits on a separate per-workflow docker
-      # bridge - so the inherited DOCKER_HOST=tcp://localhost:2375 points at
-      # the job container's own loopback, not dockerd. dockerd is reachable at
-      # the job container's default-route gateway (the pod netns). Probe
-      # candidates and pin the first that answers. See coilysiren/backend#26.
-      - name: Resolve docker host
-        run: |
-          set -euo pipefail
-          gw=$(node -e "const fs=require('fs');const l=(fs.readFileSync('/proc/net/route','utf8').split('\n').find(x=>x.split('\t')[1]==='00000000'))||'';const h=l.split(/\s+/)[2]||'';if(h){console.log(h.match(/../g).reverse().map(x=>parseInt(x,16)).join('.'))}" || true)
-          for h in "tcp://${gw}:2375" "${DOCKER_HOST:-}" tcp://localhost:2375 unix:///var/run/docker.sock; do
-            [ -z "$h" ] && continue
-            [ "$h" = "tcp://:2375" ] && continue
-            if docker -H "$h" info >/dev/null 2>&1; then
-              echo "docker daemon reachable at $h"
-              echo "DOCKER_HOST=$h" >> "$GITHUB_ENV"
-              exit 0
-            fi
-            echo "no docker daemon at $h"
-          done
-          echo "no reachable docker daemon" >&2
-          exit 1
-      # Build the image once and push it to the in-cluster registry. The DinD
-      # sidecar carries --insecure-registry=192.168.0.194:30500, so the
-      # plain-http push to the NodePort registry round-trips. No tailnet join,
-      # no GHCR, no docker-save sideload. See coilysiren/infrastructure#168, #171.
-      # Use the legacy builder: the static docker CLI ships no buildx plugin,
-      # so BuildKit (--progress, inline cache) is unavailable. A plain build
-      # against the daemon is enough for this single image.
-      - name: Build and push application image
-        run: |
-          set -euo pipefail
-          : "${FORGEJO_EGRESS_PROXY:?runner must provide FORGEJO_EGRESS_PROXY}"
-          IMAGE=192.168.0.194:30500/coilysiren-eco-app:${{ github.sha }}
-          docker build \
-            --build-arg HTTP_PROXY="$FORGEJO_EGRESS_PROXY" \
-            --build-arg HTTPS_PROXY="$FORGEJO_EGRESS_PROXY" \
-            --build-arg MOD_SOURCE_REVISION=${{ github.sha }} \
-            -t "$IMAGE" \
-            .
-          docker push "$IMAGE"
+      - name: Publish immutable application image
+        run: bash scripts/publish-image.sh
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}
         continue-on-error: true
