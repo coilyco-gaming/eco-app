@@ -89,7 +89,10 @@ def _write_archive(project: ModProject, archive: Path) -> None:
     if not primary_dll.is_file():
         raise ValueError(f"{project.project}: build output is missing {primary_dll}")
 
-    files = sorted(path for path in build_output.rglob("*") if path.is_file())
+    files = sorted(
+        (path for path in build_output.rglob("*") if path.is_file()),
+        key=lambda path: path.relative_to(build_output).as_posix(),
+    )
     with zipfile.ZipFile(
         archive,
         mode="w",
