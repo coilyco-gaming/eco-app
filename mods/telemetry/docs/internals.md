@@ -11,7 +11,7 @@ commas are tolerated.
 - `OtlpEndpoint` - fallback endpoint for any signal without its own override. Empty falls back to the console exporter.
 - `OtlpProtocol` - `Grpc` or `HttpProtobuf`. Defaults to `HttpProtobuf` since most managed backends accept it.
 - `OtlpHeaders` - W3C-style `key1=val1,key2=val2`. Auth tokens go here.
-- `OtlpLogsEndpoint` / `OtlpMetricsEndpoint` / `OtlpTracesEndpoint` - per-signal overrides. Empty falls back to `OtlpEndpoint`. Common split: Sentry for logs, VictoriaMetrics for metrics, Tempo/Jaeger for traces.
+- `OtlpLogsEndpoint` / `OtlpMetricsEndpoint` / `OtlpTracesEndpoint` - per-signal overrides. Empty falls back to `OtlpEndpoint`. A common split sends logs and traces to SigNoz and metrics to VictoriaMetrics.
 - `EmitConsoleAlongsideOtlp` - when an OTLP metrics endpoint is set, also attach a console exporter so each export tick shows in the host log. Diagnostic only, off by default.
 - `SlowHandlerThresholdMs` - handlers timed by `TraceSurface.TrackHandler` only emit a span when they take at least this long. Default 100ms. Applies once traces are enabled.
 - `FirstChanceExceptionsEnabled` - subscribe to `AppDomain.FirstChanceException`, which catches every throw including caught ones. High-volume on a busy server, off by default.

@@ -12,12 +12,12 @@
   "OtlpHeaders": "",
 
   // Per-signal endpoints. Use these when logs and metrics route to different backends
-  // (e.g. logs to Sentry, metrics to VictoriaMetrics). Empty means "fall back to OtlpEndpoint above".
+  // (e.g. logs to SigNoz, metrics to VictoriaMetrics). Empty means "fall back to OtlpEndpoint above".
   //
-  // Sentry logs example:
-  //   "OtlpLogsEndpoint": "https://o<org-id>.ingest.us.sentry.io/api/<project-id>/otlp/v1/logs",
+  // SigNoz logs example:
+  //   "OtlpLogsEndpoint": "http://signoz-otel-collector.observability.svc:4318",
   //   "OtlpLogsProtocol": "HttpProtobuf",
-  //   "OtlpLogsHeaders": "x-sentry-auth=Sentry sentry_key=<dsn-public-key>",
+  //   "OtlpLogsHeaders": "",
   //
   // VictoriaMetrics example (no auth, native OTLP ingest):
   //   "OtlpMetricsEndpoint": "http://<vmsingle-host>:8428/opentelemetry/api/v1/push",

@@ -58,7 +58,7 @@ from .server import (
     fetch_eco_info,
     to_payload,
 )
-from .telemetry import init_sentry
+from .telemetry import init_telemetry, instrument_asgi
 
 if TYPE_CHECKING:
     from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -285,7 +285,7 @@ async def preview_user_json(request: Request) -> JSONResponse:
 
 
 def create_app() -> Starlette:
-    init_sentry()
+    init_telemetry()
     mcp_server = build_server()
     # stateless=True: every request gets a fresh transport. Fits the tool shape
     # — each call is a one-shot /info fetch, no long-lived session state.
@@ -815,7 +815,7 @@ def create_app() -> Starlette:
     if admin_enabled:
         inner.add_middleware(NormalizeAdminPath)
     inner.add_middleware(FrameAncestorsCSP)
-    return inner
+    return instrument_asgi(inner)
 
 
 app = create_app()

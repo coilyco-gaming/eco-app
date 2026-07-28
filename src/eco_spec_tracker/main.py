@@ -13,12 +13,12 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from eco_mcp_app.telemetry import init_sentry
+from eco_mcp_app.telemetry import init_telemetry
 from eco_spec_tracker import mock_data, upstream
 
 # Shared idempotent init from eco_mcp_app — in the fused process both
 # entrypoints call it; whichever runs first wins, the rest are no-ops.
-init_sentry()
+init_telemetry()
 
 app = FastAPI(title="eco-jobs-api", version="0.2.0")
 

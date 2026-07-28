@@ -13,7 +13,7 @@ Three pieces: a C# Eco mod exposing a read-only HTTP endpoint of every player's 
 - **Iframe embedding** - CSP `frame-ancestors` allows `coilysiren.me` to embed; the header now ships site-wide from `eco_mcp_app.http_app` (`FrameAncestorsCSP`).
 - **Mock-data fallback** - `UPSTREAM_URL` unset = canned data from `mock_data.py`, flagged via `/v1/meta`.
 - **Upstream mod fetch** - `UPSTREAM_URL` set = `upstream.py` calls `/api/v1/skills` with `UPSTREAM_API_KEY` as `X-API-Key`, 5s timeout, no fallback on a dead endpoint.
-- **Sentry telemetry** - `SENTRY_DSN`-gated init. No-op when unset.
+- **OpenTelemetry exception tracing** - the fused ASGI process records uncaught request exceptions for SigNoz.
 
 ## C# Eco mod (`EcoJobsTracker.dll`)
 
@@ -31,7 +31,7 @@ Three pieces: a C# Eco mod exposing a read-only HTTP endpoint of every player's 
 ## Deploy and ops
 
 - **Canonical deploy reference for the homelab** - `coilyco-bridge/deploy/services/eco-app` owns manifests and rollout. This repo owns the application image and Ward development surface.
-- **k3s + ExternalSecrets** - Pulls `SENTRY_DSN` + `UPSTREAM_API_KEY` from AWS SSM via ClusterSecretStore.
+- **k3s + ExternalSecrets** - Pulls `UPSTREAM_API_KEY` from AWS SSM via ClusterSecretStore. OTLP exports over the private network to SigNoz.
 - **Image publish** - Builds + pushes to `ghcr.io/coilysiren/eco-spec-tracker/...`, git-SHA tagged.
 - **Tailscale + Traefik + cert-manager** - Inherited from `backend` template.
 - **Mod package path** - `ward exec package-mods` builds deterministic install-ready ZIPs with the `Mods/EcoJobsTracker/` prefix. `ward exec publish-mod-packages` publishes the immutable package.
@@ -47,7 +47,7 @@ Three pieces: a C# Eco mod exposing a read-only HTTP endpoint of every player's 
 
 ## Naming-debt note
 
-Public name is `eco-jobs-tracker`. Internals still use `eco-spec-tracker` (k8s, package, image, SSM, Sentry). Rename deferred. See README.
+Public name is `eco-jobs-tracker`. Internals still use `eco-spec-tracker` in package and route names. Rename deferred. See README.
 
 ## See also
 

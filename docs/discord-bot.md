@@ -110,7 +110,7 @@ The HTTP client sets bounded connect and response timeouts and reports partial u
 
 The worker emits structured logs for startup, gateway readiness, command name, outcome class, total duration, upstream duration, and Discord request correlation. Logs exclude command option values that can identify a player unless the existing public product already exposes that value.
 
-The worker initializes the repo's existing Sentry integration when `SENTRY_DSN` is present. The worker records unexpected failures after redaction and still resolves the interaction with an error embed.
+The worker initializes the repo's OpenTelemetry exporter when an OTLP endpoint is present. The worker records unexpected failures after redaction and still resolves the interaction with an error embed.
 
 The deployment uses one worker replica initially. The implementation does not add sharding until Discord scale requires it. The worker handles termination signals and closes the Discord and HTTP clients cleanly so a rollout does not strand sockets.
 

@@ -7,28 +7,32 @@ import os
 import sys
 
 from .server import serve
-from .telemetry import init_sentry
+from .telemetry import init_telemetry, record_exception
 
 
 def main() -> None:
-    init_sentry()
+    init_telemetry()
     # Optional RPC tee for debugging which host is talking and what it advertises.
     # Set ECO_MCP_APP_RPC_LOG to a file path; outbound JSON-RPC is appended there.
     log_path = os.environ.get("ECO_MCP_APP_RPC_LOG")
-    if log_path:
-        # Only tee outbound; stdin handling by the mcp SDK uses its own reader.
-        orig_write = sys.stdout.buffer.write
-        with open(log_path, "ab") as log:
+    try:
+        if log_path:
+            # Only tee outbound; stdin handling by the mcp SDK uses its own reader.
+            orig_write = sys.stdout.buffer.write
+            with open(log_path, "ab") as log:
 
-            def tee(data: bytes) -> int:
-                log.write(data)
-                log.flush()
-                return orig_write(data)
+                def tee(data: bytes) -> int:
+                    log.write(data)
+                    log.flush()
+                    return orig_write(data)
 
-            sys.stdout.buffer.write = tee  # type: ignore[method-assign]
+                sys.stdout.buffer.write = tee  # type: ignore[method-assign]
+                asyncio.run(serve())
+        else:
             asyncio.run(serve())
-    else:
-        asyncio.run(serve())
+    except Exception as exc:
+        record_exception(exc, "eco.mcp.stdio")
+        raise
 
 
 if __name__ == "__main__":

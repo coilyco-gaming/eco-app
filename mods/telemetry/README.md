@@ -1,6 +1,6 @@
 # EcoTelemetry
 
-OpenTelemetry-backed observability for [Eco](https://play.eco) game servers. Exports exceptions, runtime metrics, simulation perf, and traces over OTLP so server admins can point them at Sentry, Grafana, Datadog, Honeycomb, or any other OTLP-compatible backend.
+OpenTelemetry-backed observability for [Eco](https://play.eco) game servers. Exports exceptions, runtime metrics, simulation perf, and traces over OTLP so server admins can point them at SigNoz, Grafana, Datadog, Honeycomb, or any other OTLP-compatible backend.
 
 Eco's built-in stats system is designed for in-game economic and ecological reporting. It does not surface SRE-shaped signals: process health, exception rates, simulation tick latency, or web-request latency. EcoTelemetry fills that gap.
 
@@ -19,7 +19,7 @@ Traces are stubbed.
 2. Extract into your Eco server's `Mods/` directory so the result looks like `Mods/EcoTelemetry/EcoTelemetry.dll`.
 3. Copy `Configs/EcoTelemetry.example.json` to `Configs/EcoTelemetry.json` and edit:
    - `OtlpEndpoint`: your collector's OTLP HTTP or gRPC endpoint
-   - `OtlpHeaders`: any auth headers (e.g. `x-honeycomb-team=...` or Sentry's auth header)
+   - `OtlpHeaders`: any auth headers required by the selected OTLP backend
    - `ServiceName`, `ResourceAttributes`: how this server identifies itself
    - per-signal toggles: `EnableLogs`, `EnableMetrics`, `EnableTraces`
 4. Restart the Eco server.
@@ -38,12 +38,11 @@ The build pulls `Eco.ReferenceAssemblies` from NuGet for type-checking. The DLL 
 
 Each signal (logs, metrics) can target its own OTLP endpoint via the `OtlpLogsEndpoint` / `OtlpMetricsEndpoint` overrides; anything left blank falls back to the top-level `OtlpEndpoint`. Empty everywhere means console exporter (handy for first-boot smoke test).
 
-### Sentry (logs)
+### SigNoz
 
-Sentry's OTLP endpoint is documented at <https://docs.sentry.io/platforms/javascript/install/cdn/#using-opentelemetry>:
-
-- `OtlpLogsEndpoint`: `https://o<org>.ingest.sentry.io/api/<project>/otlp/v1/logs`
-- `OtlpLogsHeaders`: `x-sentry-auth=Sentry sentry_key=<dsn-public-key>`
+Point `OtlpEndpoint` at the SigNoz collector. The collector accepts standard
+OTLP and turns recorded exception span events into entries in the Exceptions
+pane.
 
 ### VictoriaMetrics (metrics)
 

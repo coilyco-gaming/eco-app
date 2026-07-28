@@ -29,7 +29,7 @@ import httpx
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 
-from eco_mcp_app.telemetry import init_sentry
+from eco_mcp_app.telemetry import init_telemetry
 
 ECO_REPLAY_DB = os.environ.get("ECO_REPLAY_DB")
 ECO_REPLAY_UPSTREAM_URL = os.environ.get("ECO_REPLAY_UPSTREAM_URL")
@@ -37,7 +37,7 @@ UPSTREAM_API_KEY = os.environ.get("UPSTREAM_API_KEY")
 
 # Shared idempotent init from eco_mcp_app — in the fused process every
 # entrypoint calls it; whichever runs first wins, the rest are no-ops.
-init_sentry()
+init_telemetry()
 
 app = FastAPI(title="eco-replay-api", version="0.2.0")
 

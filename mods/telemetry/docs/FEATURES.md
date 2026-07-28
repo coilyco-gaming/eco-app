@@ -6,7 +6,7 @@ Last refreshed: 2026-07-02, against v0.1.0.
 
 ## What this repo is
 
-EcoTelemetry is an OpenTelemetry-backed observability mod for Eco game servers. It bridges Eco's built-in economic and ecological stats with SRE-shaped operational signals (logs, metrics, runtime health, exceptions) and exports them over OTLP to any compatible backend (Sentry, Grafana, VictoriaMetrics, Honeycomb, Datadog, others). Ships as a precompiled DLL that drops into the server's `Mods/` directory and reads JSON config from `Configs/`.
+EcoTelemetry is an OpenTelemetry-backed observability mod for Eco game servers. It bridges Eco's built-in economic and ecological stats with SRE-shaped operational signals (logs, metrics, runtime health, exceptions) and exports them over OTLP to any compatible backend (SigNoz, Grafana, VictoriaMetrics, Honeycomb, Datadog, others). Ships as a precompiled DLL that drops into the server's `Mods/` directory and reads JSON config from `Configs/`.
 
 ## Headline features
 
@@ -24,7 +24,7 @@ EcoTelemetry is an OpenTelemetry-backed observability mod for Eco game servers. 
 
 ### Configuration and routing
 
-- **Per-signal endpoint overrides** - Logs can route to Sentry, metrics to VictoriaMetrics, and so on. Each signal independently configurable with its own OTLP endpoint, protocol (gRPC or HttpProtobuf), and auth headers.
+- **Per-signal endpoint overrides** - Logs can route to SigNoz, metrics to VictoriaMetrics, and so on. Each signal independently configurable with its own OTLP endpoint, protocol (gRPC or HttpProtobuf), and auth headers.
 - **Fallback endpoint logic** - Per-signal endpoint, protocol, and headers fall back to top-level defaults. Empty everywhere triggers a console-only exporter for local validation.
 - **JSON config file** - `Configs/EcoTelemetry.json`, loaded at plugin init. Comments and trailing commas supported. Sensible defaults plus optional resource attributes for service metadata.
 - **Toggleable signals** - Feature flags `EnableLogs`, `EnableMetrics`, `EnableTraces`. Metrics export interval configurable (default 15s); slow-handler span threshold configurable via `SlowHandlerThresholdMs` (default 100ms). Traces route through the same per-signal endpoint/protocol/header override scheme as logs and metrics.

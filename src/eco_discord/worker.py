@@ -6,7 +6,7 @@ import logging
 import os
 from typing import Any
 
-from eco_mcp_app.telemetry import init_sentry
+from eco_mcp_app.telemetry import init_telemetry, record_exception
 
 from .client import EcoAppClient
 from .commands import CommandService
@@ -69,10 +69,14 @@ def build_bot() -> Any:
 
 def main() -> None:
     logging.basicConfig(level=os.getenv("ECO_DISCORD_LOG_LEVEL", "INFO"))
-    init_sentry()
+    init_telemetry()
     bot = build_bot()
     logging.getLogger(__name__).info("discord_worker_starting")
-    bot.run(_required("ECO_DISCORD_TOKEN"))  # type: ignore[attr-defined]
+    try:
+        bot.run(_required("ECO_DISCORD_TOKEN"))  # type: ignore[attr-defined]
+    except Exception as exc:
+        record_exception(exc, "eco.discord.worker")
+        raise
 
 
 if __name__ == "__main__":

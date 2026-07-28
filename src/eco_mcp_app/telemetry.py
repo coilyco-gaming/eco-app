@@ -1,61 +1,78 @@
-"""Sentry SDK init for eco-mcp-app.
+"""OpenTelemetry setup for eco-app.
 
-Mirrors the pattern in coilysiren/backend's telemetry.py. Called at process
-startup from both the stdio entrypoint (__main__.py) and the ASGI entrypoint
-(http_app.py) so errors get captured regardless of transport.
-
-When SENTRY_DSN is set, initializes a real client with Starlette + FastAPI
-integrations. Otherwise falls back to `sentry_sdk.init()` with no DSN, which
-is a no-op that swallows captures silently. This keeps local dev quiet and
-the production pod wired in via the ExternalSecret in deploy/main.yml.
+The deploy surface points private workloads at SigNoz's OTLP/HTTP NodePort.
+ASGI instrumentation records uncaught exceptions as span events and marks the
+request span as an error, which feeds SigNoz Exceptions without a second error
+tracking SDK.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+from typing import Any
 
-import sentry_sdk
-import sentry_sdk.integrations.fastapi as sentry_fastapi
-import sentry_sdk.integrations.logging as sentry_logging
-import sentry_sdk.integrations.starlette as sentry_starlette
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.trace import Status, StatusCode
 
 _log = logging.getLogger(__name__)
-
 _initialized = False
+_enabled = False
 
 
-def init_sentry() -> None:
-    """Idempotent. Safe to call from multiple entry points in the same process."""
-    global _initialized
+def init_telemetry() -> bool:
+    """Configure OTLP tracing once and report whether export is enabled."""
+    global _enabled, _initialized
     if _initialized:
-        return
-    dsn = os.getenv("SENTRY_DSN")
-    if dsn:
-        try:
-            sentry_sdk.init(
-                dsn=dsn,
-                enable_logs=True,
-                integrations=[
-                    sentry_starlette.StarletteIntegration(),
-                    sentry_fastapi.FastApiIntegration(),
-                    sentry_logging.LoggingIntegration(),
-                ],
+        return _enabled
+
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+    service_name = os.getenv("OTEL_SERVICE_NAME", "eco-app").strip() or "eco-app"
+    if not endpoint:
+        _initialized = True
+        return False
+
+    try:
+        provider = TracerProvider(
+            resource=Resource.create(
+                {
+                    "service.name": service_name,
+                    "deployment.environment": os.getenv("OTEL_DEPLOYMENT_ENVIRONMENT", "homelab"),
+                }
             )
-        except Exception:
-            # A truthy-but-malformed SENTRY_DSN (e.g. missing scheme) makes
-            # sentry_sdk raise BadDsn. Telemetry misconfig must never crash the
-            # service, so log-and-skip exactly as an unset DSN already does,
-            # rather than crash-looping the pod at boot. See eco-app#43.
-            #
-            # Pass dsn="" (empty string), NOT a bare init() or dsn=None. Both of
-            # those leave the resolved dsn as None, and sentry_sdk._get_options
-            # then re-reads SENTRY_DSN from the environment (client.py:312) - the
-            # same bad value that just failed, raising BadDsn again. An explicit
-            # empty string is kept verbatim (not None), so no env re-read happens
-            # and the empty dsn disables the transport cleanly.
-            _log.warning("SENTRY_DSN is set but invalid; continuing without Sentry", exc_info=True)
-            sentry_sdk.init(dsn="")
+        )
+        exporter = OTLPSpanExporter(endpoint=f"{endpoint.rstrip('/')}/v1/traces")
+        provider.add_span_processor(BatchSpanProcessor(exporter))
+        trace.set_tracer_provider(provider)
+    except Exception:
+        _log.warning(
+            "OpenTelemetry initialization failed; continuing without trace export",
+            exc_info=True,
+        )
     else:
-        sentry_sdk.init()
+        _enabled = True
+
     _initialized = True
+    return _enabled
+
+
+def instrument_asgi(app: Any) -> Any:
+    """Add exception-recording ASGI instrumentation when OTLP is configured."""
+    if init_telemetry():
+        app.add_middleware(OpenTelemetryMiddleware)
+    return app
+
+
+def record_exception(exc: Exception, operation: str) -> None:
+    """Export a fatal non-ASGI exception as a short error span."""
+    if not init_telemetry():
+        return
+    tracer = trace.get_tracer("eco-app")
+    with tracer.start_as_current_span(operation) as span:
+        span.record_exception(exc)
+        span.set_status(Status(StatusCode.ERROR))

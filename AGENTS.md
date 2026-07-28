@@ -35,7 +35,7 @@ Route every dev command through the ward gate as `ward exec <verb>`. The canonic
 
 ## Safety
 
-Keep every artifact public-safe. Opaque ids, tokens, and sensitive hosts go in AWS SSM, never tracked files. `SENTRY_DSN` arrives via the deploy repo's ExternalSecret, never hardcoded.
+Keep every artifact public-safe. Opaque ids, tokens, and sensitive hosts go in AWS SSM, never tracked files. Telemetry endpoints stay in the deploy repo, never hardcoded in application source.
 
 ## Cross-repo contracts
 
