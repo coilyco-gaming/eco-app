@@ -22,7 +22,7 @@ from starlette.testclient import TestClient
 
 from eco_mcp_app import server as eco_server
 from eco_mcp_app.http_app import create_app
-from eco_mcp_app.server import DEFAULT_ECO_INFO_URL
+from eco_mcp_app.server import DEFAULT_ECO_INFO_URL, _format_markdown, to_payload
 from eco_replay import main as replay_main
 from eco_spec_tracker import upstream as jobs_upstream
 
@@ -180,6 +180,11 @@ def test_preview_json_returns_payload(client: TestClient) -> None:
     assert isinstance(body, dict)
     assert body["players"]["onlineNames"] == ["alice", "bob"]
     assert "<html" not in r.text.lower()
+
+
+def test_status_markdown_labels_game_speed() -> None:
+    markdown = _format_markdown(to_payload(_FAKE_INFO))
+    assert "game speed: Slow" in markdown
 
 
 @respx.mock

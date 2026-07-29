@@ -789,7 +789,8 @@ def _format_markdown(payload: dict[str, Any]) -> str:
         f"- World: {w['size']} · {w['plants']:,} plants · {w['animals']:,} animals"
         f" · {w['laws']} law{'s' if w['laws'] != 1 else ''}"
         f" · culture {w['totalCulture']:.1f}",
-        f"- Version: `{s.get('version', '?')}` · {c['collaboration']} · {c['gameSpeed']}",
+        f"- Version: `{s.get('version', '?')}` · {c['collaboration']}"
+        f" · game speed: {c['gameSpeed']}",
     ]
     if s.get("discord"):
         lines.append(f"- [Join Discord]({s['discord']})")
