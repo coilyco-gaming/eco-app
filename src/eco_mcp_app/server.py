@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
 from datetime import UTC, datetime
+from importlib.resources import files
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
@@ -16,6 +18,7 @@ from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
 from mcp.types import (
     CallToolResult,
+    Icon,
     TextContent,
     Tool,
     ToolAnnotations,
@@ -1344,13 +1347,42 @@ def _format_currency_markdown(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _eco_icon() -> Icon:
+    """The Eco planet mark, embedded as a self-contained data-URI icon.
+
+    Wired into the server's `initialize` response (`serverInfo.icons`) so clients
+    that render server icons - the claude.ai / ChatGPT connector tile - show the
+    Eco globe instead of a generic placeholder. Same shape as steam-ops'
+    `_steam_icon`: the asset is committed at `assets/eco-icon.png` (the planet
+    glyph from the official ECO wordmark, palette-compressed under 10KB for the
+    ChatGPT icon cap) and read at import time, base64'd into a `data:` URI rather
+    than served over HTTP so the icon rides inside the initialize payload itself.
+    """
+    png = files("eco_mcp_app.assets").joinpath("eco-icon.png").read_bytes()
+    encoded = base64.b64encode(png).decode("ascii")
+    return Icon.model_validate(
+        {
+            "src": f"data:image/png;base64,{encoded}",
+            "mimeType": "image/png",
+            "sizes": ["192x192"],
+        }
+    )
+
+
 def build_server() -> Server:
     """Construct the MCP Server with all handlers registered.
 
     Separated from `serve()` so it can be mounted in both the stdio transport
     (Claude Desktop) and the Streamable-HTTP transport (homelab FastAPI deploy).
+    The icon + website ride on the Server object because the Streamable-HTTP
+    path (StreamableHTTPSessionManager) derives its initialization options from
+    the Server itself, not from build_initialization_options below.
     """
-    server: Server = Server("eco-mcp-app")
+    server: Server = Server(
+        "eco-mcp-app",
+        website_url="https://eco-app.coilysiren.me",
+        icons=[_eco_icon()],
+    )
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
@@ -2813,6 +2845,9 @@ def build_initialization_options(server: Server) -> InitializationOptions:
             notification_options=NotificationOptions(),
             experimental_capabilities={},
         ),
+        # Stdio parity with the Server-object values the HTTP transport reads.
+        website_url="https://eco-app.coilysiren.me",
+        icons=[_eco_icon()],
     )
 
 
