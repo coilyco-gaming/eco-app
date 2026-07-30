@@ -32,6 +32,14 @@ Every task pulls the already-built image, extracts that directory, and publishes
 only its assigned manifest record. No publisher recompiles a mod or publishes a
 different copy.
 
+The repository-scoped publisher runner executes Docker through a separate
+daemon boundary. The publisher therefore copies the complete Actions checkout
+and extracted package directory into an ephemeral dev-base container through
+`docker cp`, then invokes `ward exec publish-mod-packages` from `/workspace`.
+It does not bind-mount runner-local paths that the Docker daemon cannot resolve,
+and it does not copy or reinterpret `.ward/ward.yaml` outside the repository
+checkout.
+
 ## Required CI policy
 
 The application image build is the required C# compile gate. It discovers every

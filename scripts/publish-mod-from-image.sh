@@ -27,10 +27,14 @@ fi
 image="${registry}/${image_name}:${sha}"
 docker_config="$(mktemp -d)"
 package_dir="$(mktemp -d)"
-container_id=""
+image_container_id=""
+publisher_container_id=""
 cleanup() {
-  if [ -n "${container_id}" ]; then
-    docker rm -f "${container_id}" >/dev/null 2>&1 || true
+  if [ -n "${image_container_id}" ]; then
+    docker rm -f "${image_container_id}" >/dev/null 2>&1 || true
+  fi
+  if [ -n "${publisher_container_id}" ]; then
+    docker rm -f "${publisher_container_id}" >/dev/null 2>&1 || true
   fi
   rm -rf "${docker_config}" "${package_dir}"
 }
@@ -42,10 +46,10 @@ printf '%s' "${REGISTRY_TOKEN}" \
   | docker login "${registry}" --username coilyco-ops --password-stdin
 docker pull "${image}"
 
-container_id="$(docker create "${image}")"
-docker cp "${container_id}:/mod-packages/." "${package_dir}/"
-docker rm -f "${container_id}" >/dev/null
-container_id=""
+image_container_id="$(docker create "${image}")"
+docker cp "${image_container_id}:/mod-packages/." "${package_dir}/"
+docker rm -f "${image_container_id}" >/dev/null
+image_container_id=""
 
 export FORGEJO_PACKAGE_URL="${GITHUB_SERVER_URL:-https://forgejo.coilysiren.me}"
 export FORGEJO_PACKAGE_OWNER="coilyco-gaming"
@@ -55,9 +59,7 @@ export HTTP_PROXY="${FORGEJO_EGRESS_PROXY:-}"
 export HTTPS_PROXY="${FORGEJO_EGRESS_PROXY:-}"
 
 repo_root="$(pwd -P)"
-docker run --rm \
-  --volume "${repo_root}:/workspace" \
-  --volume "${package_dir}:/packages:ro" \
+publisher_container_id="$(docker create \
   --workdir /workspace \
   --env FORGEJO_PACKAGE_URL \
   --env FORGEJO_PACKAGE_OWNER \
@@ -68,4 +70,18 @@ docker run --rm \
   --env HTTP_PROXY \
   --env HTTPS_PROXY \
   "${dev_image}" \
-  ward exec publish-mod-packages
+  ward exec publish-mod-packages)"
+
+# docker cp crosses the runner-to-daemon boundary through the Docker API.
+# Bind mounts cannot use the checkout and package paths from the Actions job
+# container because those paths do not exist in the publisher daemon.
+docker cp "${repo_root}/." "${publisher_container_id}:/workspace/"
+docker cp "${package_dir}" "${publisher_container_id}:/packages"
+docker start --attach "${publisher_container_id}"
+publisher_status="$(docker wait "${publisher_container_id}")"
+if [ "${publisher_status}" -ne 0 ]; then
+  echo "mod package publisher exited with status ${publisher_status}." >&2
+  exit "${publisher_status}"
+fi
+docker rm -f "${publisher_container_id}" >/dev/null
+publisher_container_id=""
