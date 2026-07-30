@@ -83,7 +83,9 @@ publisher runner's `REGISTRY_TOKEN`. Infrastructure injects that
 `write:package` credential from `/forgejo/coilyco-ops/registry-token`. The
 publisher reuses the same credential for its successful OCI login and the
 generic-package upload, so main publication does not depend on a second
-repository Actions secret that can drift stale.
+repository Actions secret that can drift stale. The generic-package container
+does not inherit `HTTP_PROXY` or `HTTPS_PROXY`; internal Forgejo registry and
+package traffic stays direct.
 
 The `build-image` job receives `FORGEJO_EGRESS_PROXY` from the infrastructure-
 owned Forgejo runner. CI passes that value only as Docker's predefined

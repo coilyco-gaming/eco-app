@@ -59,8 +59,6 @@ export FORGEJO_PACKAGE_USER="coilyco-ops"
 # secret cannot diverge from the credential already proven by docker login.
 export FORGEJO_PACKAGE_TOKEN="${REGISTRY_TOKEN}"
 export MOD_PACKAGE_DIR="/packages"
-export HTTP_PROXY="${FORGEJO_EGRESS_PROXY:-}"
-export HTTPS_PROXY="${FORGEJO_EGRESS_PROXY:-}"
 
 repo_root="$(pwd -P)"
 publisher_container_id="$(docker create \
@@ -71,8 +69,6 @@ publisher_container_id="$(docker create \
   --env FORGEJO_PACKAGE_TOKEN \
   --env MOD_PACKAGE_DIR \
   --env MOD_PACKAGE_NAME \
-  --env HTTP_PROXY \
-  --env HTTPS_PROXY \
   "${dev_image}" \
   ward exec publish-mod-packages)"
 

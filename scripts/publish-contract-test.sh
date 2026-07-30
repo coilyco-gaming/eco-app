@@ -89,6 +89,11 @@ if rg --fixed-strings --quiet -- "--volume" "${FAKE_DOCKER_LOG}"; then
   printf 'publisher contract must not bind-mount runner-local paths\n' >&2
   exit 1
 fi
+if rg --fixed-strings --quiet -- $'--env\tHTTP_PROXY' "${FAKE_DOCKER_LOG}" \
+  || rg --fixed-strings --quiet -- $'--env\tHTTPS_PROXY' "${FAKE_DOCKER_LOG}"; then
+  printf 'publisher contract must keep internal Forgejo traffic direct\n' >&2
+  exit 1
+fi
 
 set +e
 (
