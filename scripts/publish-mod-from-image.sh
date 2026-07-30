@@ -5,7 +5,7 @@ registry="forgejo.coilysiren.me"
 image_name="coilyco-gaming/eco-app"
 dev_image="${registry}/coilyco-flight-deck/agentic-os:release"
 
-for required in REGISTRY_TOKEN FORGEJO_PACKAGE_TOKEN MOD_PACKAGE_NAME; do
+for required in REGISTRY_TOKEN MOD_PACKAGE_NAME; do
   if [ -z "${!required:-}" ]; then
     echo "${required} is required for the trusted mod-package lane." >&2
     exit 1
@@ -54,6 +54,10 @@ image_container_id=""
 export FORGEJO_PACKAGE_URL="${GITHUB_SERVER_URL:-https://forgejo.coilysiren.me}"
 export FORGEJO_PACKAGE_OWNER="coilyco-gaming"
 export FORGEJO_PACKAGE_USER="coilyco-ops"
+# The trusted publisher runner injects one current write:package credential.
+# Reuse it for both OCI and generic packages so a stale repository Actions
+# secret cannot diverge from the credential already proven by docker login.
+export FORGEJO_PACKAGE_TOKEN="${REGISTRY_TOKEN}"
 export MOD_PACKAGE_DIR="/packages"
 export HTTP_PROXY="${FORGEJO_EGRESS_PROXY:-}"
 export HTTPS_PROXY="${FORGEJO_EGRESS_PROXY:-}"

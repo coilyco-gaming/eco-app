@@ -31,6 +31,10 @@ docker() {
     create)
       case " $* " in
         *" ward exec publish-mod-packages "*)
+          if [ "${FORGEJO_PACKAGE_TOKEN:-}" != "${REGISTRY_TOKEN:-}" ]; then
+            printf 'publisher did not reuse the trusted registry credential\n' >&2
+            return 1
+          fi
           printf 'publisher-container\n'
           ;;
         *)
@@ -54,7 +58,6 @@ export -f docker
 (
   cd "${repo_root}"
   REGISTRY_TOKEN="test-registry-token" \
-    FORGEJO_PACKAGE_TOKEN="test-package-token" \
     MOD_PACKAGE_NAME="eco-replay" \
     GITHUB_SHA="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
     GITHUB_SERVER_URL="https://forgejo.invalid" \
@@ -91,7 +94,6 @@ set +e
 (
   cd "${repo_root}"
   REGISTRY_TOKEN="test-registry-token" \
-    FORGEJO_PACKAGE_TOKEN="test-package-token" \
     MOD_PACKAGE_NAME="eco-replay" \
     GITHUB_SHA="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
     GITHUB_SERVER_URL="https://forgejo.invalid" \
@@ -107,4 +109,4 @@ if [ "${publisher_failure_status}" -ne 17 ]; then
   exit 1
 fi
 
-printf 'publisher repository-context contract passed\n'
+printf 'publisher repository and credential contract passed\n'

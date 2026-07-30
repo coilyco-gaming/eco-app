@@ -64,7 +64,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Publish immutable mod package
         env:
-          FORGEJO_PACKAGE_TOKEN: ${{ secrets.ECO_MOD_PACKAGE_TOKEN }}
           MOD_PACKAGE_NAME: ${{ matrix.package }}
         run: bash scripts/publish-mod-from-image.sh
       - name: Alert Telegram on main failure

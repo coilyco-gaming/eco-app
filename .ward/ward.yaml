@@ -67,7 +67,7 @@ commands:
     description: Build the eco-app docker image locally. Native args - [--name NAME] [--revision REVISION].
   check-publish:
     run: bash scripts/publish-contract-test.sh
-    description: Validate publisher syntax and the trusted mod publisher's repository-context handoff.
+    description: Validate publisher syntax plus the trusted mod publisher's repository and credential handoff.
   build-mods:
     run: sh scripts/mods-gate.sh build-mods
     description: Discover, restore, and build every real Eco mod project with per-project timings.

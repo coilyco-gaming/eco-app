@@ -78,10 +78,12 @@ commit is idempotent. The publisher accepts an existing file only when its
 checksum matches the local file.
 
 Forgejo owns generic packages at the organization level. CI publishes under
-`coilyco-gaming` and authenticates as `coilyco-ops` with the
-`ECO_MOD_PACKAGE_TOKEN` Actions secret. The workflow exposes it to the
-publisher as `FORGEJO_PACKAGE_TOKEN`; the token needs only the `write:package`
-scope.
+`coilyco-gaming` and authenticates as `coilyco-ops` with the trusted
+publisher runner's `REGISTRY_TOKEN`. Infrastructure injects that
+`write:package` credential from `/forgejo/coilyco-ops/registry-token`. The
+publisher reuses the same credential for its successful OCI login and the
+generic-package upload, so main publication does not depend on a second
+repository Actions secret that can drift stale.
 
 The `build-image` job receives `FORGEJO_EGRESS_PROXY` from the infrastructure-
 owned Forgejo runner. CI passes that value only as Docker's predefined
