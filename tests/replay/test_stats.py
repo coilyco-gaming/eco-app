@@ -9,6 +9,9 @@ route consuming these endpoints.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import httpx
 import pytest
 import respx
@@ -50,9 +53,33 @@ def test_stats_mock_fallback(client: TestClient) -> None:
     assert r.json() == {"ready": True, "total": len(main._MOCK_EVENTS)}
 
 
+async def test_jsonl_direct_file_filters_limits_and_skips_partial_tail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "EcoReplay.jsonl"
+    rows = [
+        {"id": 1, "unixTime": 100, "gameTime": 10, "type": "Craft", "citizen": "Ava", "body": "{}"},
+        {"id": 2, "unixTime": 200, "gameTime": 20, "type": "Vote", "citizen": "Bo", "body": "{}"},
+        {"id": 3, "unixTime": 300, "gameTime": 30, "type": "Craft", "citizen": "Ava", "body": "{}"},
+    ]
+    path.write_text(
+        "\n".join(json.dumps(row) for row in rows) + '\nmalformed\n{"id":4,"type":"Craft"',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(main, "ECO_REPLAY_FILE", str(path))
+    monkeypatch.setattr(main, "ECO_REPLAY_UPSTREAM_URL", None)
+
+    events = await main.fetch_events(citizen="Ava", type_="Craft", limit=1)
+    stats = await main.fetch_stats()
+
+    assert [event["id"] for event in events] == [3]
+    assert stats == {"ready": True, "total": 3}
+
+
 @respx.mock
 async def test_stats_proxies_upstream(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(main, "ECO_REPLAY_DB", None)
+    monkeypatch.setattr(main, "ECO_REPLAY_FILE", None)
     monkeypatch.setattr(main, "ECO_REPLAY_UPSTREAM_URL", "http://fake/api/v1/events")
     monkeypatch.setattr(main, "UPSTREAM_API_KEY", "secret")
     route = respx.get("http://fake/api/v1/events/stats").mock(
@@ -68,7 +95,7 @@ async def test_stats_proxies_upstream(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @respx.mock
 async def test_events_proxies_dedicated_upstream(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(main, "ECO_REPLAY_DB", None)
+    monkeypatch.setattr(main, "ECO_REPLAY_FILE", None)
     monkeypatch.setattr(main, "ECO_REPLAY_UPSTREAM_URL", "http://fake/api/v1/events")
     route = respx.get("http://fake/api/v1/events").mock(
         return_value=httpx.Response(200, json={"events": [{"id": 42, "type": "Login"}]})
@@ -90,7 +117,7 @@ def test_upstream_http_errors_are_structured_unavailable(
     route_path: str,
     status_code: int,
 ) -> None:
-    monkeypatch.setattr(main, "ECO_REPLAY_DB", None)
+    monkeypatch.setattr(main, "ECO_REPLAY_FILE", None)
     monkeypatch.setattr(main, "ECO_REPLAY_UPSTREAM_URL", "http://fake/api/v1/events")
     suffix = "/stats" if route_path.endswith("stats") else ""
     respx.get(f"http://fake/api/v1/events{suffix}").mock(return_value=httpx.Response(status_code))
@@ -113,7 +140,7 @@ def test_upstream_timeouts_are_structured_unavailable(
     monkeypatch: pytest.MonkeyPatch,
     route_path: str,
 ) -> None:
-    monkeypatch.setattr(main, "ECO_REPLAY_DB", None)
+    monkeypatch.setattr(main, "ECO_REPLAY_FILE", None)
     monkeypatch.setattr(main, "ECO_REPLAY_UPSTREAM_URL", "http://fake/api/v1/events")
     suffix = "/stats" if route_path.endswith("stats") else ""
     respx.get(f"http://fake/api/v1/events{suffix}").mock(side_effect=httpx.ReadTimeout("slow"))
@@ -131,7 +158,7 @@ def test_malformed_upstream_responses_are_structured_unavailable(
     monkeypatch: pytest.MonkeyPatch,
     route_path: str,
 ) -> None:
-    monkeypatch.setattr(main, "ECO_REPLAY_DB", None)
+    monkeypatch.setattr(main, "ECO_REPLAY_FILE", None)
     monkeypatch.setattr(main, "ECO_REPLAY_UPSTREAM_URL", "http://fake/api/v1/events")
     suffix = "/stats" if route_path.endswith("stats") else ""
     respx.get(f"http://fake/api/v1/events{suffix}").mock(

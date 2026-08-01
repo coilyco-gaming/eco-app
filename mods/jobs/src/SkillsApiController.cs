@@ -1,3 +1,4 @@
+using Eco.Gameplay.Civics.Demographics;
 using Eco.Gameplay.Players;
 using Eco.Shared.Time;
 using Microsoft.AspNetCore.Mvc;
@@ -56,7 +57,11 @@ public class SkillsApiController : ControllerBase
                 }
             }
 
-            return new PlayerSkillsDto(user.Name, lastSeen, specialties);
+            var roles = new List<string>(2);
+            if (DemographicManager.Active.UserSet.Contains(user)) roles.Add("Active");
+            if (DemographicManager.LongTerm.UserSet.Contains(user)) roles.Add("Long Term");
+
+            return new PlayerSkillsDto(user.Name, lastSeen, roles.ToArray(), specialties);
         });
     }
 }

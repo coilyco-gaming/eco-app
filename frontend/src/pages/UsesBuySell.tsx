@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
+import EcoRichText from "../components/EcoRichText"
 import ItemLink from "../components/ItemLink"
 import Layout from "../components/Layout"
 import {
@@ -58,8 +59,8 @@ function OfferTable({
       <tbody>
         {rows.slice(0, OFFER_ROWS).map((o, i) => (
           <tr key={`${o.storeKey}-${o.side}-${i}`} data-testid="offer-row">
-            <td>{o.store}</td>
-            <td>{o.owner || "—"}</td>
+            <td><EcoRichText text={o.store} /></td>
+            <td>{o.owner ? <EcoRichText text={o.owner} /> : "—"}</td>
             <td className="num">
               {fmtPrice(o.price)} {o.currency || currency}
             </td>

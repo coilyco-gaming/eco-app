@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
+import EcoRichText from "../components/EcoRichText"
 import ItemLink from "../components/ItemLink"
 import Layout from "../components/Layout"
 import { formatCount, prettifyEcoName } from "../lib/format"
@@ -142,7 +143,7 @@ export default function UsesResolve() {
             </div>
             <div>
               <h2 className="section-title">Buy</h2>
-              {!logistics ? <p className="empty-note">Shelf data unavailable right now.</p> : sells.length === 0 && buys.length === 0 ? <p className="empty-note" data-testid="resolve-no-offers">No current or history-derived offers for this item.</p> : <ul className="rank-rows" data-testid="resolve-offers">{[...sells.slice(0, 4), ...buys.slice(0, 4)].map((offer, index) => <li key={`${offer.storeKey}-${offer.side}-${index}`}><div className="rank-row"><span className="rank-name">{offer.side === "sell" ? "Buy from" : "Sell to"} {offer.store}<br /><span className="section-sub">{sourceLabel(offer.source)}</span></span><span className="rank-count">{fmtPrice(offer.price)} {offer.currency} · {formatCount(offer.quantity)} qty</span></div></li>)}</ul>}
+              {!logistics ? <p className="empty-note">Shelf data unavailable right now.</p> : sells.length === 0 && buys.length === 0 ? <p className="empty-note" data-testid="resolve-no-offers">No current or history-derived offers for this item.</p> : <ul className="rank-rows" data-testid="resolve-offers">{[...sells.slice(0, 4), ...buys.slice(0, 4)].map((offer, index) => <li key={`${offer.storeKey}-${offer.side}-${index}`}><div className="rank-row"><span className="rank-name">{offer.side === "sell" ? "Buy from" : "Sell to"} <EcoRichText text={offer.store} /><br /><span className="section-sub">{sourceLabel(offer.source)}</span></span><span className="rank-count">{fmtPrice(offer.price)} {offer.currency} · {formatCount(offer.quantity)} qty</span></div></li>)}</ul>}
               {marketRow && <p className="section-sub" data-testid="resolve-market">Recent market: {fmtPrice(marketRow.medianPrice)} {marketRow.currency} median, {formatCount(marketRow.totalTrades)} trades, {marketRow.trend}.</p>}
             </div>
           </section>

@@ -11,7 +11,6 @@ import asyncio
 import json
 import os
 import shutil
-import sqlite3
 import struct
 from pathlib import Path
 
@@ -59,41 +58,36 @@ def state_dir(tmp_path: Path) -> Path:
     }
     for name, mtime in backups.items():
         os.utime(root / "Storage" / "Backup" / name, (mtime, mtime))
-    replay_db = root / "Storage" / "EcoReplay.db"
-    connection = sqlite3.connect(replay_db)
-    connection.execute(
-        """
-        CREATE TABLE events (
-            id INTEGER PRIMARY KEY,
-            unix_time REAL,
-            game_time REAL,
-            action_type TEXT,
-            citizen TEXT,
-            body_json TEXT
-        )
-        """
+    replay_file = root / "Storage" / "EcoReplay.jsonl"
+    replay_rows = [
+        {
+            "id": 1,
+            "unixTime": NOW - 120,
+            "gameTime": 10,
+            "type": "Craft",
+            "citizen": "SampleAdminOne",
+            "body": '{"ItemName":"Brick"}',
+        },
+        {
+            "id": 2,
+            "unixTime": NOW - 60,
+            "gameTime": 11,
+            "type": "Vote",
+            "citizen": "SampleAdminTwo",
+            "body": '{"Choice":"Yes"}',
+        },
+        {
+            "id": 3,
+            "unixTime": NOW - 30,
+            "gameTime": 12,
+            "type": "Chat",
+            "citizen": "SampleAdminOne",
+            "body": '{"Message":"hello","ApiToken":"not-real"}',
+        },
+    ]
+    replay_file.write_text(
+        "\n".join(json.dumps(row) for row in replay_rows) + "\n", encoding="utf-8"
     )
-    connection.executemany(
-        """
-        INSERT INTO events
-            (id, unix_time, game_time, action_type, citizen, body_json)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        [
-            (1, NOW - 120, 10.0, "Craft", "SampleAdminOne", '{"ItemName":"Brick"}'),
-            (2, NOW - 60, 11.0, "Vote", "SampleAdminTwo", '{"Choice":"Yes"}'),
-            (
-                3,
-                NOW - 30,
-                12.0,
-                "Chat",
-                "SampleAdminOne",
-                '{"Message":"hello","ApiToken":"not-real"}',
-            ),
-        ],
-    )
-    connection.commit()
-    connection.close()
     return root
 
 
@@ -247,10 +241,10 @@ def test_mod_configs_reads_fixed_group(state_dir: Path) -> None:
     assert configs["nid_toolbox"]["present"] is False
 
 
-def test_events_recent_reads_sqlite_read_only(state_dir: Path) -> None:
+def test_events_recent_reads_jsonl_read_only(state_dir: Path) -> None:
     store = StateStore(state_dir)
     result = store.events_recent(2)
-    assert result["source"] == "Storage/EcoReplay.db"
+    assert result["source"] == "Storage/EcoReplay.jsonl"
     assert [event["id"] for event in result["events"]] == [3, 2]
     with pytest.raises(ValueError):
         store.events_recent(201)

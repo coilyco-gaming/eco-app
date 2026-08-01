@@ -666,6 +666,80 @@ a.dir-card:hover {
   color: var(--ink-faint);
 }
 
+.role-badges {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.role-holder {
+  font-weight: 600;
+}
+
+.warn-note {
+  margin: 0.35rem 0 0.55rem;
+  color: var(--meteor-deep);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.jobs-people-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.65rem;
+  color: var(--ink-faint);
+  font-size: 0.84rem;
+}
+
+.species-risk-table td:first-child {
+  min-width: 15rem;
+}
+
+.species-risk-reason {
+  display: block;
+  max-width: 34rem;
+  margin-top: 0.25rem;
+  color: var(--ink-faint);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.species-state {
+  display: inline-block;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.species-state-at_risk,
+.species-state-declining {
+  color: var(--meteor-deep);
+}
+
+.species-state-recovering,
+.species-state-stable {
+  color: var(--leaf);
+}
+
+.species-state-naturally_sparse,
+.species-state-insufficient,
+.species-state-stale,
+.species-state-missing {
+  color: var(--ink-faint);
+}
+
+.species-photo {
+  display: block;
+  width: min(100%, 32rem);
+  max-height: 24rem;
+  object-fit: cover;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+}
+
 .empty-note {
   position: relative;
   box-sizing: border-box;

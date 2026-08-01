@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
+import EcoRichText from "../components/EcoRichText"
 import ItemLink from "../components/ItemLink"
 import Layout from "../components/Layout"
 import { fetchMarket, type ItemMarket, type MarketIntelligence, type MarketTrend } from "../lib/marketApi"
@@ -8,7 +9,7 @@ import { fetchCurrency, type CurrencySnapshot } from "../lib/currencyApi"
 import { fetchLogistics, type GapReason, type LogisticsBoard, type SupplyGap } from "../lib/logisticsApi"
 import { fetchTradesLedger, type Trade as TradeRow, type TradesLedger } from "../lib/tradesApi"
 import { fetchWatchers, type WatcherHit } from "../lib/watchersApi"
-import { formatCount, prettifyEcoName } from "../lib/format"
+import { formatCount, prettifyEcoName, stripEcoMarkup } from "../lib/format"
 
 const TOP_MOVERS = 6
 const TOP_TRADED = 12
@@ -89,7 +90,8 @@ function SupplyGapRow({ gap }: { gap: SupplyGap }) {
           <span className="gap-who-label">Who needs it:</span>{" "}
           {gap.buyers.map((b, i) => (
             <span key={`${b.owner}-${b.store}-${i}`} className="gap-buyer">
-              {b.owner || b.store} <span className="gap-buyer-qty">{formatCount(b.quantity)}</span>
+              <EcoRichText text={b.owner || b.store} />{" "}
+              <span className="gap-buyer-qty">{formatCount(b.quantity)}</span>
               {i < gap.buyers.length - 1 ? ", " : ""}
             </span>
           ))}
@@ -239,7 +241,7 @@ function TraderList({ rows }: { rows: Array<[string, number]> }) {
       {top.map(([name, amt]) => (
         <li key={name}>
           <div className="rank-row" data-testid="party-row">
-            <span className="rank-name">{name}</span>
+            <span className="rank-name"><EcoRichText text={name} /></span>
             <span className="rank-count">{formatCount(amt)}</span>
             <span className="rank-bar" style={{ width: `${(amt / max) * 100}%` }} />
           </div>
@@ -251,7 +253,9 @@ function TraderList({ rows }: { rows: Array<[string, number]> }) {
 
 function matchesTrade(t: TradeRow, needle: string): boolean {
   if (!needle) return true
-  const hay = [t.seller, t.buyer, prettifyEcoName(t.item), t.currency].join(" ").toLowerCase()
+  const hay = [stripEcoMarkup(t.seller), stripEcoMarkup(t.buyer), prettifyEcoName(t.item), t.currency]
+    .join(" ")
+    .toLowerCase()
   return hay.includes(needle)
 }
 
@@ -508,7 +512,7 @@ export default function Trade() {
           {drillSource && (
             <p className="hero-pill" data-testid="drill-source">
               Cheapest right now: {fmtPrice(drillSource.unitPrice)} {drillSource.currency} at{" "}
-              {drillSource.store} ({drillSource.owner})
+              <EcoRichText text={drillSource.store} /> (<EcoRichText text={drillSource.owner} />)
             </p>
           )}
           <p className="section-sub">
@@ -552,10 +556,10 @@ export default function Trade() {
                           </ItemLink>
                         </td>
                         <td>
-                          {fmtPrice(a.buyFrom.price)} — {a.buyFrom.store}
+                          {fmtPrice(a.buyFrom.price)} — <EcoRichText text={a.buyFrom.store} />
                         </td>
                         <td>
-                          {fmtPrice(a.sellTo.price)} — {a.sellTo.store}
+                          {fmtPrice(a.sellTo.price)} — <EcoRichText text={a.sellTo.store} />
                         </td>
                         <td className="num">
                           +{fmtPrice(a.spread)} {a.currency} ({Math.round(a.spreadPct)}%)
@@ -598,8 +602,8 @@ export default function Trade() {
                     <li key={st.storeKey}>
                       <div className="rank-row" data-testid="store-row">
                         <span className="rank-name">
-                          {st.label}
-                          <span className="section-sub"> · {st.owner}</span>
+                          <EcoRichText text={st.label} />
+                          <span className="section-sub"> · <EcoRichText text={st.owner} /></span>
                         </span>
                         <span className="rank-count">{formatCount(st.totalVolume)}</span>
                         <span className="rank-bar" style={{ width: `${(st.totalVolume / max) * 100}%` }} />
@@ -623,7 +627,7 @@ export default function Trade() {
                   return (
                     <li key={tr.citizenId || tr.name}>
                       <div className="rank-row" data-testid="trader-dir-row">
-                        <span className="rank-name">{tr.name}</span>
+                        <span className="rank-name"><EcoRichText text={tr.name} /></span>
                         <span className="rank-count">{formatCount(tr.totalVolume)}</span>
                         <span className="rank-bar" style={{ width: `${(tr.totalVolume / max) * 100}%` }} />
                       </div>
@@ -676,8 +680,8 @@ export default function Trade() {
                 {visibleTrades.map((t, i) => (
                   <tr key={`${t.time}-${i}`} data-testid="trade-row">
                     <td>{Math.floor(t.day)}</td>
-                    <td>{t.seller || "—"}</td>
-                    <td>{t.buyer || "—"}</td>
+                    <td>{t.seller ? <EcoRichText text={t.seller} /> : "—"}</td>
+                    <td>{t.buyer ? <EcoRichText text={t.buyer} /> : "—"}</td>
                     <td>
                       {t.item ? (
                         <ItemLink className="linklike" item={t.item}>

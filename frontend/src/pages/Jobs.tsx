@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import type { ReactNode } from "react"
-import ItemLink from "../components/ItemLink"
+import { Link } from "react-router-dom"
+import EcoRichText from "../components/EcoRichText"
 import Layout from "../components/Layout"
 import { useJobsData } from "../hooks/useJobsData"
 import { fetchLogistics, type GapReason, type LogisticsBoard } from "../lib/logisticsApi"
@@ -12,12 +13,11 @@ import {
   type RecipeSkillDef,
 } from "../lib/recipesApi"
 import { fetchTradesLedger, type TradesLedger } from "../lib/tradesApi"
-import type { PlayerRow, ProfessionStat, SpecialtyStat } from "../lib/jobsApi"
+import type { ProfessionStat, SpecialtyStat } from "../lib/jobsApi"
 import {
   fetchProgressionHistory,
   KIND_LABELS,
   TREND_ORDER,
-  type CitizenTrajectory,
   type ProgressionHistory,
 } from "../lib/progressionApi"
 
@@ -42,6 +42,23 @@ function fmtPrice(n: number): string {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n)
 }
 
+function opportunityHref(
+  item: string,
+  gap: { demandQty: number; reason: GapReason },
+  margin: number | null,
+  confidence: "complete" | "incomplete",
+): string {
+  const params = new URLSearchParams({
+    item,
+    source: "jobs",
+    demandQty: String(gap.demandQty),
+    demandReason: gap.reason,
+    confidence,
+  })
+  if (margin !== null) params.set("margin", String(margin))
+  return `/uses/price?${params.toString()}`
+}
+
 function isUniversalSkill(name: string): boolean {
   const norm = prettifyEcoName(name)
     .toLowerCase()
@@ -61,8 +78,10 @@ interface RankRow {
 interface ValueRow {
   key: string
   item: string
+  href: string
   name: string
   score: number
+  confidence: "complete" | "incomplete"
   note: ReactNode
 }
 
@@ -119,24 +138,63 @@ function SkillTreeCard({ tree }: { tree: SkillTree }) {
   )
 }
 
-function ProfessionCard({ stat }: { stat: ProfessionStat }) {
+const COVERAGE_ROLES = new Set(["Active", "Long Term"])
+
+function coveredByRole(roles: string[]): boolean {
+  return roles.some((role) => COVERAGE_ROLES.has(role))
+}
+
+function RoleBadges({ roles }: { roles: string[] }) {
+  const visible = roles.filter((role) => COVERAGE_ROLES.has(role))
+  return visible.map((role) => (
+    <span className="pill pill-active" key={role}>
+      {role}
+    </span>
+  ))
+}
+
+function ProfessionCard({
+  stat,
+  rolesByPlayer,
+  showAllPeople,
+}: {
+  stat: ProfessionStat
+  rolesByPlayer: ReadonlyMap<string, string[]>
+  showAllPeople: boolean
+}) {
   const [open, setOpen] = useState(false)
+  const visiblePlayers = stat.players.filter(
+    (player) => showAllPeople || coveredByRole(rolesByPlayer.get(player) ?? []),
+  )
+  const uncovered = stat.total > 0 && stat.covered === 0
   return (
     <li className={`card card-tight${stat.total === 0 ? " dim" : ""}`}>
       <button className="prof-btn" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <span>{stat.profession}</span>
         <span className="count">
-          ( {stat.active} / {stat.total} )
+          ( {stat.covered} / {stat.total} covered )
         </span>
       </button>
+      {uncovered && (
+        <p className="warn-note" data-testid="uncovered-job">
+          ⚠ No Active or Long Term holder
+        </p>
+      )}
       {open && (
         <div className="detail">
-          {stat.players.length > 0 ? (
+          {visiblePlayers.length > 0 ? (
             <ul className="rows">
-              {stat.players.map((p) => (
-                <li key={p}>{p}</li>
+              {visiblePlayers.map((p) => (
+                <li key={p} className={coveredByRole(rolesByPlayer.get(p) ?? []) ? "role-holder" : "faded"}>
+                  <span><EcoRichText text={p} /></span>
+                  <span className="role-badges">
+                    <RoleBadges roles={rolesByPlayer.get(p) ?? []} />
+                  </span>
+                </li>
               ))}
             </ul>
+          ) : stat.players.length > 0 ? (
+            <p className="empty-note">People outside Active and Long Term are hidden.</p>
           ) : (
             <p className="empty-note">No players with specialties in this profession.</p>
           )}
@@ -146,83 +204,36 @@ function ProfessionCard({ stat }: { stat: ProfessionStat }) {
   )
 }
 
-function SpecialtyCard({ stat }: { stat: SpecialtyStat }) {
+function SpecialtyCard({ stat, showAllPeople }: { stat: SpecialtyStat; showAllPeople: boolean }) {
+  const visibleHolders = stat.holders.filter((holder) => showAllPeople || coveredByRole(holder.roles))
+  const uncovered = stat.total > 0 && stat.covered === 0
   return (
-    <li className={`card${stat.active === 0 ? " dim" : ""}`}>
+    <li className={`card${stat.total === 0 ? " dim" : ""}`}>
       <h3 className="card-title">
         {stat.specialty}
         <span className="count">
-          ( {stat.active} / {stat.total} )
+          ( {stat.covered} / {stat.total} covered )
         </span>
       </h3>
       <p className="kicker">{stat.profession}</p>
+      {uncovered && (
+        <p className="warn-note" data-testid="uncovered-specialty">
+          ⚠ No Active or Long Term holder
+        </p>
+      )}
       <ul className="rows">
-        {stat.holders.map((h) => (
-          <li key={h.player} className={h.active ? undefined : "faded"}>
-            <span>{h.player}</span>
-            <span className="lvl">lvl {h.level}</span>
+        {visibleHolders.map((h) => (
+          <li key={h.player} className={coveredByRole(h.roles) ? "role-holder" : "faded"}>
+            <span><EcoRichText text={h.player} /></span>
+            <span className="role-badges">
+              <RoleBadges roles={h.roles} />
+              <span className="lvl">lvl {h.level}</span>
+            </span>
           </li>
         ))}
       </ul>
-    </li>
-  )
-}
-
-// A player card, enriched with a "how they got here" history lane when the
-// progression surface has a matching trajectory (eco-app#64). The current-state
-// specialties come from the jobs API; the expandable timeline is the history.
-function PlayerCard({
-  player,
-  trajectory,
-}: {
-  player: PlayerRow
-  trajectory?: CitizenTrajectory
-}) {
-  const [open, setOpen] = useState(false)
-  return (
-    <li className={`card${player.active ? "" : " dim"}`}>
-      <h3 className="card-title">
-        {player.name}
-        {player.active ? (
-          <span className="pill pill-active">active</span>
-        ) : (
-          <span className="pill pill-inactive">inactive</span>
-        )}
-      </h3>
-      <ul className="rows">
-        {player.specialties.map((s) => (
-          <li key={s.specialty}>
-            <span>{s.specialty}</span>
-            <span className="lvl">lvl {s.level}</span>
-          </li>
-        ))}
-      </ul>
-      {trajectory && trajectory.timeline.length > 0 && (
-        <>
-          <button
-            className="prof-btn prof-btn-sub"
-            onClick={() => setOpen((v) => !v)}
-            aria-expanded={open}
-            data-testid="player-history-toggle"
-          >
-            <span>How they got here</span>
-            <span className="count">{formatCount(trajectory.levelUpCount)} level-ups</span>
-          </button>
-          {open && (
-            <ul className="prog-timeline" data-testid="player-history">
-              {trajectory.timeline.map((ev, i) => (
-                <li key={`${ev.time}-${i}`}>
-                  <span className="prog-day">day {ev.day}</span>
-                  <span className="prog-what">
-                    {KIND_LABELS[ev.kind] ?? ev.kind}
-                    {ev.skill ? `: ${ev.pretty}` : ""}
-                    {ev.level !== null ? ` (lvl ${Math.round(ev.level)})` : ""}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
+      {visibleHolders.length === 0 && stat.holders.length > 0 && (
+        <p className="empty-note">People outside Active and Long Term are hidden.</p>
       )}
     </li>
   )
@@ -327,9 +338,9 @@ function RankList({
         <li key={row.key}>
           <div className="rank-row" data-testid="rank-row">
             {"item" in row ? (
-              <ItemLink className="rank-name linklike" item={row.item}>
+              <Link className="rank-name linklike" to={row.href} data-testid="opportunity-price-link">
                 {row.name}
-              </ItemLink>
+              </Link>
             ) : (
               <span className="rank-name">{pretty ? prettifyEcoName(row.name) : row.name}</span>
             )}
@@ -373,6 +384,7 @@ export default function Jobs() {
   const [market, setMarket] = useState<MarketIntelligence | null>(null)
   const [trades, setTrades] = useState<TradesLedger | null>(null)
   const [valueLoaded, setValueLoaded] = useState(false)
+  const [showAllPeople, setShowAllPeople] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -428,12 +440,6 @@ export default function Jobs() {
     return () => controller.abort()
   }, [])
 
-  const trajectoryByName = useMemo(() => {
-    const map = new Map<string, CitizenTrajectory>()
-    for (const c of progression?.citizens ?? []) map.set(c.name, c)
-    return map
-  }, [progression])
-
   const trendPanels = useMemo(() => {
     if (!progression) return []
     return TREND_ORDER.filter((kind) => (progression.trends[kind]?.length ?? 0) > 0).map(
@@ -443,9 +449,7 @@ export default function Jobs() {
 
   const hasHistory = (progression?.totalEvents ?? 0) > 0
 
-  // Drop the universal starter skills from every current-state surface
-  // (eco-app#94). Professions and specialties filter by name; players keep
-  // their card but shed the two universal rows.
+  // Drop universal starter skills from the current-state surfaces (eco-app#94).
   const professions = useMemo(
     () => (data?.professions ?? []).filter((s) => !isUniversalSkill(s.profession)),
     [data],
@@ -454,13 +458,9 @@ export default function Jobs() {
     () => (data?.specialties ?? []).filter((s) => !isUniversalSkill(s.specialty)),
     [data],
   )
-  const players = useMemo(
-    () =>
-      (data?.players ?? []).map((p) => ({
-        ...p,
-        specialties: p.specialties.filter((s) => !isUniversalSkill(s.specialty)),
-      })),
-    [data],
+  const rolesByPlayer = useMemo(
+    () => new Map((data?.players ?? []).map((player) => [player.name, player.roles] as const)),
+    [data?.players],
   )
 
   const valueBoards = useMemo<ProfessionValueBoard[] | null>(() => {
@@ -476,38 +476,54 @@ export default function Jobs() {
         const bestByItem = new Map<string, ValueRow>()
         for (const recipeName of recipeIndex.bySkill[skill.name] ?? []) {
           const recipe = recipesByName.get(recipeName)
-          if (!recipe?.cost?.complete || recipe.cost.perUnitCost == null) continue
+          if (!recipe?.cost) continue
           const item = recipe.product.item
           const gap = gaps.get(item)
           const median = marketMedians.get(item)
           const traded = liquidity.get(item) ?? 0
           if (!gap || median == null || traded < LIQUIDITY_FLOOR || gap.demandQty <= 0) continue
-          const margin = median - recipe.cost.perUnitCost
-          if (margin <= 0) continue
+          const complete = recipe.cost.complete && recipe.cost.perUnitCost != null
+          const margin = complete ? median - recipe.cost.perUnitCost! : null
+          if (margin !== null && margin <= 0) continue
           const boost = gap.reason === "no_supply" ? 1.5 : gap.reason === "thin_supply" ? 1.25 : 1.0
-          const score = margin * gap.demandQty * boost
+          const score = margin !== null ? margin * gap.demandQty * boost : gap.demandQty * boost
+          const confidence = complete ? "complete" : "incomplete"
           const note = (
             <>
               <ValueTag reason={gap.reason} />{" "}
               <span>
-                margin {fmtPrice(margin)} · {formatCount(gap.demandQty)} wanted ·{" "}
+                {margin !== null ? `estimated margin ${fmtPrice(margin)}` : "margin unavailable"} ·{" "}
+                {formatCount(gap.demandQty)} observed demand ·{" "}
                 {formatCount(traded)} traded volume
+                {!complete && " · incomplete cost inputs, low confidence"}
               </span>
             </>
           )
           const current = bestByItem.get(item)
-          if (!current || score > current.score) {
+          if (
+            !current ||
+            (confidence === "complete" && current.confidence === "incomplete") ||
+            (confidence === current.confidence && score > current.score)
+          ) {
             bestByItem.set(item, {
               key: recipe.name,
               item,
+              href: opportunityHref(item, gap, margin, confidence),
               name: recipe.product.displayName,
               score,
+              confidence,
               note,
             })
           }
         }
 
-        const rows = [...bestByItem.values()].sort((a, b) => b.score - a.score).slice(0, VALUE_ROWS)
+        const rows = [...bestByItem.values()]
+          .sort(
+            (a, b) =>
+              Number(a.confidence === "incomplete") - Number(b.confidence === "incomplete") ||
+              b.score - a.score,
+          )
+          .slice(0, VALUE_ROWS)
         return rows.length > 0
           ? {
               key: skill.name,
@@ -561,9 +577,17 @@ export default function Jobs() {
 
       <section className="intro">
         <p>
-          Who does what on the Eco server and how they got there — the history up top, the current
-          roster below. "Active" means logged in within the last week.
+          Who does what on the Eco server and how they got there. Active and Long Term are literal
+          Eco demographic roles. Their union is the default job-coverage roster.
         </p>
+        <label className="jobs-people-toggle">
+          <input
+            type="checkbox"
+            checked={showAllPeople}
+            onChange={(event) => setShowAllPeople(event.target.checked)}
+          />{" "}
+          Show people outside Active and Long Term
+        </label>
       </section>
 
       {/* The server-wide trajectory layer: how the current roster below formed.
@@ -681,7 +705,12 @@ export default function Jobs() {
             <h2 className="section-title">Professions</h2>
             <ul className="cards">
               {professions.map((s) => (
-                <ProfessionCard key={s.profession} stat={s} />
+                <ProfessionCard
+                  key={s.profession}
+                  stat={s}
+                  rolesByPlayer={rolesByPlayer}
+                  showAllPeople={showAllPeople}
+                />
               ))}
             </ul>
           </section>
@@ -706,21 +735,7 @@ export default function Jobs() {
             <h2 className="section-title">Specialties</h2>
             <ul className="cards">
               {specialties.map((s) => (
-                <SpecialtyCard key={s.specialty} stat={s} />
-              ))}
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="section-title">
-              Players{" "}
-              {hasHistory && (
-                <span className="section-sub">(expand a player for their skill timeline)</span>
-              )}
-            </h2>
-            <ul className="cards">
-              {players.map((p) => (
-                <PlayerCard key={p.name} player={p} trajectory={trajectoryByName.get(p.name)} />
+                <SpecialtyCard key={s.specialty} stat={s} showAllPeople={showAllPeople} />
               ))}
             </ul>
           </section>

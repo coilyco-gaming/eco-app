@@ -134,7 +134,7 @@ def test_mounted_jobs_and_replay_use_distinct_upstreams(
 ) -> None:
     """One fused process keeps jobs skills and replay events independently addressed."""
     monkeypatch.setattr(jobs_upstream, "UPSTREAM_URL", "http://jobs.test/api/v1/skills")
-    monkeypatch.setattr(replay_main, "ECO_REPLAY_DB", None)
+    monkeypatch.setattr(replay_main, "ECO_REPLAY_FILE", None)
     monkeypatch.setattr(replay_main, "ECO_REPLAY_UPSTREAM_URL", "http://replay.test/api/v1/events")
     jobs_route = respx.get("http://jobs.test/api/v1/skills").mock(
         return_value=httpx.Response(200, json=[{"player": "Kai", "specialties": []}])

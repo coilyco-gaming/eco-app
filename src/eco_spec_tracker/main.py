@@ -35,7 +35,13 @@ async def api_professions() -> JSONResponse:
     stats = mock_data.profession_stats(rows)
     return JSONResponse(
         [
-            {"profession": s.profession, "active": s.active, "total": s.total, "players": s.players}
+            {
+                "profession": s.profession,
+                "active": s.active,
+                "covered": s.covered,
+                "total": s.total,
+                "players": s.players,
+            }
             for s in stats
         ]
     )
@@ -49,6 +55,7 @@ async def api_players() -> JSONResponse:
             {
                 "name": p.name,
                 "active": p.active,
+                "roles": p.roles,
                 "specialties": [
                     {"specialty": s.specialty, "level": s.level, "active": s.active}
                     for s in p.specialties
@@ -68,9 +75,11 @@ async def api_specialties() -> JSONResponse:
                 "specialty": s.name,
                 "profession": s.profession,
                 "active": s.active,
+                "covered": s.covered,
                 "total": s.total,
                 "holders": [
-                    {"player": h.player, "level": h.level, "active": h.active} for h in s.holders
+                    {"player": h.player, "level": h.level, "active": h.active, "roles": h.roles}
+                    for h in s.holders
                 ],
             }
             for s in mock_data.specialties(rows)

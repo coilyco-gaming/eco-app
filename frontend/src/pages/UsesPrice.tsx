@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
+import EcoRichText from "../components/EcoRichText"
 import ItemLink from "../components/ItemLink"
 import Layout from "../components/Layout"
 import PriceHistoryPanel from "../components/PriceHistoryPanel"
 import { fetchFairPrice, type FairPriceResult } from "../lib/fairPriceApi"
 import { fetchJsonOrNull } from "../lib/api"
-import { fetchLogistics, type LogisticsBoard, type PricedBoardRow, type ShelfOffer } from "../lib/logisticsApi"
+import {
+  fetchLogistics,
+  type GapReason,
+  type LogisticsBoard,
+  type PricedBoardRow,
+  type ShelfOffer,
+} from "../lib/logisticsApi"
 import { fetchMarket, type ItemMarket, type MarketIntelligence, type MarketTrend } from "../lib/marketApi"
 import { formatCount, prettifyEcoName } from "../lib/format"
 import {
@@ -15,6 +22,12 @@ import {
 
 const PICK_ROWS = 200
 const TARGET_MARKUP = 1.25
+
+const DEMAND_REASON: Record<GapReason, string> = {
+  no_supply: "no supply",
+  thin_supply: "thin supply",
+  overpriced: "over-priced supply",
+}
 
 type RecipeCostLine = {
   item: string
@@ -170,6 +183,24 @@ export default function UsesPrice() {
   const [params, setParams] = useSearchParams()
   const item = params.get("item") ?? ""
   const requestedCurrency = params.get("currency") ?? ""
+  const opportunitySource = params.get("source")
+  const demandReason = params.get("demandReason") as GapReason | null
+  const demandQtyRaw = Number(params.get("demandQty"))
+  const marginRaw = Number(params.get("margin"))
+  const confidence = params.get("confidence") === "incomplete" ? "incomplete" : "complete"
+  const opportunityContext =
+    opportunitySource === "jobs" &&
+    demandReason !== null &&
+    demandReason in DEMAND_REASON &&
+    Number.isFinite(demandQtyRaw) &&
+    demandQtyRaw > 0
+      ? {
+          demandReason,
+          demandQty: demandQtyRaw,
+          margin: params.has("margin") && Number.isFinite(marginRaw) ? marginRaw : null,
+          confidence,
+        }
+      : null
   const [market, setMarket] = useState<MarketIntelligence | null>(null)
   const [logistics, setLogistics] = useState<LogisticsBoard | null>(null)
   const [fairPrice, setFairPrice] = useState<FairPriceResult | null>(null)
@@ -277,7 +308,10 @@ export default function UsesPrice() {
 
   const pickCurrency = (nextCurrency: string) => {
     if (!item) return
-    setParams({ item, currency: nextCurrency }, { replace: false })
+    const next = new URLSearchParams(params)
+    next.set("item", item)
+    next.set("currency", nextCurrency)
+    setParams(next, { replace: false })
   }
 
   const options = useMemo(() => {
@@ -407,6 +441,26 @@ export default function UsesPrice() {
           Pick an item, compare the shelf, and let the craft cost tell you where the margin lives.
         </p>
       </section>
+
+      {item && opportunityContext && (
+        <section className="opportunity-context" data-testid="opportunity-context">
+          <h2 className="section-title">Production opportunity context</h2>
+          <p className="hero-pill">
+            <span className="pulse-dot" aria-hidden="true" />
+            {formatCount(opportunityContext.demandQty)} observed demand ·{" "}
+            {DEMAND_REASON[opportunityContext.demandReason]} ·{" "}
+            {opportunityContext.margin !== null
+              ? `estimated margin ${fmtPrice(opportunityContext.margin)} per unit`
+              : "estimated margin unavailable"}
+          </p>
+          <p className="empty-note" data-testid="opportunity-confidence">
+            {opportunityContext.confidence === "complete"
+              ? "Complete recipe-cost inputs supported the originating estimate."
+              : "Low confidence: recipe-cost inputs were incomplete, so demand is observed but margin is unresolved."}{" "}
+            This is a discovery signal for coordination, not a production command.
+          </p>
+        </section>
+      )}
 
       {!loaded && (
         <p className="empty-note" data-testid="price-loading">
@@ -590,8 +644,8 @@ export default function UsesPrice() {
                       {offerRows(cheapest, "sell").slice(0, 5).map((o, i) => (
                         <tr key={`sell-${o.storeKey}-${i}`} data-testid="price-sell-row">
                           <td>Sell</td>
-                          <td>{o.store}</td>
-                          <td>{o.owner || "—"}</td>
+                          <td><EcoRichText text={o.store} /></td>
+                          <td>{o.owner ? <EcoRichText text={o.owner} /> : "—"}</td>
                           <td className="num">
                             {fmtPrice(o.price)} {o.currency || currency}
                           </td>
@@ -604,8 +658,8 @@ export default function UsesPrice() {
                       {offerRows(resale, "buy").slice(0, 5).map((o, i) => (
                         <tr key={`buy-${o.storeKey}-${i}`} data-testid="price-buy-row">
                           <td>Buy</td>
-                          <td>{o.store}</td>
-                          <td>{o.owner || "—"}</td>
+                          <td><EcoRichText text={o.store} /></td>
+                          <td>{o.owner ? <EcoRichText text={o.owner} /> : "—"}</td>
                           <td className="num">
                             {fmtPrice(o.price)} {o.currency || currency}
                           </td>

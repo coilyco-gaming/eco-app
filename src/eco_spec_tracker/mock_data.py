@@ -1,10 +1,9 @@
 """Mock data shaped like what the Eco mod will eventually return.
 
-Each player has a set of learned specialties (skill trees with Level > 0)
-and a `last_seen` timestamp (None if the player has never logged in).
-The tracker derives "active" from `last_seen >= now - ACTIVE_WINDOW_DAYS`,
-so what the dashboard highlights matches "logged in within the last week"
-rather than "online right this second."
+Each player has learned specialties, a last-seen timestamp, and literal Eco
+demographic role memberships. The legacy activity window remains available to
+other API consumers, while Jobs coverage uses the union of the "Active" and
+"Long Term" roles.
 """
 
 from __future__ import annotations
@@ -33,10 +32,15 @@ class PlayerSpecialty:
     specialty: str
     level: int  # 0 means not learned; we only store learned rows in mock data
     last_seen: datetime | None  # None = never logged in
+    roles: frozenset[str] = frozenset()
 
     @property
     def active(self) -> bool:
         return is_active(self.last_seen)
+
+    @property
+    def covered(self) -> bool:
+        return bool(self.roles & {"Active", "Long Term"})
 
 
 # Canonical profession → specialties map, mirroring Eco's skill tree roughly.
@@ -77,6 +81,18 @@ def _build_mock_rows() -> list[PlayerSpecialty]:
         "ore-ge": now - timedelta(days=3),
         "tinkerbell": None,
     }
+    roles_by_player: dict[str, frozenset[str]] = {
+        "coilysiren": frozenset({"Active", "Long Term"}),
+        "ekans": frozenset({"Active"}),
+        "redwood": frozenset({"Long Term"}),
+        "salt": frozenset(),
+        "quill": frozenset({"Long Term"}),
+        "hammerhand": frozenset(),
+        "voltaic": frozenset({"Long Term"}),
+        "fernweh": frozenset({"Active"}),
+        "ore-ge": frozenset({"Active", "Long Term"}),
+        "tinkerbell": frozenset(),
+    }
 
     rows_by_player: dict[str, list[tuple[str, int]]] = {
         "coilysiren": [("Basic Carpentry", 5), ("Advanced Carpentry", 3), ("Furniture Making", 2)],
@@ -95,7 +111,9 @@ def _build_mock_rows() -> list[PlayerSpecialty]:
     for player, specialties in rows_by_player.items():
         last_seen = last_seen_by_player[player]
         for specialty, level in specialties:
-            rows.append(PlayerSpecialty(player, specialty, level, last_seen))
+            rows.append(
+                PlayerSpecialty(player, specialty, level, last_seen, roles_by_player[player])
+            )
     return rows
 
 
@@ -110,6 +128,7 @@ def all_rows() -> list[PlayerSpecialty]:
 class ProfessionStat:
     profession: str
     active: int
+    covered: int
     total: int
     players: list[str]
 
@@ -123,10 +142,12 @@ def profession_stats(rows: list[PlayerSpecialty] | None = None) -> list[Professi
         scoped = [r for r in source if r.specialty in specialty_set]
         players_all = {r.player for r in scoped}
         players_active = {r.player for r in scoped if r.active}
+        players_covered = {r.player for r in scoped if r.covered}
         stats.append(
             ProfessionStat(
                 profession=profession,
                 active=len(players_active),
+                covered=len(players_covered),
                 total=len(players_all),
                 players=sorted(players_all),
             )
@@ -139,6 +160,7 @@ def profession_stats(rows: list[PlayerSpecialty] | None = None) -> list[Professi
 class PlayerView:
     name: str
     active: bool
+    roles: list[str]
     specialties: list[PlayerSpecialty]
 
 
@@ -153,6 +175,7 @@ def players(rows: list[PlayerSpecialty] | None = None) -> list[PlayerView]:
             PlayerView(
                 name=name,
                 active=any(r.active for r in player_rows),
+                roles=sorted({role for row in player_rows for role in row.roles}),
                 specialties=sorted(player_rows, key=lambda r: r.specialty),
             )
         )
@@ -165,6 +188,7 @@ class SpecialtyHolder:
     player: str
     level: int
     active: bool
+    roles: list[str]
 
 
 @dataclass(frozen=True)
@@ -172,6 +196,7 @@ class SpecialtyView:
     name: str
     profession: str
     active: int  # holders flagged active
+    covered: int  # holders in Eco's Active or Long Term demographics
     total: int
     holders: list[SpecialtyHolder]  # sorted: active first, then level desc
 
@@ -190,14 +215,15 @@ def specialties(rows: list[PlayerSpecialty] | None = None) -> list[SpecialtyView
     out: list[SpecialtyView] = []
     for spec, spec_rows in by_spec.items():
         holders = sorted(
-            (SpecialtyHolder(r.player, r.level, r.active) for r in spec_rows),
-            key=lambda h: (not h.active, -h.level, h.player),
+            (SpecialtyHolder(r.player, r.level, r.active, sorted(r.roles)) for r in spec_rows),
+            key=lambda h: (not bool(set(h.roles) & {"Active", "Long Term"}), -h.level, h.player),
         )
         out.append(
             SpecialtyView(
                 name=spec,
                 profession=prof_of.get(spec, "Other"),
                 active=sum(1 for h in holders if h.active),
+                covered=sum(1 for h in holders if set(h.roles) & {"Active", "Long Term"}),
                 total=len(holders),
                 holders=holders,
             )

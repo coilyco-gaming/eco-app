@@ -10,11 +10,13 @@ public record SpecialtyDto(
     [property: JsonPropertyName("level"), JsonProperty("level")] int Level,
     [property: JsonPropertyName("maxLevel"), JsonProperty("maxLevel")] int MaxLevel);
 
-// lastSeen is an ISO-8601 UTC timestamp or null (never logged in). The Python
-// tracker derives "active" from this vs now(), so the mod stays window-agnostic.
+// lastSeen is an ISO-8601 UTC timestamp or null (never logged in). Roles are
+// literal Eco demographic names. In particular, "Active" and "Long Term" are
+// memberships maintained by Eco, not activity windows inferred by eco-app.
 public record PlayerSkillsDto(
     [property: JsonPropertyName("player"), JsonProperty("player")] string Player,
     [property: JsonPropertyName("lastSeen"), JsonProperty("lastSeen")] string? LastSeen,
+    [property: JsonPropertyName("roles"), JsonProperty("roles")] string[] Roles,
     [property: JsonPropertyName("specialties"), JsonProperty("specialties")] SpecialtyDto[] Specialties);
 
 // id is the numeric in-game user id the action exporter keys Citizen by; name

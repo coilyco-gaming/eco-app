@@ -5,8 +5,12 @@
 // The web face wants plain text.
 const ECO_MARKUP = /<\/?(?:color|style|icon|b|i|size|link)\b[^>]*>/gi
 
+export function stripEcoMarkupInline(text: string): string {
+  return text.replace(ECO_MARKUP, "")
+}
+
 export function stripEcoMarkup(text: string): string {
-  return text.replace(ECO_MARKUP, "").replace(/[ \t]+\n/g, "\n").trim()
+  return stripEcoMarkupInline(text).replace(/[ \t]+\n/g, "\n").trim()
 }
 
 export function formatCount(n: number): string {

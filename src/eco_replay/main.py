@@ -1,20 +1,20 @@
-"""JSON API for eco-replay (the "Kaihronicler" — a Chronicler mirror).
+"""JSON API for eco-replay (the "Kaihronicler", a Chronicler mirror).
 
 Lists recorded player actions written by the C# Eco replay mod. Mounted at
 `/replay/api` inside eco_mcp_app's ASGI app (http_app.py), so the public paths
 are `/replay/api/v1/*`, mirroring the jobs tracker's `/jobs/api` mount. The
 browser UI is the React SPA's `/replay` route, which consumes this API (plus
-`/v1/meta` for the mock-data banner) — there is no server-rendered HTML surface
+`/v1/meta` for the mock-data banner). There is no server-rendered HTML surface
 here, per the repo's SPA-only rule (eco-app#38, DLT epic #37).
 
 Three read paths, in priority order:
 
-1. `ECO_REPLAY_DB` env var pointing at the mod's SQLite file
-   (e.g. `/home/kai/Steam/steamapps/common/EcoServer/Storage/EcoReplay.db`).
-   Opens in WAL read-only mode, so it's safe to run alongside the live
-   server writes.
+1. `ECO_REPLAY_FILE` env var pointing at the mod's append-only JSONL file
+   (e.g. `/home/kai/Steam/steamapps/common/EcoServer/Storage/EcoReplay.jsonl`).
+   Complete lines are safe to read alongside the single mod writer. A malformed
+   or partial final line is ignored.
 2. `ECO_REPLAY_UPSTREAM_URL` env var pointing at the mod's HTTP `/api/v1/events`
-   endpoint. Eco's web server requires admin auth — set
+   endpoint. Eco's web server requires admin auth. Set
    `UPSTREAM_API_KEY` to pass it through as `X-API-Key`.
 3. Neither set: mock data, for local UI dev without an Eco server.
 """
@@ -23,7 +23,10 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
+from collections import deque
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
 
 import httpx
 from fastapi import FastAPI, Query
@@ -31,11 +34,11 @@ from fastapi.responses import JSONResponse
 
 from eco_mcp_app.telemetry import init_telemetry
 
-ECO_REPLAY_DB = os.environ.get("ECO_REPLAY_DB")
+ECO_REPLAY_FILE = os.environ.get("ECO_REPLAY_FILE")
 ECO_REPLAY_UPSTREAM_URL = os.environ.get("ECO_REPLAY_UPSTREAM_URL")
 UPSTREAM_API_KEY = os.environ.get("UPSTREAM_API_KEY")
 
-# Shared idempotent init from eco_mcp_app — in the fused process every
+# Shared idempotent init from eco_mcp_app. In the fused process every
 # entrypoint calls it; whichever runs first wins, the rest are no-ops.
 init_telemetry()
 
@@ -75,8 +78,8 @@ class ReplayUpstreamUnavailableError(Exception):
 
 
 def using_mock() -> bool:
-    """Whether replay has neither its database nor its dedicated HTTP source."""
-    return ECO_REPLAY_DB is None and ECO_REPLAY_UPSTREAM_URL is None
+    """Whether replay has neither its JSONL file nor its dedicated HTTP source."""
+    return ECO_REPLAY_FILE is None and ECO_REPLAY_UPSTREAM_URL is None
 
 
 def _unavailable_response() -> JSONResponse:
@@ -92,42 +95,39 @@ def _unavailable_response() -> JSONResponse:
     )
 
 
-def _fetch_from_db(
-    db_path: str,
+def _iter_jsonl(file_path: str) -> Iterator[dict[str, Any]]:
+    with Path(file_path).open(encoding="utf-8", errors="replace") as source:
+        for line in source:
+            try:
+                value = json.loads(line)
+            except (ValueError, TypeError):
+                continue
+            if (
+                not isinstance(value, dict)
+                or not isinstance(value.get("id"), int)
+                or isinstance(value.get("id"), bool)
+                or value["id"] <= 0
+                or not isinstance(value.get("type"), str)
+                or not value["type"].strip()
+            ):
+                continue
+            yield value
+
+
+def _fetch_from_file(
+    file_path: str,
     citizen: str | None,
     type_: str | None,
     limit: int,
 ) -> list[dict]:
-    # Read-only open with URI mode so concurrent writes from the mod
-    # are safe. WAL mode means readers don't block writers.
-    uri = f"file:{db_path}?mode=ro"
-    conn = sqlite3.connect(uri, uri=True)
-    try:
-        sql = (
-            "SELECT id, unix_time, game_time, action_type, citizen, body_json FROM events WHERE 1=1"
-        )
-        params: list[object] = []
-        if citizen:
-            sql += " AND citizen = ?"
-            params.append(citizen)
-        if type_:
-            sql += " AND action_type = ?"
-            params.append(type_)
-        sql += " ORDER BY id DESC LIMIT ?"
-        params.append(max(1, min(limit, 1000)))
-        return [
-            {
-                "id": r[0],
-                "unixTime": r[1],
-                "gameTime": r[2],
-                "type": r[3],
-                "citizen": r[4],
-                "body": r[5],
-            }
-            for r in conn.execute(sql, params).fetchall()
-        ]
-    finally:
-        conn.close()
+    newest: deque[dict[str, Any]] = deque(maxlen=max(1, min(limit, 1000)))
+    for row in _iter_jsonl(file_path):
+        if citizen and row.get("citizen") != citizen:
+            continue
+        if type_ and row.get("type") != type_:
+            continue
+        newest.append(row)
+    return list(reversed(newest))
 
 
 async def fetch_events(
@@ -135,8 +135,11 @@ async def fetch_events(
     type_: str | None = None,
     limit: int = 100,
 ) -> list[dict]:
-    if ECO_REPLAY_DB:
-        return _fetch_from_db(ECO_REPLAY_DB, citizen, type_, limit)
+    if ECO_REPLAY_FILE:
+        try:
+            return _fetch_from_file(ECO_REPLAY_FILE, citizen, type_, limit)
+        except OSError as error:
+            raise ReplayUpstreamUnavailableError from error
 
     if ECO_REPLAY_UPSTREAM_URL:
         params: dict[str, str | int] = {"limit": limit}
@@ -164,20 +167,17 @@ async def fetch_events(
     return rows[:limit]
 
 
-def _stats_from_db(db_path: str) -> dict:
-    uri = f"file:{db_path}?mode=ro"
-    conn = sqlite3.connect(uri, uri=True)
-    try:
-        total = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
-        return {"ready": True, "total": total}
-    finally:
-        conn.close()
+def _stats_from_file(file_path: str) -> dict:
+    return {"ready": True, "total": sum(1 for _ in _iter_jsonl(file_path))}
 
 
 async def fetch_stats() -> dict:
     """Mirror the mod's `/api/v1/events/stats`: `{ ready, total }`."""
-    if ECO_REPLAY_DB:
-        return _stats_from_db(ECO_REPLAY_DB)
+    if ECO_REPLAY_FILE:
+        try:
+            return _stats_from_file(ECO_REPLAY_FILE)
+        except OSError as error:
+            raise ReplayUpstreamUnavailableError from error
 
     if ECO_REPLAY_UPSTREAM_URL:
         headers = {"X-API-Key": UPSTREAM_API_KEY} if UPSTREAM_API_KEY else {}
@@ -202,7 +202,7 @@ async def fetch_stats() -> dict:
 
 @app.get("/v1/meta")
 def api_meta() -> JSONResponse:
-    """Whether the data below is the canned mock set (no DB / upstream set)."""
+    """Whether the data below is the canned mock set (no JSONL / upstream set)."""
     return JSONResponse({"mockData": using_mock()})
 
 

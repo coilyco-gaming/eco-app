@@ -5,42 +5,46 @@ import Jobs from "./Jobs"
 
 const META = { mockData: true }
 const PROFESSIONS = [
-  { profession: "Carpentry", active: 2, total: 3, players: ["coilysiren", "ekans"] },
-  { profession: "Masonry", active: 0, total: 0, players: [] },
+  { profession: "Carpentry", active: 2, covered: 1, total: 2, players: ["coilysiren", "ekans"] },
+  { profession: "Masonry", active: 1, covered: 0, total: 1, players: ["hammerhand"] },
   // Universal starter professions — everyone has these, so they must be
   // filtered out of the surface (eco-app#94).
-  { profession: "Self Improvement", active: 2, total: 2, players: ["coilysiren", "ekans"] },
-  { profession: "Survivalist", active: 2, total: 2, players: ["coilysiren", "ekans"] },
+  { profession: "Self Improvement", active: 2, covered: 1, total: 2, players: ["coilysiren", "ekans"] },
+  { profession: "Survivalist", active: 2, covered: 1, total: 2, players: ["coilysiren", "ekans"] },
 ]
 const SPECIALTIES = [
   {
     specialty: "Basic Carpentry",
     profession: "Carpentry",
     active: 1,
+    covered: 1,
     total: 2,
     holders: [
-      { player: "coilysiren", level: 5, active: true },
-      { player: "ekans", level: 2, active: false },
+      { player: "coilysiren", level: 5, active: true, roles: ["Active", "Long Term"] },
+      { player: "ekans", level: 2, active: false, roles: [] },
     ],
   },
   {
     specialty: "Self Improvement",
     profession: "Other",
     active: 1,
+    covered: 1,
     total: 1,
-    holders: [{ player: "coilysiren", level: 3, active: true }],
+    holders: [{ player: "coilysiren", level: 3, active: true, roles: ["Active"] }],
   },
 ]
 const PLAYERS = [
   {
     name: "coilysiren",
     active: true,
+    roles: ["Active", "Long Term"],
     specialties: [
       { specialty: "Basic Carpentry", level: 5, active: true },
       { specialty: "Survivalist", level: 4, active: true },
     ],
   },
-  { name: "ekans", active: false, specialties: [] },
+  { name: "ekans", active: false, roles: [], specialties: [] },
+  { name: "hammerhand", active: true, roles: [], specialties: [] },
 ]
 const PROGRESSION = {
   fetchedAtISO: "2026-06-12T13:00:00+00:00",
@@ -118,7 +122,7 @@ const VALUE_RECIPES = {
       family: "Beam",
       isDefault: true,
       isBlueprint: false,
-      cost: { perUnitCost: 3, complete: true },
+      cost: { perUnitCost: null, complete: false },
     },
     {
       name: "NeedleRecipe",
@@ -403,7 +407,7 @@ afterEach(() => {
 })
 
 describe("Jobs", () => {
-  it("renders all three sections from the jobs API", async () => {
+  it("renders professions and specialties without the standalone Players section", async () => {
     stubJobsFetch()
     renderJobs()
 
@@ -412,7 +416,7 @@ describe("Jobs", () => {
     })
     expect(screen.getByRole("button", { name: /Carpentry/ })).toBeInTheDocument()
     expect(screen.getAllByText("Basic Carpentry").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("ekans").length).toBeGreaterThan(0)
+    expect(screen.queryByRole("heading", { name: /^Players/ })).not.toBeInTheDocument()
     expect(screen.getByTestId("mock-banner")).toBeInTheDocument()
   })
 
@@ -435,6 +439,15 @@ describe("Jobs", () => {
       "no supply",
     )
     expect(valueBoards[0]).not.toHaveTextContent("Needle")
+    expect(valueBoards[0]).toHaveTextContent("incomplete cost inputs, low confidence")
+    expect(screen.getByRole("link", { name: "Plank" })).toHaveAttribute(
+      "href",
+      "/uses/price?item=PlankItem&source=jobs&demandQty=20&demandReason=no_supply&confidence=complete&margin=4",
+    )
+    expect(screen.getByRole("link", { name: "Beam" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("confidence=incomplete"),
+    )
   })
 
   it("expands a profession to list its players", async () => {
@@ -444,12 +457,14 @@ describe("Jobs", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Carpentry/ })).toBeInTheDocument()
     })
-    // coilysiren appears once before expanding (the Players section card);
-    // expanding Carpentry adds the profession's member row.
     const before = screen.getAllByText("coilysiren").length
 
     fireEvent.click(screen.getByRole("button", { name: /Carpentry/ }))
     expect(screen.getAllByText("coilysiren").length).toBe(before + 1)
+    expect(screen.queryByText("ekans")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("checkbox", { name: /Show people outside/ }))
+    expect(screen.getAllByText("ekans")).toHaveLength(2)
+    expect(screen.getByTestId("uncovered-job")).toHaveTextContent("No Active or Long Term holder")
   })
 
   it("renders profession, specialty, and level-gated talent branches", async () => {
@@ -506,20 +521,16 @@ describe("Jobs", () => {
     expect(screen.getAllByText("Basic Carpentry").length).toBeGreaterThan(0)
   })
 
-  it("renders the per-player skill timeline from progression", async () => {
+  it("does not render per-player skill cards or timelines", async () => {
     stubJobsFetch()
     renderJobs()
 
     await waitFor(() => {
       expect(screen.getByTestId("jobs-progression")).toBeInTheDocument()
     })
-    // coilysiren has a trajectory → the per-player history toggle appears; ekans
-    // has none, so exactly one toggle renders.
-    const toggles = screen.getAllByTestId("player-history-toggle")
-    expect(toggles).toHaveLength(1)
-    fireEvent.click(toggles[0])
-    expect(screen.getByTestId("player-history")).toBeInTheDocument()
-    expect(screen.getByText(/specialty level-ups: Basic Carpentry/)).toBeInTheDocument()
+    expect(screen.queryByTestId("player-history-toggle")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("player-history")).not.toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: /^Players/ })).not.toBeInTheDocument()
   })
 
   it("hides the progression layer when progression is unavailable", async () => {

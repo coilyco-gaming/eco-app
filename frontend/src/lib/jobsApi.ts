@@ -3,6 +3,7 @@
 export interface ProfessionStat {
   profession: string
   active: number
+  covered: number
   total: number
   players: string[]
 }
@@ -11,12 +12,14 @@ export interface SpecialtyHolder {
   player: string
   level: number
   active: boolean
+  roles: string[]
 }
 
 export interface SpecialtyStat {
   specialty: string
   profession: string
   active: number
+  covered: number
   total: number
   holders: SpecialtyHolder[]
 }
@@ -30,6 +33,7 @@ export interface PlayerSpecialty {
 export interface PlayerRow {
   name: string
   active: boolean
+  roles: string[]
   specialties: PlayerSpecialty[]
 }
 

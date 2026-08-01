@@ -334,6 +334,34 @@ describe("UsesPrice", () => {
     expect(within(screen.getByTestId("price-comparison-table")).getAllByTestId("price-sell-row")).toHaveLength(1)
   })
 
+  it("retains Jobs demand and margin context beside the pricing evidence", async () => {
+    stubFetch({ market: MARKET, logistics: LOGISTICS, fairPrice: FAIR_PRICE, recipes: RECIPE_COST })
+    renderPage(
+      "/uses/price?item=IronIngotItem&source=jobs&demandQty=20&demandReason=no_supply&confidence=complete&margin=4.5",
+    )
+
+    await waitFor(() => expect(screen.getByTestId("opportunity-context")).toBeInTheDocument())
+    expect(screen.getByTestId("opportunity-context")).toHaveTextContent("20 observed demand")
+    expect(screen.getByTestId("opportunity-context")).toHaveTextContent("no supply")
+    expect(screen.getByTestId("opportunity-context")).toHaveTextContent("estimated margin 4.5 per unit")
+    expect(screen.getByTestId("opportunity-confidence")).toHaveTextContent(
+      "discovery signal for coordination, not a production command",
+    )
+  })
+
+  it("keeps incomplete opportunity evidence explicitly low confidence", async () => {
+    stubFetch({ market: MARKET, logistics: LOGISTICS, fairPrice: FAIR_PRICE, recipes: RECIPE_COST })
+    renderPage(
+      "/uses/price?item=IronIngotItem&source=jobs&demandQty=7&demandReason=thin_supply&confidence=incomplete",
+    )
+
+    await waitFor(() => expect(screen.getByTestId("opportunity-context")).toBeInTheDocument())
+    expect(screen.getByTestId("opportunity-context")).toHaveTextContent("estimated margin unavailable")
+    expect(screen.getByTestId("opportunity-confidence")).toHaveTextContent(
+      "Low confidence: recipe-cost inputs were incomplete",
+    )
+  })
+
   it("renders a representative current-cycle distribution with every recipe specialty marker", async () => {
     stubFetch({
       market: MARKET,

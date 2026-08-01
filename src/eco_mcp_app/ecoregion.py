@@ -26,7 +26,7 @@ import math
 import os
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
@@ -123,6 +123,18 @@ _SPECIES_TTL_S = float(os.environ.get("ECO_SPECIES_CACHE_TTL", "60"))
 _worldlayers_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 _specieslist_cache: dict[str, tuple[float, list[str]]] = {}
 _species_cache: dict[tuple[str, str], tuple[float, list[tuple[int, float]]]] = {}
+
+# Biodiversity-risk evidence rules. These are deliberately relative to each
+# species' own observed series. Eco does not expose a universal healthy
+# population baseline, so eco-app never invents one.
+_RISK_CURRENT_PEAK_RATIO = 0.25
+_RISK_CYCLE_DECLINE = -0.30
+_RISK_RECENT_DECLINE = -0.15
+_RECOVERY_RECENT_GROWTH = 0.15
+_SPARSE_OBSERVED_PEAK = 25.0
+_MIN_RISK_SAMPLES = 4
+_MIN_OBSERVATION_SECONDS = 1800
+_STALE_LAG_SECONDS = 1800
 
 
 # ---------- data loading ----------
@@ -418,6 +430,217 @@ def rank_drift(
     return boom, bust
 
 
+@dataclass
+class SpeciesRisk:
+    name: str
+    state: str
+    warning: bool
+    reason: str
+    current: float | None
+    change_abs: float | None
+    change_pct: float | None
+    recent_change_pct: float | None
+    observed_peak: float | None
+    first_time: int | None
+    latest_time: int | None
+    recent_from_time: int | None
+    sample_count: int
+    freshness: str
+
+
+def _relative_change(first: float, latest: float) -> float | None:
+    if first == 0:
+        return None
+    return (latest - first) / first
+
+
+def classify_species_risk(
+    series: dict[str, list[tuple[int, float]]],
+    *,
+    expected_species: list[str] | None = None,
+) -> list[SpeciesRisk]:
+    """Classify species using only their own observed population evidence.
+
+    A warning requires either a collapse below 25% of that species' observed
+    peak, or a >=30% cycle decline that is still falling >=15% in the recent
+    window. Thin, missing, and stale series never produce a healthy or at-risk
+    claim. Naturally sparse means the observed peak stayed <=25 without a
+    relative collapse, not that 25 is a universal healthy target.
+    """
+    names = sorted(set(expected_species or []) | set(series))
+    latest_global = max((t for samples in series.values() for t, _ in samples), default=None)
+    out: list[SpeciesRisk] = []
+
+    for name in names:
+        ordered = sorted(series.get(name, []), key=lambda sample: sample[0])
+        if not ordered:
+            out.append(
+                SpeciesRisk(
+                    name=name,
+                    state="missing",
+                    warning=False,
+                    reason="No population samples were exported.",
+                    current=None,
+                    change_abs=None,
+                    change_pct=None,
+                    recent_change_pct=None,
+                    observed_peak=None,
+                    first_time=None,
+                    latest_time=None,
+                    recent_from_time=None,
+                    sample_count=0,
+                    freshness="missing",
+                )
+            )
+            continue
+
+        first_time, first = ordered[0]
+        latest_time, current = ordered[-1]
+        observed_peak = max(value for _, value in ordered)
+        change_abs = current - first
+        change_pct = _relative_change(first, current)
+        span = latest_time - first_time
+        stale = latest_global is not None and latest_global - latest_time > _STALE_LAG_SECONDS
+
+        recent_target = latest_time - max(_MIN_OBSERVATION_SECONDS, int(span * 0.25))
+        recent_time, recent_value = min(ordered, key=lambda sample: abs(sample[0] - recent_target))
+        recent_change_pct = _relative_change(recent_value, current)
+
+        evidence = SpeciesRisk(
+            name=name,
+            state="",
+            warning=False,
+            reason="",
+            current=current,
+            change_abs=change_abs,
+            change_pct=change_pct,
+            recent_change_pct=recent_change_pct,
+            observed_peak=observed_peak,
+            first_time=first_time,
+            latest_time=latest_time,
+            recent_from_time=recent_time,
+            sample_count=len(ordered),
+            freshness="current",
+        )
+
+        if stale:
+            out.append(
+                replace(
+                    evidence,
+                    state="stale",
+                    reason=(
+                        "Latest sample trails the newest exporter data by more than "
+                        f"{_STALE_LAG_SECONDS // 60} minutes."
+                    ),
+                    freshness="stale",
+                )
+            )
+            continue
+        if len(ordered) < _MIN_RISK_SAMPLES or span < _MIN_OBSERVATION_SECONDS:
+            out.append(
+                replace(
+                    evidence,
+                    state="insufficient",
+                    reason=(
+                        f"Need {_MIN_RISK_SAMPLES} samples across "
+                        f"{_MIN_OBSERVATION_SECONDS // 60} minutes before classifying risk."
+                    ),
+                )
+            )
+            continue
+
+        evidence_floor = max(3.0, observed_peak * 0.10)
+        collapse = (
+            observed_peak > 0
+            and current <= observed_peak * _RISK_CURRENT_PEAK_RATIO
+            and observed_peak - current >= evidence_floor
+        )
+        sustained_decline = (
+            change_pct is not None
+            and recent_change_pct is not None
+            and change_pct <= _RISK_CYCLE_DECLINE
+            and recent_change_pct <= _RISK_RECENT_DECLINE
+            and first - current >= evidence_floor
+        )
+        if collapse or sustained_decline:
+            reasons: list[str] = []
+            if collapse:
+                reasons.append("current population is at or below 25% of its own observed peak")
+            if sustained_decline:
+                reasons.append(
+                    "cycle decline is at least 30% and the recent window is still down at least 15%"
+                )
+            out.append(
+                replace(
+                    evidence,
+                    state="at_risk",
+                    warning=True,
+                    reason="; ".join(reasons).capitalize() + ".",
+                )
+            )
+        elif (
+            change_pct is not None
+            and change_pct < 0
+            and recent_change_pct is not None
+            and recent_change_pct >= _RECOVERY_RECENT_GROWTH
+        ):
+            out.append(
+                replace(
+                    evidence,
+                    state="recovering",
+                    reason=(
+                        "Cycle population is down, but the recent window has recovered "
+                        "at least 15%."
+                    ),
+                )
+            )
+        elif observed_peak <= _SPARSE_OBSERVED_PEAK and (
+            change_pct is None or abs(change_pct) < abs(_RISK_CYCLE_DECLINE)
+        ):
+            out.append(
+                replace(
+                    evidence,
+                    state="naturally_sparse",
+                    reason=(
+                        "Observed counts stayed sparse without crossing the relative "
+                        "decline threshold."
+                    ),
+                )
+            )
+        elif recent_change_pct is None or abs(recent_change_pct) < abs(_RISK_RECENT_DECLINE):
+            out.append(
+                replace(
+                    evidence,
+                    state="stable",
+                    reason="Recent movement stayed inside the 15% warning band.",
+                )
+            )
+        else:
+            out.append(
+                replace(
+                    evidence,
+                    state="declining",
+                    reason=(
+                        "Population is declining, but the combined at-risk threshold "
+                        "was not crossed."
+                    ),
+                )
+            )
+
+    state_order = {
+        "at_risk": 0,
+        "declining": 1,
+        "recovering": 2,
+        "stable": 3,
+        "naturally_sparse": 4,
+        "insufficient": 5,
+        "stale": 6,
+        "missing": 7,
+    }
+    out.sort(key=lambda row: (state_order[row.state], row.name))
+    return out
+
+
 # ---------- payload + cache invalidation for tests ----------
 
 
@@ -441,6 +664,30 @@ def _drift_entry(d: SpeciesDrift) -> dict[str, Any]:
     }
 
 
+def _risk_entry(row: SpeciesRisk) -> dict[str, Any]:
+    return {
+        "name": row.name,
+        "state": row.state,
+        "warning": row.warning,
+        "reason": row.reason,
+        "current": row.current,
+        "changeAbs": row.change_abs,
+        "changePct": row.change_pct,
+        "recentChangePct": row.recent_change_pct,
+        "observedPeak": row.observed_peak,
+        "firstTime": row.first_time,
+        "latestTime": row.latest_time,
+        "recentFromTime": row.recent_from_time,
+        "observationSeconds": (
+            row.latest_time - row.first_time
+            if row.latest_time is not None and row.first_time is not None
+            else None
+        ),
+        "sampleCount": row.sample_count,
+        "freshness": row.freshness,
+    }
+
+
 def _clear_caches() -> None:
     """Wipe in-process caches — used by the test suite."""
     _worldlayers_cache.clear()
@@ -460,6 +707,7 @@ def build_payload(
     source_url: str,
     saltwater_percent: float = 0.0,
     freshwater_percent: float = 0.0,
+    species_risk: list[SpeciesRisk] | None = None,
 ) -> dict[str, Any]:
     """Assemble the serializable payload used by both the Jinja card and JSON content.
 
@@ -514,6 +762,11 @@ def build_payload(
             }
         )
 
+    risk_rows = species_risk or []
+    risk_counts: dict[str, int] = {}
+    for row in risk_rows:
+        risk_counts[row.state] = risk_counts.get(row.state, 0) + 1
+
     return {
         "view": "eco_ecoregion",
         "sourceUrl": source_url,
@@ -534,6 +787,33 @@ def build_payload(
             "bust": [_drift_entry(d) for d in bust],
             "speciesSeen": species_seen,
             "speciesWithDrift": species_with_drift,
+        },
+        "speciesRisk": {
+            "sourceState": (
+                "unavailable"
+                if not admin_available
+                else "insufficient"
+                if not any(
+                    row.state not in {"missing", "stale", "insufficient"} for row in risk_rows
+                )
+                else "available"
+            ),
+            "threshold": {
+                "currentPeakRatio": _RISK_CURRENT_PEAK_RATIO,
+                "cycleDeclinePct": _RISK_CYCLE_DECLINE,
+                "recentDeclinePct": _RISK_RECENT_DECLINE,
+                "minSamples": _MIN_RISK_SAMPLES,
+                "minObservationSeconds": _MIN_OBSERVATION_SECONDS,
+                "staleLagSeconds": _STALE_LAG_SECONDS,
+                "description": (
+                    "Warn when current population falls to 25% of its own observed peak, "
+                    "or when a 30% cycle decline is still down 15% in the recent window. "
+                    "No universal healthy population baseline is assumed."
+                ),
+            },
+            "counts": risk_counts,
+            "atRiskCount": sum(1 for row in risk_rows if row.warning),
+            "species": [_risk_entry(row) for row in risk_rows],
         },
         "adminAvailable": admin_available,
     }
@@ -567,6 +847,7 @@ async def gather_ecoregion_payload(
     species_seen = 0
     species_with_drift = 0
     admin_available = False
+    species_risk: list[SpeciesRisk] = []
 
     if api_key:
         try:
@@ -583,6 +864,7 @@ async def gather_ecoregion_payload(
             species_seen = len(series)
             boom, bust = rank_drift(series)
             species_with_drift = len(boom) + len(bust)
+            species_risk = classify_species_risk(series, expected_species=names)
         except httpx.HTTPError:
             admin_available = False
 
@@ -597,4 +879,5 @@ async def gather_ecoregion_payload(
         source_url=info_url,
         saltwater_percent=water["saltwater"],
         freshwater_percent=water["freshwater"],
+        species_risk=species_risk,
     )

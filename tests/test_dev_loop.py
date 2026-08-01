@@ -8,6 +8,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).parents[1]
 RESOLVER = ROOT / "scripts" / "resolve-eco-target.sh"
 
@@ -83,6 +85,27 @@ def test_resolver_falls_back_to_public_host_when_ssm_is_unavailable(tmp_path: Pa
     assert result.returncode == 0, result
     assert result.stdout == "http://eco.coilysiren.me:3001\n"
     assert result.stderr == "eco target: public (eco.coilysiren.me:3001)\n"
+
+
+def test_resolver_crosses_the_declared_bash_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run(command: list[str], **options: object) -> subprocess.CompletedProcess[str]:
+        captured["command"] = command
+        captured["options"] = options
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setitem(globals(), "_bash_executable", lambda: "declared-bash")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    _resolve(tmp_path)
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert command[:2] == ["declared-bash", "-c"]
+    assert command[2].endswith("exec sh scripts/resolve-eco-target.sh")
 
 
 def test_http_key_fetch_uses_guarded_aws_operator() -> None:

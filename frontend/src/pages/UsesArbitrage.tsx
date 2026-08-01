@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
+import EcoRichText from "../components/EcoRichText"
 import ItemLink from "../components/ItemLink"
 import Layout from "../components/Layout"
 import { fetchLogistics, type LogisticsBoard } from "../lib/logisticsApi"
@@ -93,10 +94,10 @@ export default function UsesArbitrage() {
                     </ItemLink>
                   </td>
                   <td>
-                    {fmtPrice(a.buyFrom.price)} — {a.buyFrom.store}
+                    {fmtPrice(a.buyFrom.price)} — <EcoRichText text={a.buyFrom.store} />
                   </td>
                   <td>
-                    {fmtPrice(a.sellTo.price)} — {a.sellTo.store}
+                    {fmtPrice(a.sellTo.price)} — <EcoRichText text={a.sellTo.store} />
                   </td>
                   <td className="num">
                     +{fmtPrice(a.spread)} {a.currency} ({Math.round(a.spreadPct)}%)

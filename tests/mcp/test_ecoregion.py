@@ -258,6 +258,43 @@ def test_drift_entry_serializes_from_zero_grower_as_json_safe() -> None:
     json.dumps(entry, allow_nan=False)
 
 
+def test_species_risk_distinguishes_decline_stability_recovery_and_sparse() -> None:
+    series = {
+        "DecliningSpecies": [(0, 100.0), (2000, 80.0), (4000, 60.0), (6000, 40.0)],
+        "StableSpecies": [(0, 100.0), (2000, 102.0), (4000, 101.0), (6000, 100.0)],
+        "RecoveringSpecies": [(0, 100.0), (2000, 75.0), (4000, 50.0), (6000, 70.0)],
+        "SparseSpecies": [(0, 10.0), (2000, 11.0), (4000, 10.0), (6000, 10.0)],
+    }
+    rows = {row.name: row for row in eco.classify_species_risk(series)}
+
+    assert rows["DecliningSpecies"].state == "at_risk"
+    assert rows["DecliningSpecies"].warning is True
+    assert rows["StableSpecies"].state == "stable"
+    assert rows["RecoveringSpecies"].state == "recovering"
+    assert rows["SparseSpecies"].state == "naturally_sparse"
+    assert rows["SparseSpecies"].warning is False
+
+
+def test_species_risk_marks_missing_stale_and_thin_data_insufficient() -> None:
+    series = {
+        "CurrentSpecies": [(0, 100.0), (2000, 100.0), (4000, 100.0), (6000, 100.0)],
+        "StaleSpecies": [(0, 100.0), (600, 90.0), (1200, 80.0), (1800, 70.0)],
+        "ThinSpecies": [(5000, 20.0), (6000, 10.0)],
+    }
+    rows = {
+        row.name: row
+        for row in eco.classify_species_risk(
+            series,
+            expected_species=["CurrentSpecies", "StaleSpecies", "ThinSpecies", "MissingSpecies"],
+        )
+    }
+
+    assert rows["StaleSpecies"].state == "stale"
+    assert rows["ThinSpecies"].state == "insufficient"
+    assert rows["MissingSpecies"].state == "missing"
+    assert not any(rows[name].warning for name in ("StaleSpecies", "ThinSpecies", "MissingSpecies"))
+
+
 def test_load_ecoregions_bundled_returns_committed_fixture() -> None:
     regions = eco._load_ecoregions_bundled()
     # At least a handful of regions committed so the match section always

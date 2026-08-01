@@ -11,6 +11,7 @@ System.Text.Json policy):
       {
         "player": "coilysiren",
         "lastSeen": "2026-05-08T12:34:56Z",   // null if never logged in
+        "roles": ["Active", "Long Term"],      // literal Eco demographics
         "specialties": [{"name": "Basic Carpentry", "level": 5, "maxLevel": 7}, ...]
       },
       ...
@@ -57,9 +58,10 @@ async def fetch_rows() -> list[PlayerSpecialty]:
     for p in payload:
         player = p["player"]
         last_seen = _parse_last_seen(p.get("lastSeen"))
+        roles = frozenset(str(role) for role in p.get("roles", []))
         for s in p.get("specialties", []):
             level = int(s.get("level", 0))
             if level <= 0:
                 continue
-            rows.append(PlayerSpecialty(player, s["name"], level, last_seen))
+            rows.append(PlayerSpecialty(player, s["name"], level, last_seen, roles))
     return rows

@@ -6,7 +6,7 @@
 
 The application monorepo for the "Eco via Sirens" game server's companion services, consolidating four former repos (eco-mcp-app, eco-jobs-tracker, eco-replay, eco-telemetry) into one deployable. See [coilysiren/inbox#101](https://forgejo.coilysiren.me/coilysiren/inbox/issues/101) for the merge rationale.
 
-One fused service ships from this repo. `eco_mcp_app` is the core: a data-only MCP server (Claude Desktop over stdio, hosts over Streamable-HTTP at `/mcp/`) whose tools return markdown and structured JSON. The jobs JSON API (`eco_spec_tracker`, row-shaping over the in-game skills mod) mounts inside it at `/jobs/api`; the jobs UI is the SPA's `/jobs` page. `eco_replay` is a small FastAPI browser for the replay mod's SQLite event log, runnable locally and not yet wired into the fused service.
+One fused service ships from this repo. `eco_mcp_app` is the core: a data-only MCP server (Claude Desktop over stdio, hosts over Streamable-HTTP at `/mcp/`) whose tools return markdown and structured JSON. The jobs JSON API (`eco_spec_tracker`, row-shaping over the in-game skills mod) mounts inside it at `/jobs/api`, and the jobs UI is the SPA's `/jobs` page. `eco_replay` is the mounted FastAPI reader for the replay mod's append-only JSONL event log, consumed by the SPA's `/replay` page.
 
 Every push to canonical `main` publishes the private fused image as
 `forgejo.coilysiren.me/coilyco-gaming/eco-app:<full-source-sha>`. The trusted

@@ -13,6 +13,7 @@ import Recipe from "./pages/Recipe"
 import Recipes from "./pages/Recipes"
 import Replay from "./pages/Replay"
 import Social from "./pages/Social"
+import Species from "./pages/Species"
 import Trade from "./pages/Trade"
 import User from "./pages/User"
 import Uses from "./pages/Uses"
@@ -89,6 +90,7 @@ export default function App() {
           }
         />
         <Route path="/map" element={<MapPage />} />
+        <Route path="/species" element={<Species />} />
         {/* /world + /ecoregion merged into /map (eco-app#82) and /climate folded
             in as the World page's environmental overlay (eco-app#90); keep the
             old links alive. The page is titled "World" — the canonical path

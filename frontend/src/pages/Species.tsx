@@ -1,0 +1,121 @@
+import { useEffect, useState } from "react"
+import { Link, useSearchParams } from "react-router-dom"
+import Layout from "../components/Layout"
+import Loading from "../components/Loading"
+import { formatCount, safeHttpUrl } from "../lib/format"
+import { fetchSpecies, type SpeciesPopulationSample, type SpeciesProfile } from "../lib/speciesApi"
+
+function PopulationCurve({ samples }: { samples: SpeciesPopulationSample[] }) {
+  if (samples.length < 2) {
+    return <p className="empty-note">Not enough population samples to draw a curve.</p>
+  }
+  const width = 720
+  const height = 220
+  const pad = 30
+  const days = samples.map((sample) => sample.day)
+  const values = samples.map((sample) => sample.value)
+  const minDay = Math.min(...days)
+  const maxDay = Math.max(...days)
+  const minValue = Math.min(...values)
+  const maxValue = Math.max(...values)
+  const daySpan = maxDay - minDay || 1
+  const valueSpan = maxValue - minValue || 1
+  const x = (day: number) => pad + ((day - minDay) / daySpan) * (width - pad * 2)
+  const y = (value: number) => height - pad - ((value - minValue) / valueSpan) * (height - pad * 2)
+  const points = samples.map((sample) => `${x(sample.day)},${y(sample.value)}`).join(" ")
+
+  return (
+    <svg
+      className="price-chart"
+      viewBox={`0 0 ${width} ${height}`}
+      role="img"
+      aria-label="Population curve across the current Eco cycle"
+      data-testid="species-population-curve"
+    >
+      <polyline points={points} fill="none" stroke="var(--leaf)" strokeWidth="3" />
+      {samples.map((sample) => (
+        <circle key={`${sample.day}-${sample.value}`} cx={x(sample.day)} cy={y(sample.value)} r="3">
+          <title>Day {sample.day.toFixed(1)}: {formatCount(sample.value)}</title>
+        </circle>
+      ))}
+      <text x={pad} y={height - 7} className="axis-label">day {minDay.toFixed(1)}</text>
+      <text x={width - pad} y={height - 7} textAnchor="end" className="axis-label">day {maxDay.toFixed(1)}</text>
+      <text x={pad - 5} y={pad} textAnchor="end" className="axis-label">{formatCount(maxValue)}</text>
+      <text x={pad - 5} y={height - pad} textAnchor="end" className="axis-label">{formatCount(minValue)}</text>
+    </svg>
+  )
+}
+
+export default function Species() {
+  const [params] = useSearchParams()
+  const name = params.get("name") ?? ""
+  const [result, setResult] = useState<{ name: string; profile: SpeciesProfile | null } | null>(null)
+
+  useEffect(() => {
+    if (!name) return
+    const controller = new AbortController()
+    fetchSpecies(name, controller.signal).then(
+      (value) => {
+        if (!controller.signal.aborted) setResult({ name, profile: value })
+      },
+      () => {
+        if (!controller.signal.aborted) setResult({ name, profile: null })
+      },
+    )
+    return () => controller.abort()
+  }, [name])
+
+  const loaded = !name || result?.name === name
+  const profile = result?.name === name ? result.profile : null
+  const wikiUrl = safeHttpUrl(profile?.wikiUrl)
+
+  return (
+    <Layout>
+      <section className="hero hero-compact">
+        <p className="hero-kicker"><Link className="linklike" to="/map">← World</Link></p>
+        <h1 className="hero-title">{profile?.name ?? "Species profile"}</h1>
+        {profile?.populationLatest !== null && profile?.populationLatest !== undefined && (
+          <p className="hero-pill">
+            <span className="pulse-dot" aria-hidden="true" />
+            {formatCount(profile.populationLatest)} current · {profile.populationDelta !== null && profile.populationDelta >= 0 ? "+" : ""}
+            {profile.populationDelta === null ? "n/a" : formatCount(profile.populationDelta)} this cycle
+          </p>
+        )}
+      </section>
+
+      {!loaded && <Loading label="Reading the population curve…" />}
+      {loaded && !profile && (
+        <p className="empty-note" data-testid="species-unavailable">
+          {name ? "Species profile unavailable right now." : "Choose a species from the World biodiversity table."}
+        </p>
+      )}
+      {profile && (
+        <>
+          <section>
+            <h2 className="section-title">Population curve</h2>
+            <PopulationCurve samples={profile.population} />
+            {profile.error && <p className="empty-note">{profile.error}</p>}
+          </section>
+          {(profile.photoDataUri || profile.wikiExtract || profile.taxonomy.length > 0) && (
+            <section className="atlas-columns">
+              <div>
+                <h2 className="section-title">Field profile</h2>
+                {profile.photoDataUri && <img className="species-photo" src={profile.photoDataUri} alt={profile.name} />}
+                {profile.photoAttribution && <p className="section-sub">{profile.photoAttribution}</p>}
+                {profile.wikiExtract && <p>{profile.wikiExtract}</p>}
+                {wikiUrl && <a className="linklike" href={wikiUrl} target="_blank" rel="noreferrer">Read source</a>}
+              </div>
+              <div>
+                <h2 className="section-title">Taxonomy</h2>
+                <ul className="rows">
+                  {profile.taxonomy.map((row) => <li key={`${row.rank}-${row.name}`}><span>{row.rank}</span><span>{row.name}</span></li>)}
+                </ul>
+                {profile.conservationStatus && <p className="empty-note">Conservation status: {profile.conservationStatus}</p>}
+              </div>
+            </section>
+          )}
+        </>
+      )}
+    </Layout>
+  )
+}

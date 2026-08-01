@@ -45,6 +45,50 @@ export interface Drift {
   speciesWithDrift: number
 }
 
+export type SpeciesRiskState =
+  | "at_risk"
+  | "declining"
+  | "recovering"
+  | "stable"
+  | "naturally_sparse"
+  | "insufficient"
+  | "stale"
+  | "missing"
+
+export interface SpeciesRiskRow {
+  name: string
+  state: SpeciesRiskState
+  warning: boolean
+  reason: string
+  current: number | null
+  changeAbs: number | null
+  changePct: number | null
+  recentChangePct: number | null
+  observedPeak: number | null
+  firstTime: number | null
+  latestTime: number | null
+  recentFromTime: number | null
+  observationSeconds: number | null
+  sampleCount: number
+  freshness: "current" | "stale" | "missing"
+}
+
+export interface SpeciesRisk {
+  sourceState: "available" | "insufficient" | "unavailable"
+  threshold: {
+    currentPeakRatio: number
+    cycleDeclinePct: number
+    recentDeclinePct: number
+    minSamples: number
+    minObservationSeconds: number
+    staleLagSeconds: number
+    description: string
+  }
+  counts: Record<string, number>
+  atRiskCount: number
+  species: SpeciesRiskRow[]
+}
+
 export interface EcoregionSnapshot {
   view: "eco_ecoregion"
   sourceUrl: string
@@ -56,6 +100,7 @@ export interface EcoregionSnapshot {
   classifiedPercent: number
   ecoregionMatches: EcoregionMatch[]
   drift: Drift
+  speciesRisk: SpeciesRisk
   // False when the admin exporter token is unconfigured or the server
   // rejected it — the drift strip then renders an empty state.
   adminAvailable: boolean

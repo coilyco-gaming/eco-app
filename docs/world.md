@@ -1,116 +1,46 @@
-# World & industry activity
+# World, climate, and biodiversity
 
-The **physical** story of an Eco settlement: what players build, tear down,
-terraform, move, blow up, throw away, and pollute. Where the crafting atlas
-([docs/crafting](mcp/FEATURES.md)) reads the action log as *production* (what got
-made) and the trades ledger reads it as *commerce* (what got sold), this surface
-reads it as *world mutation* (what happened to the ground and the air). It is the
-single largest unconsumed slice of the pull-everything survey
-([#7](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/7)) - 20
-exporters, no reset - filed as
-[#62](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/62).
+The SPA's `/map` route is the readable state-of-the-world surface. It keeps the live map, biome and water composition, climate evidence, nearest real-world ecoregion matches, biodiversity movement, and species risk. The literal **Mutation timeline** section and everything below it were removed in [#191](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/191). Activity hotspot circles were removed from the map in [#190](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/190).
 
-## No-reset spine
+## Map and environmental state
 
-Every input is a world/industry **action exporter already live** on the server,
-so there is **no new C# mod and no game restart**. The engine
-(`src/eco_mcp_app/world.py`) reuses the crafting atlas's streamed-CSV plumbing
-wholesale:
+The World page consumes three independent planes:
 
-- `crafting._stream_csv_rows` - bounded, line-by-line CSV streaming (stays under
-  the memory cap even on late-cycle multi-MB logs).
-- `crafting._corrected_index` - the [#5](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/5)
-  undeclared-extra-column corrector, so header-keyed picks stay aligned when the
-  exporter inserts a stray tool column.
-- `crafting.fetch_citizen_name_map` - the numeric-id → display-name join off the
-  jobs mod's `/api/v1/citizens` surface (`Citizen #<id>` fallback).
-- `trades.SECONDS_PER_DAY` - `Time` (seconds) → in-game day, matching every other
-  time-bucketed surface.
+* `/preview-map.json` - the map image and owner-coloured property deed polygons. Owner names can contain Eco rich-text markup, which the SPA parses through a safe allow-list renderer rather than raw HTML.
+* `/preview/get_eco_ecoregion.json` - biome and water composition, nearest ecoregion matches, biodiversity drift, and per-species risk evidence.
+* `/preview/get_eco_climate.json` - CO2, temperature, sea level, source and sink breakdowns, freshness, and read-only coordination guidance.
 
-## Exporters and categories
+Each plane degrades independently. The page does not fetch or render the world-mutation action summary. The backend `get_eco_world` MCP tool and `/preview/world.json` data plane remain available for structured action analysis and existing consumers.
 
-Nine action types fold into seven world-mutation **categories**:
+## Biome and ecoregion evidence
 
-| Action (`actionName=`)   | Category      |
-|--------------------------|---------------|
-| `ConstructOrDeconstruct` | construction  |
-| `PlaceOrPickUpObject`    | objects       |
-| `MoveWorldObject`        | objects       |
-| `TampRoad`               | roads         |
-| `DropOrPickupGarbage`    | garbage       |
-| `ObjectExplosion`        | explosions    |
-| `PolluteAir`             | pollution     |
-| `DigOrMine`              | extraction    |
-| `ChopTree`               | extraction    |
+`src/eco_mcp_app/ecoregion.py` reads the public world-layers endpoint and normalizes the biome vector before comparing it with the committed WWF-inspired ecoregion fixture. Salt water and fresh water are reclassified from the formerly undifferentiated biome gap, leaving the remainder as genuine mountain or transitional terrain. The SPA shows the three closest ecoregion matches and highlights biome rasters on map hover.
 
-The extraction pair (`DigOrMine`, `ChopTree`) is re-framed **world-first** here -
-the crafting atlas reads the same rows as production (the block/log you get), this
-surface reads them as terraforming (the hole/stump you leave). Same rows, two
-lenses. An action an admin has disabled 401/404s and becomes a non-fatal warning
-rather than sinking the report - partial data is still the story.
+Species exporters provide one population series per species. The existing boom and bust summaries remain descriptive movement signals. They do not assert that a population is healthy.
 
-## What the engine computes
+## At-risk species
 
-Each CSV row is one **event**. `Count` (blocks placed, garbage dropped, ppm
-emitted) accumulates as the category's **volume** and defaults to 1 when absent,
-so a Count-less action still contributes.
+The World page adds a read-only species evidence board backed by deterministic relative rules. Eco does not expose a universal healthy population baseline, so the classifier compares each species only with its own observed series.
 
-- **Mutation timeline** - `day → {category: events}`, the raw material for the
-  SPA's per-day stacked-by-category chart.
-- **By category** - event count + summed volume per category.
-- **Top world-shapers** - events per citizen across every category (id→name
-  joined).
-- **Top polluters** - events per citizen for the pollution category only, split
-  out as the headline for the folded-in climate/atmosphere overlay (who is filling the air).
-- **Most-touched objects** - the block / world-object / species id per event,
-  weighted by volume and prettified.
-- **Activity hotspots** - `ActionLocation` / `Position` floored to a 64-block x/z
-  grid (the y/height axis dropped) and ranked by event count - "where the
-  bulldozers are".
+An **at risk** warning requires enough evidence and either condition:
 
-Positions and bare numbers that leak into a name slot (a residual misalignment
-artifact) are dropped rather than rendered, mirroring the crafting atlas.
+* Current population is at or below 25% of that species' own observed peak, with a material absolute drop.
+* Cycle decline is at least 30% and the recent window is still down at least 15%, again with a material absolute drop.
 
-## Surfaces
+Classification requires at least four samples across 30 minutes. A series more than 30 minutes behind the newest exporter series is stale. Missing, stale, and insufficient series never produce a healthy or at-risk claim. Current evidence can also read declining, recovering, stable, or naturally sparse. Naturally sparse means the observed peak stayed at or below 25 without a relative collapse. It is not a global target.
 
-- **`get_eco_world` MCP tool** - `world.py` + `server.py` wiring. Returns a
-  markdown summary + the structured `WorldActivity.to_dict()` JSON.
-  Requires an admin API key server-side (`ECO_ADMIN_API_KEY`, SSM in the homelab
-  deploy).
-- **`/preview/world.json` data plane** - a dedicated short path (passing
-  `?server=` straight through) so the SPA hits a stable URL.
-- **`/world` SPA page** - `frontend/src/pages/World.tsx`, consuming
-  `/preview/world.json`. Product UX lives here. The stacked timeline is a static inline SVG (no chart lib, CSP
-  trivial) with a legend, a 2px surface gap between segments, and per-segment
-  hover labels - the secondary encoding the categorical palette's CVD floor needs
-  (hues are the dataviz skill's validated dark-mode theme, assigned by category
-  identity, never by rank). The page is titled **World** and now carries the
-  climate/atmosphere content inline as an environmental overlay ([#90](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/90))
-  rather than cross-linking a separate `/climate` page; it cross-links `/crafting`
-  and `/jobs`, and carries a live homepage badge, per the wave-0 SPA pattern.
+Each row shows current population, absolute and relative cycle change, recent relative change, observation window, sample count, freshness, status, reason, and the threshold description. Every species links to `/species?name=<species>`, which renders the existing species profile and population curve. The surface is evidence for player coordination. It does not control hunting, harvesting, laws, or server configuration.
+
+## World activity backend
+
+`src/eco_mcp_app/world.py` still folds nine action exporters into construction, objects, roads, garbage, explosions, pollution, and extraction categories. It preserves streamed CSV parsing, defensive column realignment, citizen id-to-name joins, per-day buckets, category totals, world shapers, polluters, touched objects, and coarse activity hotspots for MCP and JSON consumers. This structured backend is intentionally separate from the reduced visual World page.
 
 ## Caching
 
-A tiny SQLite under `~/.cache/eco-mcp-app/world.sqlite` holds the last successful
-aggregation + a fetched-at timestamp, TTL 5 min, keyed per `(base_url,
-api_key_hash)` so swapping servers never cross-contaminates. Mirrors the crafting
-atlas cache exactly.
-
-## Probe how-to
-
-    # one action's CSV (admin key required)
-    curl -s -H "X-API-Key: $ECO_ADMIN_API_KEY" \
-      "http://eco.coilysiren.me:3001/api/v1/exporter/actions?actionName=ConstructOrDeconstruct" | head
-
-    # the folded surface, via the fused service
-    curl -s http://localhost:4000/preview/world.json | jq '.categories, .hotspots[:3]'
-
-Tuning knobs (env, all optional): `ECO_WORLD_CACHE_TTL`, `ECO_WORLD_MAX_ROWS`,
-`ECO_WORLD_HOTSPOT_BIN`.
+World-layer data caches for five minutes and species series cache for one minute. The world-activity aggregate uses its own five-minute SQLite cache under `~/.cache/eco-mcp-app/world.sqlite`, keyed by server and API-key hash so servers do not cross-contaminate.
 
 ## See also
 
-- [docs/FEATURES.md](FEATURES.md) - inventory of what ships today.
-- [docs/datasets/README.md](datasets/README.md) - dataset survey + probe recipe.
-- [docs/crafting](mcp/FEATURES.md) / [docs/trades.md](trades.md) - the sibling
-  action-log surfaces this one shares plumbing with.
+* [docs/FEATURES.md](FEATURES.md) - shipped capability inventory.
+* [docs/datasets/README.md](datasets/README.md) - dataset survey and probe recipe.
+* [docs/crafting](mcp/FEATURES.md) and [docs/trades.md](trades.md) - sibling action-log surfaces.

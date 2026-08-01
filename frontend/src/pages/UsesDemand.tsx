@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
+import EcoRichText from "../components/EcoRichText"
 import ItemLink from "../components/ItemLink"
 import Layout from "../components/Layout"
 import { fetchLogistics, type GapReason, type LogisticsBoard, type SupplyGap } from "../lib/logisticsApi"
@@ -46,7 +47,8 @@ function DemandRow({ gap }: { gap: SupplyGap }) {
           <span className="gap-who-label">Who needs it:</span>{" "}
           {gap.buyers.map((b, i) => (
             <span key={`${b.owner}-${b.store}-${i}`} className="gap-buyer">
-              {b.owner || b.store} <span className="gap-buyer-qty">{formatCount(b.quantity)}</span>
+              <EcoRichText text={b.owner || b.store} />{" "}
+              <span className="gap-buyer-qty">{formatCount(b.quantity)}</span>
               {b.price ? ` @ ${fmtPrice(b.price)} ${gap.currency}` : ""}
               {i < gap.buyers.length - 1 ? ", " : ""}
             </span>

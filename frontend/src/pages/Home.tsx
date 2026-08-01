@@ -145,15 +145,13 @@ export default function Home() {
           )}
         </Link>
 
-        {/* Climate folded into the World card (eco-app#90): the map, biomes,
-            ecoregions, mutation timeline, and the atmosphere all live on one
-            page, so the badge strip carries world events, the busiest category,
-            the dominant biome, and the climate headline together. */}
+        {/* Climate folded into the World card (eco-app#90). The focused page
+            keeps the map, biomes, ecoregions, biodiversity, and atmosphere. */}
         <Link className="dir-card" to="/map" data-testid="dir-map">
           <h3>World</h3>
           <p>
-            The live map, biome &amp; water mix, closest real-world ecoregions, the mutation
-            timeline, and the climate — CO₂, temperature, and sea level.
+            The live map, biome &amp; water mix, closest real-world ecoregions, species risk,
+            and the climate — CO₂, temperature, and sea level.
           </p>
           {(worldPulse || ecoregionPulse || climatePulse) && (
             <p className="dir-badges" data-testid="world-badges">

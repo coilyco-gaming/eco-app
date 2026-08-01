@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
+import EcoRichText from "../components/EcoRichText"
 import Layout from "../components/Layout"
 import Loading from "../components/Loading"
 import { type ClimateSnapshot, fetchClimate } from "../lib/climateApi"
-import { type DriftRow, type EcoregionSnapshot, fetchEcoregion } from "../lib/ecoregionApi"
-import { formatCount, formatFetchedAt, prettifyEcoName } from "../lib/format"
+import {
+  type DriftRow,
+  type EcoregionSnapshot,
+  fetchEcoregion,
+  type SpeciesRisk,
+  type SpeciesRiskState,
+} from "../lib/ecoregionApi"
+import { formatCount, formatFetchedAt, prettifyEcoName, stripEcoMarkup } from "../lib/format"
 import { type MapPayload, fetchMap } from "../lib/mapApi"
-import { type WorldActivity, fetchWorld } from "../lib/worldApi"
 
 // ---------------------------------------------------------------------------
 // Donut geometry — shared with the in-chat MCP ecoregion card so the two
@@ -125,148 +131,99 @@ function DriftColumn({
   )
 }
 
-// ---------------------------------------------------------------------------
-// World-mutation timeline — carried over from the old /world page.
-// ---------------------------------------------------------------------------
-const CATEGORY_COLORS: Record<string, string> = {
-  construction: "#3987e5",
-  objects: "#199e70",
-  roads: "#c98500",
-  garbage: "#008300",
-  explosions: "#9085e9",
-  pollution: "#e66767",
-  extraction: "#d55181",
-}
-const FALLBACK_COLOR = "#7da18a"
-
-function catColor(key: string): string {
-  return CATEGORY_COLORS[key] ?? FALLBACK_COLOR
+const RISK_STATE_LABEL: Record<SpeciesRiskState, string> = {
+  at_risk: "at risk",
+  declining: "declining",
+  recovering: "recovering",
+  stable: "stable",
+  naturally_sparse: "naturally sparse",
+  insufficient: "insufficient data",
+  stale: "stale",
+  missing: "missing",
 }
 
-function labelFor(world: WorldActivity, key: string): string {
-  return world.categories.find((c) => c.key === key)?.label ?? key
+function pct(value: number | null): string {
+  if (value === null) return "n/a"
+  return `${value > 0 ? "+" : ""}${Math.round(value * 100)}%`
 }
 
-function MutationTimeline({ world }: { world: WorldActivity }) {
-  const days = world.timeline
-  if (days.length === 0) {
-    return <p className="empty-note">No time-stamped events to chart yet.</p>
+function observationWindow(seconds: number | null, samples: number): string {
+  if (seconds === null) return `${samples} sample${samples === 1 ? "" : "s"}`
+  const hours = seconds / 3600
+  const span = hours >= 24 ? `${(hours / 24).toFixed(1)} days` : `${hours.toFixed(1)} hours`
+  return `${span} · ${samples} samples`
+}
+
+function SpeciesRiskSection({ risk }: { risk: SpeciesRisk }) {
+  if (risk.sourceState === "unavailable") {
+    return (
+      <p className="empty-note" data-testid="species-risk-unavailable">
+        At-risk species need the admin population exporter. No health claim is made without it.
+      </p>
+    )
   }
-  const keys = world.categoryKeys
-  const width = 720
-  const height = 240
-  const padL = 44
-  const padR = 12
-  const padT = 16
-  const padB = 28
-  const plotW = width - padL - padR
-  const plotH = height - padT - padB
-
-  const totals = days.map((d) => keys.reduce((s, k) => s + (d.counts[k] ?? 0), 0))
-  const maxTotal = Math.max(...totals, 1)
-  const dayNums = days.map((d) => d.day)
-  const minDay = Math.min(...dayNums)
-  const maxDay = Math.max(...dayNums)
-
-  const slot = plotW / days.length
-  const barW = Math.max(2, slot * 0.7)
-
-  return (
-    <svg
-      className="mutation-timeline"
-      viewBox={`0 0 ${width} ${height}`}
-      preserveAspectRatio="xMidYMid meet"
-      role="img"
-      aria-label="World-mutation events per in-game day, stacked by category"
-      data-testid="mutation-timeline"
-    >
-      <line x1={padL} y1={padT + plotH} x2={width - padR} y2={padT + plotH} className="axis-grid" />
-      <line x1={padL} y1={padT} x2={width - padR} y2={padT} className="axis-grid" />
-      <text x={padL - 6} y={padT + 4} textAnchor="end" className="axis-label">
-        {formatCount(maxTotal)}
-      </text>
-      <text x={padL - 6} y={padT + plotH} textAnchor="end" className="axis-label">
-        0
-      </text>
-      {days.map((d, i) => {
-        const x = padL + i * slot + (slot - barW) / 2
-        let cursor = padT + plotH
-        return (
-          <g key={d.day}>
-            {keys.map((k) => {
-              const v = d.counts[k] ?? 0
-              if (v <= 0) return null
-              const h = (v / maxTotal) * plotH
-              const segH = Math.max(0, h - 2)
-              const y = cursor - h
-              cursor -= h
-              return (
-                <rect key={k} x={x} y={y} width={barW} height={segH} rx={1} fill={catColor(k)}>
-                  <title>
-                    Day {d.day} · {labelFor(world, k)}: {formatCount(v)}
-                  </title>
-                </rect>
-              )
-            })}
-          </g>
-        )
-      })}
-      <text x={padL} y={height - 6} className="axis-label">
-        day {minDay}
-      </text>
-      <text x={width - padR} y={height - 6} textAnchor="end" className="axis-label">
-        day {maxDay}
-      </text>
-    </svg>
-  )
-}
-
-function TimelineLegend({ world }: { world: WorldActivity }) {
-  return (
-    <ul className="chart-legend" data-testid="timeline-legend">
-      {world.categories.map((c) => (
-        <li key={c.key}>
-          <span className="legend-swatch" style={{ background: catColor(c.key) }} aria-hidden="true" />
-          <span className="legend-label">{c.label}</span>
-          <span className="legend-count">{formatCount(c.events)}</span>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-interface RankRow {
-  name: string
-  count: number
-}
-
-function RankList({
-  rows,
-  emptyNote,
-  prettify = false,
-  testid,
-}: {
-  rows: RankRow[]
-  emptyNote: string
-  prettify?: boolean
-  testid: string
-}) {
-  if (rows.length === 0) {
-    return <p className="empty-note">{emptyNote}</p>
+  if (risk.species.length === 0) {
+    return (
+      <p className="empty-note" data-testid="species-risk-insufficient">
+        Population evidence is unavailable or too thin to classify species risk.
+      </p>
+    )
   }
-  const max = Math.max(...rows.map((r) => r.count), 1)
+
   return (
-    <ul className="rank-rows" data-testid={testid}>
-      {rows.map((r) => (
-        <li key={r.name}>
-          <div className="rank-row" data-testid={`${testid}-row`}>
-            <span className="rank-name">{prettify ? prettifyEcoName(r.name) : r.name}</span>
-            <span className="rank-count">{formatCount(r.count)}</span>
-            <span className="rank-bar" style={{ width: `${(r.count / max) * 100}%` }} />
-          </div>
-        </li>
-      ))}
-    </ul>
+    <div data-testid="species-risk">
+      <p className="intro">
+        <span>
+          {risk.threshold.description} Missing, stale, and thin series remain explicitly
+          insufficient. This is read-only coordination evidence, not an ecological control.
+        </span>
+      </p>
+      <p className={`hero-pill${risk.atRiskCount > 0 ? " hero-pill-warn" : ""}`}>
+        <span className="pulse-dot" aria-hidden="true" />
+        {formatCount(risk.atRiskCount)} at-risk species · {formatCount(risk.species.length)} tracked
+      </p>
+      <div className="ledger-scroll">
+        <table className="ledger-table species-risk-table">
+          <thead>
+            <tr>
+              <th>Species</th>
+              <th>Status</th>
+              <th className="num">Current</th>
+              <th className="num">Cycle change</th>
+              <th className="num">Recent</th>
+              <th>Observation</th>
+              <th>Freshness</th>
+            </tr>
+          </thead>
+          <tbody>
+            {risk.species.map((row) => (
+              <tr key={row.name} data-testid={`species-risk-${row.state}`}>
+                <td>
+                  <Link className="linklike" to={`/species?name=${encodeURIComponent(row.name)}`}>
+                    {prettifyEcoName(row.name)}
+                  </Link>
+                  <span className="species-risk-reason">{row.reason}</span>
+                </td>
+                <td>
+                  <span className={`species-state species-state-${row.state}`}>
+                    {row.warning ? "⚠ " : ""}{RISK_STATE_LABEL[row.state]}
+                  </span>
+                </td>
+                <td className="num">{row.current === null ? "n/a" : formatCount(row.current)}</td>
+                <td className="num">
+                  {row.changeAbs === null
+                    ? "n/a"
+                    : `${row.changeAbs > 0 ? "+" : ""}${formatCount(row.changeAbs)} (${pct(row.changePct)})`}
+                </td>
+                <td className="num">{pct(row.recentChangePct)}</td>
+                <td>{observationWindow(row.observationSeconds, row.sampleCount)}</td>
+                <td>{row.freshness}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   )
 }
 
@@ -444,22 +401,16 @@ function ClimateSection({ snap, pageLoadedAt }: { snap: ClimateSnapshot; pageLoa
 
 // ---------------------------------------------------------------------------
 // The map itself — base preview + per-biome highlight rasters + deed polygons
-// + activity-hotspot overlay, all in one renderSize-space SVG frame (#82).
+// in one renderSize-space SVG frame (#82).
 // ---------------------------------------------------------------------------
 function WorldMap({
   map,
-  world,
   hoveredBiome,
 }: {
   map: MapPayload
-  world: WorldActivity | null
   hoveredBiome: string | null
 }) {
   const size = map.renderSize
-  const wx = map.worldDim.x || size
-  const wz = map.worldDim.z || size
-  const hotspots = world?.hotspots ?? []
-  const maxHot = Math.max(...hotspots.map((h) => h.events), 1)
 
   return (
     <div className="map-figure">
@@ -496,36 +447,15 @@ function WorldMap({
               strokeWidth={1.5}
             >
               <title>
-                {p.deed} — {p.owner}
+                {stripEcoMarkup(p.deed)} - {stripEcoMarkup(p.owner)}
               </title>
             </polygon>
           ))}
-          {/* Activity hotspots overlaid on the real map — radius by event count. */}
-          {hotspots.map((h) => {
-            const cx = (h.x / wx) * size
-            const cy = (h.z / wz) * size
-            const r = 4 + (h.events / maxHot) * 16
-            return (
-              <circle
-                key={`${h.x},${h.z}`}
-                cx={cx}
-                cy={cy}
-                r={r}
-                className="map-hotspot"
-                data-testid="map-hotspot"
-              >
-                <title>
-                  ({h.x}, {h.z}) · {formatCount(h.events)} events
-                </title>
-              </circle>
-            )
-          })}
         </svg>
       </div>
       <p className="map-meta" data-testid="map-meta">
         {map.deedCount} deed{map.deedCount === 1 ? "" : "s"} · {map.ownerCount} owner
         {map.ownerCount === 1 ? "" : "s"} · {map.worldDim.x} × {map.worldDim.z}
-        {hotspots.length > 0 && ` · ${hotspots.length} activity hotspots`}
       </p>
       {map.owners.length > 0 && (
         <ul className="map-legend" data-testid="map-owners">
@@ -535,7 +465,9 @@ function WorldMap({
                 className="eco-swatch"
                 style={{ background: map.owner_colors[o], borderColor: map.owner_strokes[o] }}
               />
-              <span className="map-owner-name">{o}</span>
+              <span className="map-owner-name">
+                <EcoRichText text={o} />
+              </span>
             </li>
           ))}
           {map.owners.length > 16 && (
@@ -549,7 +481,6 @@ function WorldMap({
 
 export default function MapPage() {
   const [snap, setSnap] = useState<EcoregionSnapshot | null>(null)
-  const [world, setWorld] = useState<WorldActivity | null>(null)
   const [map, setMap] = useState<MapPayload | null>(null)
   const [climate, setClimate] = useState<ClimateSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
@@ -561,12 +492,11 @@ export default function MapPage() {
     const guard = (fn: () => void) => {
       if (!controller.signal.aborted) fn()
     }
-    // Four independent planes; a failure in any one degrades that section
+    // Three independent planes; a failure in any one degrades that section
     // rather than the page. Climate joined the set when it folded into the world
     // page (eco-app#90). The shared loading state clears once all settle.
     Promise.allSettled([
       fetchEcoregion(controller.signal).then((d) => guard(() => setSnap(d))),
-      fetchWorld(controller.signal).then((d) => guard(() => setWorld(d))),
       fetchMap(controller.signal).then((d) => guard(() => setMap(d))),
       fetchClimate(controller.signal).then((d) => guard(() => setClimate(d))),
     ]).finally(() => guard(() => setLoading(false)))
@@ -580,10 +510,8 @@ export default function MapPage() {
   )
 
   const topMatch = snap?.ecoregionMatches[0]
-  const worldEmpty = world != null && world.totalEvents === 0
-
   return (
-    <Layout fetchedAtISO={world?.fetchedAtISO}>
+    <Layout>
       {/* One heading + the live pill as the single intro line (eco-app#97). */}
       <section className="hero hero-compact">
         <h1 className="hero-title">World</h1>
@@ -593,7 +521,6 @@ export default function MapPage() {
             {topMatch
               ? `Closest to ${topMatch.name} · ${Math.round(snap.classifiedPercent)}% classified`
               : `${Math.round(snap.classifiedPercent)}% of the map is classified`}
-            {world && !worldEmpty && ` · ${formatCount(world.totalEvents)} world-mutation events`}
           </p>
         )}
         {!snap && !loading && (
@@ -603,7 +530,7 @@ export default function MapPage() {
         )}
       </section>
 
-      {loading && <Loading label="Reading the world map, biomes, and activity…" />}
+      {loading && <Loading label="Reading the world map, biomes, climate, and biodiversity…" />}
 
       {!loading && (
         <>
@@ -612,11 +539,11 @@ export default function MapPage() {
               <h2 className="section-title">World map</h2>
               <p className="intro">
                 <span>
-                  Deeds are drawn as owner-coloured polygons; ringed dots mark the busiest cells.
-                  Hover a biome below to light up where it sits.
+                  Deeds are drawn as owner-coloured polygons. Hover a biome below to light up where
+                  it sits.
                 </span>
               </p>
-              <WorldMap map={map} world={world} hoveredBiome={hoveredBiome} />
+              <WorldMap map={map} hoveredBiome={hoveredBiome} />
             </section>
           ) : (
             <section>
@@ -710,7 +637,9 @@ export default function MapPage() {
 
           {snap && (
             <section>
-              <h2 className="section-title">Biodiversity drift</h2>
+              <h2 className="section-title">Biodiversity status</h2>
+              <SpeciesRiskSection risk={snap.speciesRisk} />
+              <h3 className="subsection-title">Cycle drift</h3>
               {!snap.adminAvailable ? (
                 <p className="empty-note" data-testid="eco-drift-admin">
                   Population drift needs the server's admin exporter — configure the API key to see
@@ -730,100 +659,6 @@ export default function MapPage() {
             </section>
           )}
 
-          {world && !worldEmpty && (
-            <>
-              <section>
-                <h2 className="section-title">Mutation timeline</h2>
-                <p className="intro">
-                  <span>
-                    Every construction, road, moved object, explosion, garbage drop, and pollution
-                    event the world logs, stacked by category over in-game days.
-                  </span>
-                </p>
-                <MutationTimeline world={world} />
-                <TimelineLegend world={world} />
-              </section>
-
-              <section>
-                <h2 className="section-title">By category</h2>
-                <div className="stats">
-                  {world.categories.map((c) => (
-                    <div className="stat" key={c.key}>
-                      <p className="stat-value">{formatCount(c.events)}</p>
-                      <p className="stat-label">{c.label}</p>
-                      <p className="stat-detail">{formatCount(c.volume)} volume</p>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              <div className="atlas-columns">
-                <section>
-                  <h2 className="section-title">Top world-shapers</h2>
-                  <RankList
-                    rows={world.byCitizen.map(([name, count]) => ({ name, count }))}
-                    emptyNote="No citizen activity recorded."
-                    testid="shapers"
-                  />
-                </section>
-                <section>
-                  <h2 className="section-title">Top polluters</h2>
-                  <RankList
-                    rows={world.byPolluter.map(([name, count]) => ({ name, count }))}
-                    emptyNote="No pollution events recorded."
-                    testid="polluters"
-                  />
-                </section>
-              </div>
-
-              <div className="atlas-columns">
-                <section>
-                  <h2 className="section-title">Most-touched objects</h2>
-                  <p className="intro">
-                    <span>Ranked by how many times each object was placed, moved, dug, or chopped.</span>
-                  </p>
-                  <RankList
-                    rows={world.byObject.map(([name, count]) => ({ name, count }))}
-                    emptyNote="No object activity recorded."
-                    prettify
-                    testid="objects"
-                  />
-                </section>
-                <section>
-                  <h2 className="section-title">Activity hotspots</h2>
-                  <p className="intro">
-                    <span>The busiest map cells — also ringed on the world map above.</span>
-                  </p>
-                  <RankList
-                    rows={world.hotspots.map((h) => ({ name: `(${h.x}, ${h.z})`, count: h.events }))}
-                    emptyNote="No positioned events recorded."
-                    testid="hotspots"
-                  />
-                </section>
-              </div>
-
-              {world.warnings.length > 0 && (
-                <section>
-                  <ul className="explainer" data-testid="world-warnings">
-                    {world.warnings.map((w, i) => (
-                      <li key={i}>⚠ {w}</li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-            </>
-          )}
-
-          <section className="dir-cards">
-            <Link className="dir-card" to="/crafting" data-testid="link-crafting">
-              <h3>Crafting atlas →</h3>
-              <p>The production side of this activity — what all this digging and chopping becomes.</p>
-            </Link>
-            <Link className="dir-card" to="/jobs" data-testid="link-jobs">
-              <h3>Jobs →</h3>
-              <p>Who is shaping the world — the citizens behind all this construction and industry.</p>
-            </Link>
-          </section>
         </>
       )}
     </Layout>

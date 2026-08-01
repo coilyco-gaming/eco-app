@@ -64,7 +64,7 @@ export default function Replay() {
       {mockData && (
         <div className="mock-banner" data-testid="mock-banner">
           ⚠️ MOCK DATA — every event on this page is fabricated. Set the{" "}
-          <code>ECO_REPLAY_DB</code> or <code>ECO_REPLAY_UPSTREAM_URL</code> env var on the service
+          <code>ECO_REPLAY_FILE</code> or <code>ECO_REPLAY_UPSTREAM_URL</code> env var on the service
           to pull the real Chronicle. ⚠️
         </div>
       )}

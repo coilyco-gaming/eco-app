@@ -10,16 +10,14 @@ from __future__ import annotations
 import itertools
 import json
 import os
-import sqlite3
 import statistics
 import time
-from collections import Counter
+from collections import Counter, deque
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
 
 STATE_DIR_ENV = "ECO_STATE_DIR"
 SAVE_FILES: dict[str, str] = {
@@ -27,7 +25,6 @@ SAVE_FILES: dict[str, str] = {
     "Game.db": "Storage/Game.db",
 }
 BACKUP_DIR = "Storage/Backup"
-EVENT_DB = "Storage/EcoReplay.db"
 EVENT_JSONL = "Storage/EcoReplay.jsonl"
 
 KNOWN_CONFIGS: dict[str, str] = {
@@ -279,63 +276,47 @@ class StateStore:
         result.pop("content", None)
         return result
 
-    def _sqlite_events(self, path: Path, limit: int) -> list[dict[str, Any]]:
-        uri = f"file:{quote(path.as_posix(), safe='/:')}?mode=ro"
-        connection = sqlite3.connect(uri, uri=True, timeout=2)
-        connection.row_factory = sqlite3.Row
-        try:
-            rows = connection.execute(
-                """
-                SELECT id, unix_time, game_time, action_type, citizen, body_json
-                FROM events
-                ORDER BY id DESC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
-        finally:
-            connection.close()
-        events: list[dict[str, Any]] = []
-        for row in rows:
-            try:
-                body: Any = json.loads(row["body_json"])
-            except (ValueError, TypeError):
-                body = row["body_json"]
-            events.append(
-                {
-                    "id": row["id"],
-                    "unixTime": row["unix_time"],
-                    "gameTime": row["game_time"],
-                    "actionType": row["action_type"],
-                    "citizen": row["citizen"],
-                    "body": body,
-                }
-            )
-        return events
-
     def _jsonl_events(self, path: Path, limit: int) -> list[dict[str, Any]]:
-        # The migration format is append-only JSONL. A bounded deque would
-        # still read the whole file, so cap the supported mirror size here.
-        if path.stat().st_size > MAX_LOG_FILE_BYTES:
-            raise RuntimeError(f"{EVENT_JSONL} exceeds the {MAX_LOG_FILE_BYTES}-byte read budget.")
-        events: list[dict[str, Any]] = []
-        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-            try:
-                value = json.loads(line)
-            except ValueError:
-                continue
-            if isinstance(value, dict):
-                events.append(value)
-        return list(reversed(events[-limit:]))
+        events: deque[dict[str, Any]] = deque(maxlen=limit)
+        with path.open(encoding="utf-8", errors="replace") as source:
+            for line in source:
+                try:
+                    value = json.loads(line)
+                except ValueError:
+                    continue
+                if (
+                    not isinstance(value, dict)
+                    or not isinstance(value.get("id"), int)
+                    or isinstance(value["id"], bool)
+                    or value["id"] <= 0
+                    or not isinstance(value.get("type"), str)
+                    or not value["type"].strip()
+                ):
+                    continue
+                raw_body = value.get("body", value.get("bodyJson", "{}"))
+                if isinstance(raw_body, str):
+                    try:
+                        body: Any = json.loads(raw_body)
+                    except ValueError:
+                        body = raw_body
+                else:
+                    body = raw_body
+                events.append(
+                    {
+                        "id": value["id"],
+                        "unixTime": value.get("unixTime"),
+                        "gameTime": value.get("gameTime"),
+                        "actionType": value.get("type", value.get("actionType")),
+                        "citizen": value.get("citizen"),
+                        "body": body,
+                    }
+                )
+        return list(reversed(events))
 
     def events_recent(self, limit: int = 50) -> dict[str, Any]:
         limit = _bounded_int(limit, low=1, high=MAX_EVENT_LIMIT, label="limit")
-        db_path = self._fixed_path(EVENT_DB)
         jsonl_path = self._fixed_path(EVENT_JSONL)
-        if db_path.is_file():
-            events = self._sqlite_events(db_path, limit)
-            source = EVENT_DB
-        elif jsonl_path.is_file():
+        if jsonl_path.is_file():
             events = self._jsonl_events(jsonl_path, limit)
             source = EVENT_JSONL
         else:

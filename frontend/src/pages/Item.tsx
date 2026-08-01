@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
+import EcoRichText from "../components/EcoRichText"
 import Layout from "../components/Layout"
 import { fetchItemPivot, type ItemFeedRow, type ItemPivot } from "../lib/itemsApi"
 import { formatCount, formatDuration, formatRelative, prettifyEcoName } from "../lib/format"
@@ -44,7 +45,7 @@ function FeedLine({ row, item, now }: { row: ItemFeedRow; item: string; now: num
     return (
       <li data-testid="item-feed-row">
         <span className="pivot-day">{when}</span>{" "}
-        <strong>{row.actor || "someone"}</strong> {verb} {formatCount(row.quantity)} {item}
+        <strong><EcoRichText text={row.actor || "someone"} /></strong> {verb} {formatCount(row.quantity)} {item}
         {at}
         {runTail(row)}
       </li>
@@ -53,8 +54,8 @@ function FeedLine({ row, item, now }: { row: ItemFeedRow; item: string; now: num
   return (
     <li data-testid="item-feed-row">
       <span className="pivot-day">{when}</span>{" "}
-      <strong>{row.seller || "someone"}</strong> sold {formatCount(row.quantity)} {item} to{" "}
-      <strong>{row.buyer || "someone"}</strong>
+      <strong><EcoRichText text={row.seller || "someone"} /></strong> sold {formatCount(row.quantity)} {item} to{" "}
+      <strong><EcoRichText text={row.buyer || "someone"} /></strong>
       {pricePhrase(row.unitPrice, row.currency)}
       {runTail(row)}
     </li>
@@ -256,7 +257,7 @@ export default function Item() {
                   {summary.supply.offers.map((o, i) => (
                     <li key={`${o.store}-${i}`}>
                       <div className="rank-row">
-                        <span className="rank-name">{o.store}</span>
+                        <span className="rank-name"><EcoRichText text={o.store} /></span>
                         <span className="rank-count">
                           {o.price !== null ? `${fmtPrice(o.price)} ${o.currency}` : "—"}
                           {o.quantity !== null ? ` · ${formatCount(o.quantity)} in stock` : ""}
@@ -284,7 +285,7 @@ export default function Item() {
                   {summary.demand.offers.map((o, i) => (
                     <li key={`${o.store}-${i}`}>
                       <div className="rank-row">
-                        <span className="rank-name">{o.owner || o.store}</span>
+                        <span className="rank-name"><EcoRichText text={o.owner || o.store} /></span>
                         <span className="rank-count">
                           {o.price !== null ? `${fmtPrice(o.price)} ${o.currency}` : "—"}
                           {o.quantity !== null ? ` · wants ${formatCount(o.quantity)}` : ""}

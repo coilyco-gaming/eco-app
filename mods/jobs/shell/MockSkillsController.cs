@@ -17,32 +17,32 @@ public class MockSkillsController : ControllerBase
         var now = DateTime.UtcNow;
         return new[]
         {
-            new PlayerSkillsDto("coilysiren", Iso(now), new[]
+            new PlayerSkillsDto("coilysiren", Iso(now), new[] { "Active", "Long Term" }, new[]
             {
                 new SpecialtyDto("Basic Carpentry", 5, 7),
                 new SpecialtyDto("Advanced Carpentry", 3, 7),
                 new SpecialtyDto("Furniture Making", 2, 7),
             }),
-            new PlayerSkillsDto("ekans", Iso(now.AddHours(-3)), new[]
+            new PlayerSkillsDto("ekans", Iso(now.AddHours(-3)), new[] { "Active" }, new[]
             {
                 new SpecialtyDto("Basic Carpentry", 4, 7),
                 new SpecialtyDto("Lumber", 1, 7),
                 new SpecialtyDto("Mining", 6, 7),
             }),
-            new PlayerSkillsDto("redwood", Iso(now.AddDays(-30)), new[]
+            new PlayerSkillsDto("redwood", Iso(now.AddDays(-30)), new[] { "Long Term" }, new[]
             {
                 new SpecialtyDto("Glassworking", 5, 7),
                 new SpecialtyDto("Basic Masonry", 2, 7),
                 new SpecialtyDto("Pottery", 3, 7),
             }),
-            new PlayerSkillsDto("salt", Iso(now.AddDays(-2)), new[]
+            new PlayerSkillsDto("salt", Iso(now.AddDays(-2)), Array.Empty<string>(), new[]
             {
                 new SpecialtyDto("Campfire Cooking", 4, 7),
                 new SpecialtyDto("Baking", 2, 7),
                 new SpecialtyDto("Farming", 5, 7),
                 new SpecialtyDto("Gardening", 3, 7),
             }),
-            new PlayerSkillsDto("hammerhand", Iso(now.AddDays(-5)), new[]
+            new PlayerSkillsDto("hammerhand", Iso(now.AddDays(-5)), Array.Empty<string>(), new[]
             {
                 new SpecialtyDto("Basic Masonry", 5, 7),
                 new SpecialtyDto("Brick Making", 4, 7),

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
+import EcoRichText from "../components/EcoRichText"
 import ItemLink from "../components/ItemLink"
 import Layout from "../components/Layout"
 import { fetchStores, type StoreDirectory, type StoreProfile } from "../lib/storesApi"
 import { fetchMarket, type MarketIntelligence } from "../lib/marketApi"
-import { formatCount } from "../lib/format"
+import { formatCount, stripEcoMarkup } from "../lib/format"
 
 const PICK_ROWS = 200
 // A shelf priced within ±this of the market median reads as "at market"; beyond
@@ -88,7 +89,8 @@ export default function UsesShopCheck() {
       (needle
         ? options.filter(
             (s) =>
-              s.label.toLowerCase().includes(needle) || s.owner.toLowerCase().includes(needle),
+              stripEcoMarkup(s.label).toLowerCase().includes(needle) ||
+              stripEcoMarkup(s.owner).toLowerCase().includes(needle),
           )
         : options
       ).slice(0, PICK_ROWS),
@@ -131,7 +133,7 @@ export default function UsesShopCheck() {
         <h1 className="hero-title">
           {store ? (
             <>
-              Is <span className="accent">{store.label}</span> priced right?
+              Is <span className="accent"><EcoRichText text={store.label} /></span> priced right?
             </>
           ) : (
             <>
@@ -162,7 +164,7 @@ export default function UsesShopCheck() {
       {store && !market && (
         <section>
           <p className="empty-note" data-testid="shop-no-market">
-            Market medians are unavailable right now, so this shows {store.label}'s own prices
+            Market medians are unavailable right now, so this shows <EcoRichText text={store.label} />'s own prices
             without a comparison — check back once the market plane has landed.
           </p>
         </section>
@@ -200,8 +202,8 @@ export default function UsesShopCheck() {
                       data-testid="pick-store"
                     >
                       <span className="rank-name">
-                        {s.label}
-                        <span className="section-sub"> · {s.owner}</span>
+                        <EcoRichText text={s.label} />
+                        <span className="section-sub"> · <EcoRichText text={s.owner} /></span>
                       </span>
                       <span className="rank-count">{formatCount(s.totalVolume)} volume</span>
                     </button>
@@ -216,7 +218,7 @@ export default function UsesShopCheck() {
       {store && (
         <section data-testid="shop-check">
           <h2 className="section-title">
-            {store.label} vs market{" "}
+            <EcoRichText text={store.label} /> vs market{" "}
             <span className="section-sub">
               (flagged past ±{NOTABLE_PCT}% of the market median)
             </span>

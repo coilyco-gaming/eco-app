@@ -11,7 +11,9 @@ from scripts import mod_packages
 from scripts.mod_packages import ModProject, package_mods
 
 
-def test_package_mods_creates_deterministic_install_archive(tmp_path: Path) -> None:
+def test_package_mods_creates_deterministic_install_archive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     project = tmp_path / "mods" / "sample" / "SampleMod.csproj"
     project.parent.mkdir(parents=True)
     project.write_text(
@@ -35,11 +37,23 @@ def test_package_mods_creates_deterministic_install_archive(tmp_path: Path) -> N
     (build_output / "SampleMod.deps.json").write_text("{}\n", encoding="utf-8")
     (native_output / "libsample.so").write_bytes(b"native")
 
+    original_rglob = Path.rglob
+    reverse_build_enumeration = False
+
+    def varied_rglob(path: Path, pattern: str):
+        entries = list(original_rglob(path, pattern))
+        if path == build_output and reverse_build_enumeration:
+            entries.reverse()
+        return iter(entries)
+
+    monkeypatch.setattr(Path, "rglob", varied_rglob)
+
     output = tmp_path / "packages"
     package_mods(tmp_path, output, "abc123")
     archive = output / "SampleMod-1.2.3.zip"
     first_digest = hashlib.sha256(archive.read_bytes()).hexdigest()
 
+    reverse_build_enumeration = True
     package_mods(tmp_path, output, "abc123")
 
     assert hashlib.sha256(archive.read_bytes()).hexdigest() == first_digest

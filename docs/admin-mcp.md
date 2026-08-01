@@ -16,10 +16,11 @@ privileged mount and network boundary.
 * **Configs** - `eco_config_get`, `eco_config_diff`, and `eco_mod_configs` read
   fixed enums covering core Eco configs and the DiscordLink, MightyMoose,
   NidToolbox, and StrangeWorlds config families.
-* **Chronicler** - `eco_events_recent` and `eco_player_activity` read the fixed
-  `Storage/EcoReplay.db` SQLite store in read-only mode. The reader also
-  understands the bounded append-only `Storage/EcoReplay.jsonl` migration
-  shape.
+* **Chronicler** - `eco_events_recent` and `eco_player_activity` stream the fixed
+  append-only `Storage/EcoReplay.jsonl` store. Reads retain only their bounded
+  newest-event window in memory and skip malformed or partial rows. The legacy
+  `Storage/EcoReplay.db` remains an untouched historical archive and is not
+  silently imported.
 * **Logs** - `eco_log_tail` and `eco_log_grep` select a fixed subsystem enum.
   Search is a bounded case-insensitive literal. The caller cannot supply a
   path or regex.

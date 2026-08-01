@@ -1,9 +1,30 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import type { EcoregionSnapshot } from "../lib/ecoregionApi"
+import type { EcoregionSnapshot, SpeciesRiskRow, SpeciesRiskState } from "../lib/ecoregionApi"
 import type { MapPayload } from "../lib/mapApi"
 import MapPage from "./Map"
+
+function riskRow(name: string, state: SpeciesRiskState, warning = false): SpeciesRiskRow {
+  const missing = state === "missing"
+  return {
+    name,
+    state,
+    warning,
+    reason: `${state} evidence`,
+    current: missing ? null : 40,
+    changeAbs: missing ? null : -60,
+    changePct: missing ? null : -0.6,
+    recentChangePct: missing ? null : -0.2,
+    observedPeak: missing ? null : 100,
+    firstTime: missing ? null : 0,
+    latestTime: missing ? null : 6000,
+    recentFromTime: missing ? null : 4000,
+    observationSeconds: missing ? null : 6000,
+    sampleCount: missing ? 0 : 4,
+    freshness: state === "stale" ? "stale" : missing ? "missing" : "current",
+  }
+}
 
 const SNAP: EcoregionSnapshot = {
   view: "eco_ecoregion",
@@ -25,6 +46,28 @@ const SNAP: EcoregionSnapshot = {
     bust: [{ name: "Wolf", first: 50, latest: 25, deltaRel: -0.5, fromZero: false }],
     speciesSeen: 2,
     speciesWithDrift: 2,
+  },
+  speciesRisk: {
+    sourceState: "available",
+    threshold: {
+      currentPeakRatio: 0.25,
+      cycleDeclinePct: -0.3,
+      recentDeclinePct: -0.15,
+      minSamples: 4,
+      minObservationSeconds: 1800,
+      staleLagSeconds: 1800,
+      description: "Relative evidence threshold.",
+    },
+    counts: { at_risk: 1, stable: 1, recovering: 1, naturally_sparse: 1, missing: 1, stale: 1 },
+    atRiskCount: 1,
+    species: [
+      riskRow("WolfSpecies", "at_risk", true),
+      riskRow("DeerSpecies", "stable"),
+      riskRow("BisonSpecies", "recovering"),
+      riskRow("FoxSpecies", "naturally_sparse"),
+      riskRow("OtterSpecies", "missing"),
+      riskRow("ElkSpecies", "stale"),
+    ],
   },
   adminAvailable: true,
 }
@@ -104,12 +147,12 @@ const CLIMATE = {
   fetched_at_iso: "2026-06-15T14:00:00+00:00",
 }
 
-function stubFetch() {
+function stubFetch(ecoregion: EcoregionSnapshot = SNAP) {
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string) => {
       let body: unknown = {}
-      if (url.includes("get_eco_ecoregion")) body = SNAP
+      if (url.includes("get_eco_ecoregion")) body = ecoregion
       else if (url.includes("world.json")) body = WORLD
       else if (url.includes("preview-map.json")) body = MAP
       else if (url.includes("get_eco_climate")) body = CLIMATE
@@ -143,14 +186,12 @@ describe("Map page", () => {
     expect(screen.getByTestId("loading")).toBeInTheDocument()
   })
 
-  it("renders the map frame with deed polygons and hotspot overlay", async () => {
+  it("renders deed polygons without activity circles", async () => {
     stubFetch()
     renderPage()
     await waitFor(() => expect(screen.getByTestId("map-frame")).toBeInTheDocument())
-    // Two activity hotspots overlaid on the actual map.
-    expect(screen.getAllByTestId("map-hotspot")).toHaveLength(2)
-    // The deed polygon is drawn.
     expect(screen.getByTestId("map-overlay").querySelector("polygon")).toBeTruthy()
+    expect(screen.getByTestId("map-overlay").querySelector("circle")).toBeNull()
     expect(screen.getByTestId("map-owners")).toHaveTextContent("alice")
   })
 
@@ -177,23 +218,54 @@ describe("Map page", () => {
     expect(raster).toHaveStyle({ opacity: "0" })
   })
 
-  it("shows most-touched objects as small touch counts, not runaway sums", async () => {
-    stubFetch()
-    renderPage()
-    await waitFor(() => expect(screen.getByTestId("objects")).toBeInTheDocument())
-    const objects = screen.getByTestId("objects")
-    expect(objects).toHaveTextContent("Dirt Ramp")
-    expect(objects).toHaveTextContent("42")
-    expect(objects).not.toHaveTextContent("19,516,641")
-  })
-
-  it("carries over the ecoregion matches and world timeline into one page", async () => {
+  it("keeps ecoregion matches and removes Mutation timeline plus everything below it", async () => {
     stubFetch()
     renderPage()
     await waitFor(() => expect(screen.getByTestId("eco-matches")).toBeInTheDocument())
     expect(screen.getByTestId("eco-matches")).toHaveTextContent("Indo-Pacific archipelago")
-    expect(screen.getByTestId("mutation-timeline")).toBeInTheDocument()
-    expect(screen.getByTestId("shapers")).toHaveTextContent("coilysiren")
+    expect(screen.queryByText("Mutation timeline")).not.toBeInTheDocument()
+    expect(screen.queryByText("By category")).not.toBeInTheDocument()
+    expect(screen.queryByText("Top world-shapers")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("link-crafting")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("link-jobs")).not.toBeInTheDocument()
+  })
+
+  it("shows deterministic species states and links to population profiles", async () => {
+    stubFetch()
+    renderPage()
+    await waitFor(() => expect(screen.getByTestId("species-risk")).toBeInTheDocument())
+    expect(screen.getByTestId("species-risk-at_risk")).toHaveTextContent("at risk")
+    expect(screen.getByTestId("species-risk-stable")).toHaveTextContent("stable")
+    expect(screen.getByTestId("species-risk-recovering")).toHaveTextContent("recovering")
+    expect(screen.getByTestId("species-risk-naturally_sparse")).toHaveTextContent("naturally sparse")
+    expect(screen.getByTestId("species-risk-missing")).toHaveTextContent("missing")
+    expect(screen.getByTestId("species-risk-stale")).toHaveTextContent("stale")
+    expect(screen.getByRole("link", { name: "Wolf" })).toHaveAttribute(
+      "href",
+      "/species?name=WolfSpecies",
+    )
+  })
+
+  it("makes exporter failure an explicit unavailable evidence state", async () => {
+    stubFetch({
+      ...SNAP,
+      speciesRisk: {
+        ...SNAP.speciesRisk,
+        sourceState: "unavailable",
+        atRiskCount: 0,
+        species: [],
+      },
+      adminAvailable: false,
+    })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId("species-risk-unavailable")).toBeInTheDocument()
+    })
+    expect(screen.getByTestId("species-risk-unavailable")).toHaveTextContent(
+      "No health claim is made without it",
+    )
+    expect(screen.queryByTestId("species-risk")).not.toBeInTheDocument()
   })
 
   it("folds the climate atmosphere overlay into the world page", async () => {
