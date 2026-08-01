@@ -43,6 +43,12 @@ const LIVE: UseCard[] = [
     blurb: "Cross-store spreads: buy at one shop, sell at another, ranked by the opportunity.",
   },
   {
+    to: "/uses/resolve",
+    testid: "use-resolve",
+    title: "Should I make X, buy it, or find a crafter?",
+    blurb: "Compare known recipes, current offers, and observed specialty holders without guessing availability.",
+  },
+  {
     to: "/uses/price",
     testid: "use-price",
     title: "How should I price X?",

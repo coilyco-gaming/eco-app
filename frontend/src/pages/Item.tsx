@@ -175,6 +175,13 @@ export default function Item() {
             item history unavailable right now
           </p>
         )}
+        {item && (
+          <p className="hero-kicker" data-testid="item-resolver-link">
+            <Link className="linklike" to={`/uses/resolve?item=${encodeURIComponent(item)}`}>
+              Make, buy, or find a crafter →
+            </Link>
+          </p>
+        )}
       </section>
 
       {!item && (

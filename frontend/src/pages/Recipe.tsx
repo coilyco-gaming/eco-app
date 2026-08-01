@@ -247,6 +247,14 @@ export default function Recipe() {
             </Link>
             <Link
               className="dir-card"
+              to={`/uses/resolve?item=${encodeURIComponent(recipe.product.item)}`}
+              data-testid="recipe-resolver-link"
+            >
+              <h3>Make, buy, or find a crafter →</h3>
+              <p>Compare recipe requirements, current offers, and observed specialty holders.</p>
+            </Link>
+            <Link
+              className="dir-card"
               to={`/recipes?ingredient=${encodeURIComponent(recipe.product.item)}`}
               data-testid="recipe-consumers-link"
             >

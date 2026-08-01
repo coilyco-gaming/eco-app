@@ -240,6 +240,8 @@ describe("UsesPrice", () => {
     expect(screen.getByTestId("price-comparison-table")).toBeInTheDocument()
     expect(screen.getByTestId("price-cost-table")).toBeInTheDocument()
     expect(screen.getByTestId("price-suggestion-list")).toHaveTextContent("Target ask")
+    expect(screen.getByTestId("price-assumptions")).toHaveTextContent("Observed market")
+    expect(screen.getByTestId("price-assumptions")).toHaveTextContent("Labor valuation")
     expect(within(screen.getByTestId("price-comparison-table")).getAllByTestId("price-sell-row")).toHaveLength(1)
   })
 

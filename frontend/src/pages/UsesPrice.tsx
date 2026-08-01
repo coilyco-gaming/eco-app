@@ -675,6 +675,52 @@ export default function UsesPrice() {
               )}
             </div>
           </section>
+
+          <section data-testid="price-assumptions">
+            <h2 className="section-title">Evidence and assumptions</h2>
+            <ul className="rank-rows">
+              <li>
+                <div className="rank-row">
+                  <span className="rank-name">Observed market</span>
+                  <span className="rank-count">
+                    {marketRow
+                      ? `${formatCount(marketRow.totalTrades)} trades across ${formatCount(marketRow.buckets.length)} recorded day${marketRow.buckets.length === 1 ? "" : "s"}`
+                      : "No recorded trades for this item"}
+                  </span>
+                </div>
+              </li>
+              <li>
+                <div className="rank-row">
+                  <span className="rank-name">Craft model</span>
+                  <span className="rank-count">
+                    {bestRecipe
+                      ? `${bestRecipe.displayName} is the lowest complete known recipe. Alternate recipes can differ.`
+                      : "No complete baseline recipe is available."}
+                  </span>
+                </div>
+              </li>
+              <li>
+                <div className="rank-row">
+                  <span className="rank-name">Labor valuation</span>
+                  <span className="rank-count">
+                    {currentRecipes?.costParams
+                      ? `${fmtPrice(currentRecipes.costParams.caloriePrice)} ${moneyUnit}/calorie and ${fmtPrice(currentRecipes.costParams.minutePrice)} ${moneyUnit}/minute`
+                      : "The recipe plane did not publish labor and time rates."}
+                  </span>
+                </div>
+              </li>
+              <li>
+                <div className="rank-row">
+                  <span className="rank-name">Shelf provenance</span>
+                  <span className="rank-count">
+                    {logistics?.live
+                      ? "Live offers are marked live. Remaining rows are history-derived."
+                      : "Shelf rows are history-derived until a live shelf snapshot is available."}
+                  </span>
+                </div>
+              </li>
+            </ul>
+          </section>
         </>
       )}
     </Layout>

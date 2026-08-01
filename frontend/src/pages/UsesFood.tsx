@@ -37,7 +37,7 @@ function FoodRow({ row }: { row: FoodSignal }) {
       <p className="gap-who">
         <Link className="linklike" to={`/trade?q=${query}`}>trade</Link>{" · "}
         <Link className="linklike" to={`/recipes?q=${query}`}>recipe</Link>{" · "}
-        <Link className="linklike" to={`/uses/price?q=${query}`}>pricing</Link>
+        <Link className="linklike" to={`/uses/price?item=${query}`}>pricing</Link>
       </p>
     </li>
   )

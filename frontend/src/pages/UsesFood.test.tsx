@@ -33,7 +33,7 @@ describe("UsesFood", () => {
     expect(screen.getAllByTestId("food-signal")[0]).toHaveTextContent("restock")
     const firstRow = screen.getAllByTestId("food-row")[0]
     expect(firstRow.querySelector('a[href="/trade?q=CookedCornItem"]')).toBeInTheDocument()
-    expect(firstRow.querySelector('a[href="/uses/price?q=CookedCornItem"]')).toBeInTheDocument()
+    expect(firstRow.querySelector('a[href="/uses/price?item=CookedCornItem"]')).toBeInTheDocument()
   })
 
   it("degrades when the food data plane is unavailable", async () => {

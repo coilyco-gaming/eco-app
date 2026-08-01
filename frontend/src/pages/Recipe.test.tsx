@@ -106,6 +106,10 @@ describe("Recipe", () => {
       "href",
       "/item?item=SteelBarItem",
     )
+    expect(screen.getByTestId("recipe-resolver-link")).toHaveAttribute(
+      "href",
+      "/uses/resolve?item=SteelBarItem",
+    )
   })
 
   it("lists other recipes that make the same product", async () => {

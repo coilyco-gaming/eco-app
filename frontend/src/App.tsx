@@ -21,6 +21,7 @@ import UsesBuySell from "./pages/UsesBuySell"
 import UsesDemand from "./pages/UsesDemand"
 import UsesFood from "./pages/UsesFood"
 import UsesPrice from "./pages/UsesPrice"
+import UsesResolve from "./pages/UsesResolve"
 import UsesShopCheck from "./pages/UsesShopCheck"
 import Wiki from "./pages/Wiki"
 
@@ -77,6 +78,7 @@ export default function App() {
         <Route path="/uses/buy-sell" element={<UsesBuySell />} />
         <Route path="/uses/arbitrage" element={<UsesArbitrage />} />
         <Route path="/uses/price" element={<UsesPrice />} />
+        <Route path="/uses/resolve" element={<UsesResolve />} />
         <Route path="/uses/shop-check" element={<UsesShopCheck />} />
         <Route
           path="/social"
