@@ -32,6 +32,7 @@ from . import market as market_mod
 from . import species as species_mod
 from .civics import civics_markdown, fetch_civics
 from .crafting import atlas_markdown, fetch_atlas
+from .dual_routes import DualRouteRegistry
 from .logistics import fetch_logistics, logistics_markdown
 from .map import build_map_payload, fetch_map_bundle
 from .progression import fetch_history, history_markdown
@@ -1392,7 +1393,7 @@ def _eco_icon() -> Icon:
     )
 
 
-def build_server() -> Server:
+def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
     """Construct the MCP Server with all handlers registered.
 
     Separated from `serve()` so it can be mounted in both the stdio transport
@@ -1401,6 +1402,7 @@ def build_server() -> Server:
     path (StreamableHTTPSessionManager) derives its initialization options from
     the Server itself, not from build_initialization_options below.
     """
+    dual_routes = route_registry if route_registry is not None else DualRouteRegistry()
     server: Server = Server(
         "eco-mcp-app",
         website_url="https://eco-app.coilysiren.me",
@@ -2208,7 +2210,12 @@ def build_server() -> Server:
                 annotations=PUBLIC_SERVERS_ANNOTATIONS,
             ),
         ]
-        return tools
+        registered_tools = dual_routes.mcp_tools()
+        existing_names = {tool.name for tool in tools}
+        duplicates = sorted(tool.name for tool in registered_tools if tool.name in existing_names)
+        if duplicates:
+            raise ValueError(f"dual routes duplicate existing MCP tools: {', '.join(duplicates)}")
+        return [*tools, *registered_tools]
 
     async def _dispatch_call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
         if name == "explain_eco_item":
@@ -2852,6 +2859,8 @@ def build_server() -> Server:
 
     @server.call_tool()
     async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
+        if dual_routes.has_tool(name):
+            return await dual_routes.call_mcp(name, arguments)
         result = await _dispatch_call_tool(name, arguments)
         return result
 

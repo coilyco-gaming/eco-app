@@ -45,6 +45,7 @@ from . import page_auth
 from . import users as users_mod
 from .admin import build_admin_server
 from .cost import CostParams, annotate_payload
+from .dual_routes import DualRouteRegistry
 from .food import fetch_food_report
 from .items import fetch_item_index, fetch_item_pivot
 from .livereload import DEBUG, livereload_route
@@ -286,9 +287,10 @@ async def preview_user_json(request: Request) -> JSONResponse:
     return JSONResponse(_sanitize_nonfinite(dossier))
 
 
-def create_app() -> Starlette:
+def create_app(route_registry: DualRouteRegistry | None = None) -> Starlette:
     init_telemetry()
-    mcp_server = build_server()
+    dual_routes = route_registry if route_registry is not None else DualRouteRegistry()
+    mcp_server = build_server(dual_routes)
     # stateless=True: every request gets a fresh transport. Fits the tool shape
     # — each call is a one-shot /info fetch, no long-lived session state.
     session_manager = StreamableHTTPSessionManager(app=mcp_server, stateless=True)
@@ -815,6 +817,7 @@ def create_app() -> Starlette:
         Route("/healthz", healthz, methods=["GET"]),
         Route("/page-auth", page_auth_status, methods=["GET"]),
         Route("/page-auth", page_auth_verify, methods=["POST"]),
+        *dual_routes.starlette_routes(),
         Route("/preview.json", preview_json, methods=["GET"]),
         Route("/preview-map.json", preview_map_json, methods=["GET"]),
         Route("/preview/currency.json", preview_currency_json, methods=["GET"]),

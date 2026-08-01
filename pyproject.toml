@@ -12,6 +12,7 @@ dependencies = [
   "mcp>=1.14.0",
   "httpx>=0.28.0",
   "fastapi>=0.115.0",
+  "pydantic>=2.11.0",
   "uvicorn[standard]>=0.30.0",
   # Already pulled in transitively by uvicorn[standard]; listed explicitly
   # because livereload.py imports it directly.
