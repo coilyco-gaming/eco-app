@@ -11,7 +11,13 @@ import {
   type SpeciesRisk,
   type SpeciesRiskState,
 } from "../lib/ecoregionApi"
-import { formatCount, formatFetchedAt, prettifyEcoName, stripEcoMarkup } from "../lib/format"
+import {
+  formatCount,
+  formatEventDay,
+  formatFetchedAt,
+  prettifyEcoName,
+  stripEcoMarkup,
+} from "../lib/format"
 import { type MapPayload, fetchMap } from "../lib/mapApi"
 
 // ---------------------------------------------------------------------------
@@ -245,6 +251,43 @@ function signed(n: number, digits = 2): string {
   return `${sign}${Math.abs(n).toFixed(digits)}`
 }
 
+function formatClimateValue(value: number, unit: string | null): string {
+  const formatted = value.toFixed(1)
+  if (unit === "%") return `${formatted}%`
+  return unit ? `${formatted} ${unit}` : formatted
+}
+
+function formatSourceCadence(intervalSeconds: number): string {
+  const days = intervalSeconds / 86400
+  if (Number.isInteger(days) && days >= 1) {
+    return `${days} game day${days === 1 ? "" : "s"}`
+  }
+  const hours = intervalSeconds / 3600
+  if (Number.isInteger(hours) && hours >= 1) {
+    return `${hours} source hour${hours === 1 ? "" : "s"}`
+  }
+  return `${Math.round(intervalSeconds)} source seconds`
+}
+
+function pollutionFreshness(snap: ClimateSnapshot): string {
+  const observation = snap.pollution.observation
+  if (snap.pollution.source === "worldlayers") {
+    return "Ground pollution uses the world-layer percentage fallback. A source-series observation and cadence are unavailable."
+  }
+  if (observation.latest_game_day === null) {
+    return "No ground-pollution source observation is available, so source freshness is unknown."
+  }
+  const latest = formatEventDay(observation.latest_game_day)
+  if (observation.freshness_state === "stale") {
+    const lag = observation.lag_intervals ?? 1
+    return `Ground pollution data is stale. The source was last observed at ${latest}, ${lag} cadence${lag === 1 ? "" : "s"} behind current game time ${formatEventDay(observation.current_game_day)}.`
+  }
+  if (observation.freshness_state === "current" && observation.interval_seconds !== null) {
+    return `Ground pollution was observed at ${latest} on a ${formatSourceCadence(observation.interval_seconds)} cadence. It is current for game time ${formatEventDay(observation.current_game_day)}.`
+  }
+  return `Ground pollution was observed at ${latest}. The source cadence is unavailable, so source freshness is unknown.`
+}
+
 interface ClimateStat {
   label: string
   value: string
@@ -309,7 +352,10 @@ function ClimateSection({ snap, pageLoadedAt }: { snap: ClimateSnapshot; pageLoa
     },
     {
       label: "Ground pollution",
-      value: snap.pollution.current != null ? `${snap.pollution.current.toFixed(1)}%` : "—",
+      value:
+        snap.pollution.current != null
+          ? formatClimateValue(snap.pollution.current, snap.pollution.unit)
+          : "—",
       detail: snap.pollution.source !== "none" ? `source: ${snap.pollution.source}` : undefined,
     },
   ]
@@ -357,7 +403,16 @@ function ClimateSection({ snap, pageLoadedAt }: { snap: ClimateSnapshot; pageLoa
       <p className="gap-who" data-testid="climate-freshness" title={snap.fetched_at_iso}>
         Snapshot fetched {formatFetchedAt(snap.fetched_at_iso)}. The backend may reuse it for up to 60 seconds.
         This page loaded at {pageLoadedAt.toLocaleTimeString("en-US", { timeZone: "UTC", hour: "2-digit", minute: "2-digit" })} UTC.
-        The source observation timestamp is unavailable.
+      </p>
+      <p
+        className={
+          snap.pollution.observation.freshness_state === "stale"
+            ? "hero-pill hero-pill-warn"
+            : "gap-who"
+        }
+        data-testid="pollution-source-freshness"
+      >
+        {pollutionFreshness(snap)}
       </p>
       <div className="stats">
         {atmosphere.map((s) => (

@@ -1197,7 +1197,30 @@ def _format_climate_markdown(payload: dict[str, Any]) -> str:
         rate_str = f", {rate:+.4f}/day" if rate else ""
         lines.append(f"- Sea level: **{sea['current']:.3f}**{rate_str}")
     if poll.get("current") is not None:
-        lines.append(f"- Ground pollution: **{poll['current']:.1f}%** ({poll['source']})")
+        unit = poll.get("unit") or ""
+        unit_suffix = unit if unit == "%" else f" {unit}" if unit else ""
+        lines.append(
+            f"- Ground pollution: **{poll['current']:.1f}{unit_suffix}** ({poll['source']})"
+        )
+        observation = poll.get("observation") or {}
+        freshness = observation.get("freshness_state")
+        latest_day = observation.get("latest_game_day")
+        current_day = observation.get("current_game_day")
+        if freshness == "stale":
+            lines.append(
+                "- Pollution source: **stale**. "
+                f"Latest sample game day {latest_day:g}, current game day {current_day}."
+            )
+        elif freshness == "current":
+            lines.append(
+                f"- Pollution source: current at game day {latest_day:g} "
+                f"for current game day {current_day}."
+            )
+        elif latest_day is not None:
+            lines.append(
+                f"- Pollution source: sample game day {latest_day:g}, freshness unknown because "
+                "the source cadence is unavailable."
+            )
     temp = payload.get("temperature") or {}
     if temp.get("current") is not None:
         risen = temp.get("risen")

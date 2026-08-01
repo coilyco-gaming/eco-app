@@ -8,7 +8,23 @@
 export interface ClimateKpi {
   current: number | null
   dataset_name: string | null
+  unit: string | null
+  observation: ClimateObservation
   series: [number, number][]
+}
+
+export interface ClimateObservation {
+  latest_game_time_seconds: number | null
+  latest_game_day: number | null
+  current_game_day: number
+  interval_seconds: number | null
+  lag_intervals: number | null
+  freshness_state: "current" | "stale" | "unknown"
+  freshness_reason:
+    | "within_source_cadence"
+    | "behind_current_game_day"
+    | "unknown_cadence"
+    | "no_sample"
 }
 
 export interface Co2Kpi extends ClimateKpi {

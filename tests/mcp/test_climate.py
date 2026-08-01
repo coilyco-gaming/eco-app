@@ -105,13 +105,16 @@ def _parallel_series(values: list[float], unit: str = "PPM") -> dict[str, object
     }
 
 
-def _route_datasets_parallel(values: dict[str, list[float]]) -> None:
+def _route_datasets_parallel(
+    values: dict[str, list[float]], *, units: dict[str, str] | None = None
+) -> None:
     """Same as ``_route_datasets`` but returns parallel-arrays shape."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         name = request.url.params.get("dataset", "")
         if name in values:
-            return httpx.Response(200, json=_parallel_series(values[name]))
+            unit = (units or {}).get(name, "PPM")
+            return httpx.Response(200, json=_parallel_series(values[name], unit=unit))
         return httpx.Response(
             200, json={"Times": [], "Values": [], "Interval": 86400.0, "Unit": "PPM"}
         )
@@ -192,7 +195,14 @@ async def test_fetch_climate_parses_parallel_arrays_shape() -> None:
             "TotalCO2": [325.0, 325.0, 410.04, 520.0],
             "SeaLevel": [60.0, 60.0, 60.13, 61.0],
             "TotalGroundPollution": [0.0, 16.8, 629.4, 705.9],
-        }
+            "AverageGlobalTemperature": [14.0, 14.2, 14.5, 14.8],
+        },
+        units={
+            "TotalCO2": "PPM",
+            "SeaLevel": "Meters",
+            "TotalGroundPollution": "PPM",
+            "AverageGlobalTemperature": "Celsius",
+        },
     )
     _route_flatlist([])
     _route_worldlayers_empty()
@@ -213,6 +223,19 @@ async def test_fetch_climate_parses_parallel_arrays_shape() -> None:
     assert [v for _, v in snap.sea_level_series] == [60.0, 60.0, 60.13, 61.0]
     assert snap.pollution_dataset_name == "TotalGroundPollution"
     assert [v for _, v in snap.pollution_series] == [0.0, 16.8, 629.4, 705.9]
+    assert snap.temperature_dataset_name == "AverageGlobalTemperature"
+    assert snap.co2_unit == "PPM"
+    assert snap.sea_level_unit == "Meters"
+    assert snap.pollution_unit == "PPM"
+    assert snap.temperature_unit == "Celsius"
+    assert snap.co2_interval_seconds == 86400.0
+    assert snap.sea_level_interval_seconds == 86400.0
+    assert snap.pollution_interval_seconds == 86400.0
+    assert snap.temperature_interval_seconds == 86400.0
+    assert snap.dataset_metadata["TotalGroundPollution"] == {
+        "unit": "PPM",
+        "interval_seconds": 86400.0,
+    }
 
 
 @pytest.mark.asyncio
@@ -387,20 +410,20 @@ async def test_fetch_climate_aggregates_polluter_attribution() -> None:
 @respx.mock
 async def test_fetch_climate_caches_within_ttl() -> None:
     """Repeat calls within the TTL hit the cache, not the network."""
-    _route_datasets({"CO2PPM": [400]})
+    _route_datasets_parallel({"TotalGroundPollution": [400]})
     _route_flatlist([])
     wl = respx.get(_WORLDLAYERS_URL).mock(return_value=httpx.Response(200, json=[]))
     _route_climate_settings()
     _route_actions_empty()
 
-    await fetch_climate(
+    first = await fetch_climate(
         None,
         info=_info(),
         days_elapsed=4,
         admin_token="test-token",
         default_admin_base=_DEFAULT_BASE,
     )
-    await fetch_climate(
+    second = await fetch_climate(
         None,
         info=_info(),
         days_elapsed=4,
@@ -409,6 +432,8 @@ async def test_fetch_climate_caches_within_ttl() -> None:
     )
     # Worldlayers hit only once — second call short-circuited by the TTLCache.
     assert wl.call_count == 1
+    assert first.pollution_unit == "PPM"
+    assert second.pollution_interval_seconds == 86400.0
 
 
 @pytest.mark.asyncio
@@ -586,6 +611,8 @@ def test_payload_pollution_falls_back_to_worldlayers_when_series_empty() -> None
     p = compute_climate_payload(snap)
     assert p["pollution"]["current"] == 7.0
     assert p["pollution"]["source"] == "worldlayers"
+    assert p["pollution"]["unit"] == "%"
+    assert p["pollution"]["observation"]["freshness_state"] == "unknown"
 
 
 def test_payload_pollution_prefers_live_series_over_layer() -> None:
@@ -597,6 +624,57 @@ def test_payload_pollution_prefers_live_series_over_layer() -> None:
     p = compute_climate_payload(snap)
     assert p["pollution"]["current"] == 14.0
     assert p["pollution"]["source"] == "GroundPollution"
+    assert p["pollution"]["unit"] == "PPM"
+
+
+def test_payload_pollution_source_is_current_on_current_game_day() -> None:
+    snap = _snap(
+        days_elapsed=28,
+        pollution_series=[(27 * 86400.0, 243.7), (28 * 86400.0, 297.6)],
+        pollution_dataset_name="TotalGroundPollution",
+        pollution_unit="PPM",
+        pollution_interval_seconds=86400.0,
+    )
+    pollution = compute_climate_payload(snap)["pollution"]
+    assert pollution["unit"] == "PPM"
+    assert pollution["observation"] == {
+        "latest_game_time_seconds": 28 * 86400.0,
+        "latest_game_day": 28.0,
+        "current_game_day": 28,
+        "interval_seconds": 86400.0,
+        "lag_intervals": 0,
+        "freshness_state": "current",
+        "freshness_reason": "within_source_cadence",
+    }
+
+
+def test_payload_pollution_source_is_stale_when_behind_current_game_day() -> None:
+    snap = _snap(
+        days_elapsed=28,
+        pollution_series=[(27 * 86400.0, 243.7)],
+        pollution_dataset_name="TotalGroundPollution",
+        pollution_unit="PPM",
+        pollution_interval_seconds=86400.0,
+    )
+    observation = compute_climate_payload(snap)["pollution"]["observation"]
+    assert observation["latest_game_day"] == 27.0
+    assert observation["lag_intervals"] == 1
+    assert observation["freshness_state"] == "stale"
+    assert observation["freshness_reason"] == "behind_current_game_day"
+
+
+def test_payload_pollution_source_freshness_unknown_without_cadence() -> None:
+    snap = _snap(
+        days_elapsed=28,
+        pollution_series=[(28 * 86400.0, 297.6)],
+        pollution_dataset_name="TotalGroundPollution",
+        pollution_interval_seconds=None,
+    )
+    pollution = compute_climate_payload(snap)["pollution"]
+    assert pollution["unit"] == "PPM"
+    assert pollution["observation"]["latest_game_day"] == 28.0
+    assert pollution["observation"]["freshness_state"] == "unknown"
+    assert pollution["observation"]["freshness_reason"] == "unknown_cadence"
 
 
 def test_payload_attribution_block_when_no_data() -> None:
@@ -878,6 +956,9 @@ async def test_call_get_eco_climate_returns_iframe_fragment() -> None:
     md = blocks[0].text
     assert "climate" in md.lower()
     assert "ppm" in md.lower()
+    assert "Ground pollution: **6.0 PPM**" in md
+    assert "Ground pollution: **6.0%**" not in md
+    assert "source cadence is unavailable" in md
 
     # JSON block is the computed payload (what the SPA Climate page consumes),
     # not the raw snapshot — carries the KPI blocks with dataset names.
@@ -885,6 +966,8 @@ async def test_call_get_eco_climate_returns_iframe_fragment() -> None:
     assert payload["co2"]["dataset_name"] == "CO2PPM"
     assert payload["sea_level"]["dataset_name"] == "SeaLevel"
     assert payload["pollution"]["dataset_name"] == "GroundPollution"
+    assert payload["pollution"]["unit"] == "PPM"
+    assert payload["pollution"]["observation"]["freshness_state"] == "unknown"
     assert payload["status"] in {"stable", "warming", "critical", "unknown"}
     assert "explainer" in payload
 

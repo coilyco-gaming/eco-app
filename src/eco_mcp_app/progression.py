@@ -482,9 +482,9 @@ async def _discover_daily_series(
     for name in matches:
         if len(series) >= MAX_DISCOVERED_SERIES:
             break
-        points = await _fetch_dataset(client, base_url, name, day_end=365, headers=headers)
-        if points:
-            series[str(name)] = points
+        dataset = await _fetch_dataset(client, base_url, name, day_end=365, headers=headers)
+        if dataset.points:
+            series[str(name)] = dataset.points
     return series
 
 

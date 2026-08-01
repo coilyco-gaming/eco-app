@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import type { ClimateObservation, ClimateSnapshot } from "../lib/climateApi"
 import type { EcoregionSnapshot, SpeciesRiskRow, SpeciesRiskState } from "../lib/ecoregionApi"
 import type { MapPayload } from "../lib/mapApi"
 import MapPage from "./Map"
@@ -116,16 +117,57 @@ const MAP: MapPayload = {
 }
 
 // Climate folded into the world page as its environmental overlay (eco-app#90).
-const CLIMATE = {
+const CURRENT_OBSERVATION: ClimateObservation = {
+  latest_game_time_seconds: 59 * 86400,
+  latest_game_day: 59,
+  current_game_day: 59,
+  interval_seconds: 86400,
+  lag_intervals: 0,
+  freshness_state: "current",
+  freshness_reason: "within_source_cadence",
+}
+
+const CLIMATE: ClimateSnapshot = {
   server: { description: "Eco via Sirens", category: "Established", sourceUrl: "http://x/info" },
   days_elapsed: 59,
   admin_ok: true,
   status: "warming",
   narrative: "Climate is warming — CO2 at 325 ppm, sea level +3.05%.",
-  co2: { current: 325, change_pct: 0, dataset_name: "TotalCO2", series: [] },
-  sea_level: { current: 61.83, change_pct: 3.05, rate_per_day: 0.03, dataset_name: "SeaLevel", series: [] },
-  pollution: { current: 437.5, source: "TotalGroundPollution", dataset_name: "TotalGroundPollution", layer_summary: null, series: [] },
-  temperature: { current: 14.86, risen: 0.86, rate_per_day: 0.01, dataset_name: "AverageGlobalTemperature", series: [] },
+  co2: {
+    current: 325,
+    change_pct: 0,
+    dataset_name: "TotalCO2",
+    unit: "PPM",
+    observation: CURRENT_OBSERVATION,
+    series: [],
+  },
+  sea_level: {
+    current: 61.83,
+    change_pct: 3.05,
+    rate_per_day: 0.03,
+    dataset_name: "SeaLevel",
+    unit: "Meters",
+    observation: CURRENT_OBSERVATION,
+    series: [],
+  },
+  pollution: {
+    current: 437.5,
+    source: "TotalGroundPollution",
+    dataset_name: "TotalGroundPollution",
+    unit: "PPM",
+    observation: CURRENT_OBSERVATION,
+    layer_summary: null,
+    series: [[59 * 86400, 437.5]],
+  },
+  temperature: {
+    current: 14.86,
+    risen: 0.86,
+    rate_per_day: 0.01,
+    dataset_name: "AverageGlobalTemperature",
+    unit: "Celsius",
+    observation: CURRENT_OBSERVATION,
+    series: [],
+  },
   breakdown: {
     has_data: true,
     pollution: { lifetime: 12687, per_day: 4.2 },
@@ -147,7 +189,7 @@ const CLIMATE = {
   fetched_at_iso: "2026-06-15T14:00:00+00:00",
 }
 
-function stubFetch(ecoregion: EcoregionSnapshot = SNAP) {
+function stubFetch(ecoregion: EcoregionSnapshot = SNAP, climate: ClimateSnapshot = CLIMATE) {
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string) => {
@@ -155,7 +197,7 @@ function stubFetch(ecoregion: EcoregionSnapshot = SNAP) {
       if (url.includes("get_eco_ecoregion")) body = ecoregion
       else if (url.includes("world.json")) body = WORLD
       else if (url.includes("preview-map.json")) body = MAP
-      else if (url.includes("get_eco_climate")) body = CLIMATE
+      else if (url.includes("get_eco_climate")) body = climate
       return Promise.resolve(
         new Response(JSON.stringify(body), {
           status: 200,
@@ -275,9 +317,88 @@ describe("Map page", () => {
     // The climate narrative pill and the CO2 atmosphere tile both render.
     expect(screen.getByTestId("climate-pill")).toHaveTextContent("warming")
     expect(screen.getByTestId("climate")).toHaveTextContent("325 ppm")
+    expect(screen.getByTestId("climate")).toHaveTextContent("437.5 PPM")
     expect(screen.getByTestId("climate-freshness")).toHaveTextContent("Snapshot fetched")
+    expect(screen.getByTestId("pollution-source-freshness")).toHaveTextContent(
+      "current for game time Day 59, 00:00",
+    )
     expect(screen.getByTestId("climate-coordination")).toHaveTextContent("Observed risk")
     // The former standalone /climate cross-link card is gone — it's folded in.
     expect(screen.queryByTestId("link-climate")).not.toBeInTheDocument()
+  })
+
+  it("visibly reports pollution when the source is behind the current game day", async () => {
+    stubFetch(SNAP, {
+      ...CLIMATE,
+      pollution: {
+        ...CLIMATE.pollution,
+        observation: {
+          ...CURRENT_OBSERVATION,
+          latest_game_time_seconds: 58 * 86400,
+          latest_game_day: 58,
+          lag_intervals: 1,
+          freshness_state: "stale",
+          freshness_reason: "behind_current_game_day",
+        },
+      },
+    })
+    renderPage()
+
+    const freshness = await screen.findByTestId("pollution-source-freshness")
+    expect(freshness).toHaveClass("hero-pill-warn")
+    expect(freshness).toHaveTextContent("Ground pollution data is stale")
+    expect(freshness).toHaveTextContent("Day 58, 00:00")
+    expect(freshness).toHaveTextContent("Day 59, 00:00")
+  })
+
+  it("keeps source freshness unknown when cadence metadata is absent", async () => {
+    stubFetch(SNAP, {
+      ...CLIMATE,
+      pollution: {
+        ...CLIMATE.pollution,
+        observation: {
+          ...CURRENT_OBSERVATION,
+          interval_seconds: null,
+          lag_intervals: null,
+          freshness_state: "unknown",
+          freshness_reason: "unknown_cadence",
+        },
+      },
+    })
+    renderPage()
+
+    expect(await screen.findByTestId("pollution-source-freshness")).toHaveTextContent(
+      "source cadence is unavailable, so source freshness is unknown",
+    )
+  })
+
+  it("reserves percent for the world-layer pollution fallback", async () => {
+    stubFetch(SNAP, {
+      ...CLIMATE,
+      pollution: {
+        ...CLIMATE.pollution,
+        current: 4,
+        source: "worldlayers",
+        dataset_name: null,
+        unit: "%",
+        observation: {
+          latest_game_time_seconds: null,
+          latest_game_day: null,
+          current_game_day: 59,
+          interval_seconds: null,
+          lag_intervals: null,
+          freshness_state: "unknown",
+          freshness_reason: "no_sample",
+        },
+        layer_summary: "4%",
+        series: [],
+      },
+    })
+    renderPage()
+
+    expect(await screen.findByTestId("climate")).toHaveTextContent("4.0%")
+    expect(screen.getByTestId("pollution-source-freshness")).toHaveTextContent(
+      "world-layer percentage fallback",
+    )
   })
 })

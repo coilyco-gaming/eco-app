@@ -148,6 +148,21 @@ _climate_cache: TTLCache[str, ClimateSnapshot] = TTLCache(maxsize=64, ttl=_CACHE
 # Action exporter row cap — same defensive bound as crafting.py uses.
 _MAX_ROWS_PER_ACTION = int(os.environ.get("ECO_CLIMATE_MAX_ROWS", "200000"))
 
+# Dataset ``Time`` values use the exporter/series clock: 86,400 source seconds
+# per game day. This is deliberately distinct from /info's ``TimeSinceStart``
+# clock. Source observations stay on their own plane and are compared with the
+# semantic current game day, never relabeled with the backend fetch timestamp.
+_SERIES_SECONDS_PER_GAME_DAY = 86400.0
+
+
+@dataclass(frozen=True)
+class DatasetSeries:
+    """One normalized Eco dataset response plus its source metadata."""
+
+    points: list[tuple[float, float]] = field(default_factory=list)
+    unit: str | None = None
+    interval_seconds: float | None = None
+
 
 @dataclass
 class ClimateSnapshot:
@@ -166,6 +181,15 @@ class ClimateSnapshot:
     sea_level_dataset_name: str | None = None
     pollution_dataset_name: str | None = None
     temperature_dataset_name: str | None = None
+    co2_unit: str | None = None
+    sea_level_unit: str | None = None
+    pollution_unit: str | None = None
+    temperature_unit: str | None = None
+    co2_interval_seconds: float | None = None
+    sea_level_interval_seconds: float | None = None
+    pollution_interval_seconds: float | None = None
+    temperature_interval_seconds: float | None = None
+    dataset_metadata: dict[str, dict[str, str | float | None]] = field(default_factory=dict)
     # CO2 source/sink breakdown — cumulative lifetime PPM per origin. Mirrors
     # the in-game "Global CO2 Sources and Sinks" status block.
     co2_pollution_series: list[tuple[float, float]] = field(default_factory=list)
@@ -203,6 +227,15 @@ class ClimateSnapshot:
             "seaLevelDatasetName": self.sea_level_dataset_name,
             "pollutionDatasetName": self.pollution_dataset_name,
             "temperatureDatasetName": self.temperature_dataset_name,
+            "co2Unit": self.co2_unit,
+            "seaLevelUnit": self.sea_level_unit,
+            "pollutionUnit": self.pollution_unit,
+            "temperatureUnit": self.temperature_unit,
+            "co2IntervalSeconds": self.co2_interval_seconds,
+            "seaLevelIntervalSeconds": self.sea_level_interval_seconds,
+            "pollutionIntervalSeconds": self.pollution_interval_seconds,
+            "temperatureIntervalSeconds": self.temperature_interval_seconds,
+            "datasetMetadata": {name: dict(meta) for name, meta in self.dataset_metadata.items()},
             "co2PollutionSeries": [[t, v] for t, v in self.co2_pollution_series],
             "co2AnimalsSeries": [[t, v] for t, v in self.co2_animals_series],
             "co2PlantsSeries": [[t, v] for t, v in self.co2_plants_series],
@@ -242,8 +275,8 @@ async def _fetch_dataset(
     name: str,
     day_end: int,
     headers: dict[str, str],
-) -> list[tuple[float, float]]:
-    """GET ``/datasets/get`` for one series. Returns ``[]`` on any non-200.
+) -> DatasetSeries:
+    """GET ``/datasets/get`` for one series and retain its source metadata.
 
     Mirrors ``server._fetch_dataset`` — duplicated rather than imported to
     keep this module free of a server.py dependency (server.py imports here
@@ -256,11 +289,13 @@ async def _fetch_dataset(
             headers=headers,
         )
         if r.status_code != 200:
-            return []
+            return DatasetSeries()
         data = r.json()
     except (httpx.HTTPError, ValueError):
-        return []
+        return DatasetSeries()
     out: list[tuple[float, float]] = []
+    unit: str | None = None
+    interval_seconds: float | None = None
     if isinstance(data, list):
         for pt in data:
             parsed = _parse_dataset_point(pt)
@@ -268,7 +303,15 @@ async def _fetch_dataset(
                 out.append(parsed)
     elif isinstance(data, dict):
         out.extend(_parse_parallel_arrays(data))
-    return out
+        raw_unit = data.get("Unit", data.get("unit"))
+        if raw_unit is not None and str(raw_unit).strip():
+            unit = str(raw_unit).strip()
+        raw_interval = data.get("Interval", data.get("interval"))
+        if isinstance(raw_interval, int | float) and not isinstance(raw_interval, bool):
+            parsed_interval = float(raw_interval)
+            if parsed_interval > 0:
+                interval_seconds = parsed_interval
+    return DatasetSeries(points=out, unit=unit, interval_seconds=interval_seconds)
 
 
 def _parse_parallel_arrays(data: dict[str, Any]) -> list[tuple[float, float]]:
@@ -357,7 +400,7 @@ async def _fetch_first_nonempty(
     *,
     flatlist: list[str] | None = None,
     discovery_keywords: tuple[str, ...] = (),
-) -> tuple[str | None, list[tuple[float, float]]]:
+) -> tuple[str | None, DatasetSeries]:
     """Try each candidate dataset name; return the first that has data.
 
     Probes are issued sequentially because we want to *stop* on the first hit
@@ -371,9 +414,9 @@ async def _fetch_first_nonempty(
     populated when our hard-coded candidates miss.
     """
     for name in candidates:
-        pts = await _fetch_dataset(client, base, name, day_end, headers)
-        if pts:
-            return name, pts
+        series = await _fetch_dataset(client, base, name, day_end, headers)
+        if series.points:
+            return name, series
     if flatlist and discovery_keywords:
         seen = {c.lower() for c in candidates}
         for name in flatlist:
@@ -381,10 +424,10 @@ async def _fetch_first_nonempty(
             if lower in seen:
                 continue
             if any(kw in lower for kw in discovery_keywords):
-                pts = await _fetch_dataset(client, base, name, day_end, headers)
-                if pts:
-                    return name, pts
-    return None, []
+                series = await _fetch_dataset(client, base, name, day_end, headers)
+                if series.points:
+                    return name, series
+    return None, DatasetSeries()
 
 
 async def _fetch_dataset_flatlist(
@@ -702,14 +745,47 @@ async def fetch_climate(
                 )
             )
 
-            (snapshot.co2_dataset_name, snapshot.co2_series) = await co2_task
-            (snapshot.sea_level_dataset_name, snapshot.sea_level_series) = await sea_task
-            (snapshot.pollution_dataset_name, snapshot.pollution_series) = await poll_task
-            (snapshot.temperature_dataset_name, snapshot.temperature_series) = await temp_task
+            (snapshot.co2_dataset_name, co2_result) = await co2_task
+            snapshot.co2_series = co2_result.points
+            snapshot.co2_unit = co2_result.unit
+            snapshot.co2_interval_seconds = co2_result.interval_seconds
+
+            (snapshot.sea_level_dataset_name, sea_result) = await sea_task
+            snapshot.sea_level_series = sea_result.points
+            snapshot.sea_level_unit = sea_result.unit
+            snapshot.sea_level_interval_seconds = sea_result.interval_seconds
+
+            (snapshot.pollution_dataset_name, pollution_result) = await poll_task
+            snapshot.pollution_series = pollution_result.points
+            snapshot.pollution_unit = pollution_result.unit
+            snapshot.pollution_interval_seconds = pollution_result.interval_seconds
+
+            (snapshot.temperature_dataset_name, temperature_result) = await temp_task
+            snapshot.temperature_series = temperature_result.points
+            snapshot.temperature_unit = temperature_result.unit
+            snapshot.temperature_interval_seconds = temperature_result.interval_seconds
             snapshot.climate_settings = await settings_task
-            (_, snapshot.co2_pollution_series) = await poll_src_task
-            (_, snapshot.co2_animals_series) = await animal_src_task
-            (_, snapshot.co2_plants_series) = await plant_src_task
+            (pollution_source_name, pollution_source_result) = await poll_src_task
+            snapshot.co2_pollution_series = pollution_source_result.points
+            (animal_source_name, animal_source_result) = await animal_src_task
+            snapshot.co2_animals_series = animal_source_result.points
+            (plant_source_name, plant_source_result) = await plant_src_task
+            snapshot.co2_plants_series = plant_source_result.points
+
+            for dataset_name, result in (
+                (snapshot.co2_dataset_name, co2_result),
+                (snapshot.sea_level_dataset_name, sea_result),
+                (snapshot.pollution_dataset_name, pollution_result),
+                (snapshot.temperature_dataset_name, temperature_result),
+                (pollution_source_name, pollution_source_result),
+                (animal_source_name, animal_source_result),
+                (plant_source_name, plant_source_result),
+            ):
+                if dataset_name is not None:
+                    snapshot.dataset_metadata[dataset_name] = {
+                        "unit": result.unit,
+                        "interval_seconds": result.interval_seconds,
+                    }
 
             # Surface every climate-related dataset name the catalog
             # exposes so the empty-state card can hint at why we found
@@ -769,6 +845,48 @@ def _series_last(pts: list[tuple[float, float]]) -> float:
 
 def _series_first(pts: list[tuple[float, float]]) -> float:
     return float(pts[0][1]) if pts else 0.0
+
+
+def _source_observation(
+    pts: list[tuple[float, float]],
+    *,
+    interval_seconds: float | None,
+    current_game_day: int,
+) -> dict[str, Any]:
+    """Describe source freshness without borrowing a backend timestamp.
+
+    Dataset timestamps use the series/exporter clock. ``current_game_day`` is
+    the shared semantic reference from /info. An interval is required before
+    the backend can make a freshness claim. Legacy list-shaped datasets retain
+    their latest sample but remain explicitly unknown-cadence.
+    """
+    latest_time = float(pts[-1][0]) if pts else None
+    latest_game_day = (
+        round(latest_time / _SERIES_SECONDS_PER_GAME_DAY, 6) if latest_time is not None else None
+    )
+    observation: dict[str, Any] = {
+        "latest_game_time_seconds": latest_time,
+        "latest_game_day": latest_game_day,
+        "current_game_day": current_game_day,
+        "interval_seconds": interval_seconds,
+        "lag_intervals": None,
+        "freshness_state": "unknown",
+        "freshness_reason": "no_sample" if latest_time is None else "unknown_cadence",
+    }
+    if latest_time is None or interval_seconds is None or interval_seconds <= 0:
+        return observation
+
+    current_source_time = current_game_day * _SERIES_SECONDS_PER_GAME_DAY
+    lag_seconds = max(0.0, current_source_time - latest_time)
+    lag_intervals = int(lag_seconds // interval_seconds)
+    observation["lag_intervals"] = lag_intervals
+    if lag_intervals >= 1:
+        observation["freshness_state"] = "stale"
+        observation["freshness_reason"] = "behind_current_game_day"
+    else:
+        observation["freshness_state"] = "current"
+        observation["freshness_reason"] = "within_source_cadence"
+    return observation
 
 
 def _series_peak(pts: list[tuple[float, float]]) -> float:
@@ -1118,15 +1236,22 @@ def compute_climate_payload(snapshot: ClimateSnapshot) -> dict[str, Any]:
     # Prefer the live series; fall back to the worldlayers summary number.
     pollution_value: float | None
     pollution_source: str
+    pollution_unit: str | None
     if snapshot.pollution_series:
         pollution_value = pollution_last
         pollution_source = snapshot.pollution_dataset_name or "series"
+        # Every dataset-backed ground-pollution candidate is a concentration
+        # series. Eco 0.13 supplies Unit=PPM. Older list payloads omit Unit, so
+        # retain the documented PPM meaning rather than fabricating percent.
+        pollution_unit = snapshot.pollution_unit or "PPM"
     elif pollution_layer_pct is not None:
         pollution_value = pollution_layer_pct
         pollution_source = "worldlayers"
+        pollution_unit = "%"
     else:
         pollution_value = None
         pollution_source = "none"
+        pollution_unit = None
 
     temp_last = _series_last(snapshot.temperature_series)
     temp_base = _series_baseline(snapshot.temperature_series)
@@ -1172,6 +1297,12 @@ def compute_climate_payload(snapshot: ClimateSnapshot) -> dict[str, Any]:
             "current": round(co2_last, 1) if snapshot.co2_series else None,
             "change_pct": co2_change_pct,
             "dataset_name": snapshot.co2_dataset_name,
+            "unit": snapshot.co2_unit or ("PPM" if snapshot.co2_series else None),
+            "observation": _source_observation(
+                snapshot.co2_series,
+                interval_seconds=snapshot.co2_interval_seconds,
+                current_game_day=days_elapsed,
+            ),
             "series": [list(p) for p in snapshot.co2_series],
         },
         "sea_level": {
@@ -1179,12 +1310,24 @@ def compute_climate_payload(snapshot: ClimateSnapshot) -> dict[str, Any]:
             "change_pct": sea_change_pct,
             "rate_per_day": round(sea_rate_per_day, 4),
             "dataset_name": snapshot.sea_level_dataset_name,
+            "unit": snapshot.sea_level_unit or ("Meters" if snapshot.sea_level_series else None),
+            "observation": _source_observation(
+                snapshot.sea_level_series,
+                interval_seconds=snapshot.sea_level_interval_seconds,
+                current_game_day=days_elapsed,
+            ),
             "series": [list(p) for p in snapshot.sea_level_series],
         },
         "pollution": {
             "current": (round(pollution_value, 2) if pollution_value is not None else None),
             "source": pollution_source,
             "dataset_name": snapshot.pollution_dataset_name,
+            "unit": pollution_unit,
+            "observation": _source_observation(
+                snapshot.pollution_series,
+                interval_seconds=snapshot.pollution_interval_seconds,
+                current_game_day=days_elapsed,
+            ),
             "layer_summary": snapshot.pollution_layer_summary,
             "series": [list(p) for p in snapshot.pollution_series],
         },
@@ -1193,6 +1336,13 @@ def compute_climate_payload(snapshot: ClimateSnapshot) -> dict[str, Any]:
             "risen": (round(temp_last - temp_base, 2) if snapshot.temperature_series else None),
             "rate_per_day": round(temp_rate_per_day, 3),
             "dataset_name": snapshot.temperature_dataset_name,
+            "unit": snapshot.temperature_unit
+            or ("Celsius" if snapshot.temperature_series else None),
+            "observation": _source_observation(
+                snapshot.temperature_series,
+                interval_seconds=snapshot.temperature_interval_seconds,
+                current_game_day=days_elapsed,
+            ),
             "series": [list(p) for p in snapshot.temperature_series],
         },
         "breakdown": breakdown,

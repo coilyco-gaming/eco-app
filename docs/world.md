@@ -12,6 +12,12 @@ The World page consumes three independent planes:
 
 Each plane degrades independently. The page does not fetch or render the world-mutation action summary. The backend `get_eco_world` MCP tool and `/preview/world.json` data plane remain available for structured action analysis and existing consumers.
 
+## Climate source freshness
+
+The climate backend preserves each dataset response's source `Unit` and `Interval` metadata alongside its points. Every headline KPI exposes its latest source game-time sample, current game day, source cadence, cadence lag, and a `current`, `stale`, or `unknown` freshness state. Freshness compares the dataset-series clock with the current game day. The backend fetch timestamp remains only a cache-observation timestamp and is never presented as the source observation.
+
+The World page renders `TotalGroundPollution` as PPM, matching the dataset contract. A percentage is shown only when the series is unavailable and the page falls back to the world-layer summary. A daily series sampled on the current game day is current. A sample at least one source cadence behind is visibly stale. Legacy datasets that omit `Interval` retain their latest sample but report unknown cadence and unknown freshness rather than guessing. The backend's 60-second cache window and the browser page-load time remain separately labeled ([#184](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/184)).
+
 ## Biome and ecoregion evidence
 
 `src/eco_mcp_app/ecoregion.py` reads the public world-layers endpoint and normalizes the biome vector before comparing it with the committed WWF-inspired ecoregion fixture. Salt water and fresh water are reclassified from the formerly undifferentiated biome gap, leaving the remainder as genuine mountain or transitional terrain. The SPA shows the three closest ecoregion matches and highlights biome rasters on map hover.
@@ -37,7 +43,7 @@ Each row shows current population, absolute and relative cycle change, recent re
 
 ## Caching
 
-World-layer data caches for five minutes and species series cache for one minute. The world-activity aggregate uses its own five-minute SQLite cache under `~/.cache/eco-mcp-app/world.sqlite`, keyed by server and API-key hash so servers do not cross-contaminate.
+World-layer data caches for five minutes, climate snapshots cache for one minute, and species series cache for one minute. The world-activity aggregate uses its own five-minute SQLite cache under `~/.cache/eco-mcp-app/world.sqlite`, keyed by server and API-key hash so servers do not cross-contaminate.
 
 ## See also
 
