@@ -171,6 +171,14 @@ def test_build_history_rolls_up_trajectory_and_resolves_names() -> None:
     spec_trend = dict(history.trends["specialty"])
     assert spec_trend[1.0] == 2.0
     assert spec_trend[2.0] == 1.0
+    first_gains = {row["skill"]: row for row in history.first_specialty_gains}
+    assert first_gains["BlacksmithSkill"] == {
+        "skill": "BlacksmithSkill",
+        "pretty": "Blacksmith Skill",
+        "day": 1,
+        "time": 100000.0,
+    }
+    assert first_gains["MiningSkill"]["day"] == 2
 
 
 def test_specialty_regained_after_loss_is_current() -> None:
@@ -304,6 +312,7 @@ async def test_fetch_history_cache_hits_within_ttl() -> None:
     a1 = await fetch_history(base_url=BASE, api_key="k", cache_ttl_s=60)
     a2 = await fetch_history(base_url=BASE, api_key="k", cache_ttl_s=60)
     assert a1.total_events == a2.total_events == 13
+    assert a2.first_specialty_gains == a1.first_specialty_gains
     assert route.call_count == 1
 
 

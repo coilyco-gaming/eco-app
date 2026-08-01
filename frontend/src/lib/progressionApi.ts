@@ -57,6 +57,12 @@ export interface ProgressionHistory {
   classCompletions: Array<[string, number]>
   // [citizenName, levelUpCount]
   topLevelers: Array<[string, number]>
+  firstSpecialtyGains: Array<{
+    skill: string
+    pretty: string
+    day: number
+    time: number
+  }>
   // Best-effort discovered progression daily series: name -> [[day, value]].
   dailySeries: Record<string, Array<[number, number]>>
   warnings: string[]

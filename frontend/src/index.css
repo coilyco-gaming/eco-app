@@ -667,9 +667,95 @@ a.dir-card:hover {
 }
 
 .empty-note {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
   margin: 0;
-  font-size: 0.8rem;
+  padding: 0.55rem 0.8rem 0.55rem 2.15rem;
+  border: 1px solid var(--card-border);
+  border-left: 3px solid var(--leaf-dim);
+  border-radius: 10px;
+  background: var(--card);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+.empty-note::before {
+  content: "ⓘ";
+  position: absolute;
+  left: 0.75rem;
+  top: 0.52rem;
+  color: var(--leaf);
+  font-weight: 700;
+}
+
+.skill-tree-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.skill-tree {
+  padding: 1rem 1.25rem;
+}
+
+.skill-tree-root {
+  margin-bottom: 0.75rem;
+}
+
+.skill-tree-branches,
+.skill-tree-talents {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.skill-tree-branches {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.skill-tree-specialty {
+  border-left: 2px solid var(--leaf-dim);
+  padding-left: 0.8rem;
+}
+
+.skill-tree-specialty summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.skill-tree-specialty summary::marker {
+  color: var(--leaf);
+}
+
+.skill-tree-talents {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.7rem;
+}
+
+.skill-tree-talents li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 0.65rem;
+  padding: 0.55rem 0;
+  border-top: 1px dotted var(--card-border);
+  color: var(--ink-soft);
+}
+
+.skill-tree-description {
+  display: block;
+  margin-top: 0.2rem;
   color: var(--ink-faint);
+  font-size: 0.78rem;
+  line-height: 1.35;
 }
 
 .prof-btn {
@@ -1081,6 +1167,105 @@ a.dir-card:hover {
   font-variant-numeric: tabular-nums;
 }
 
+.price-history-states,
+.price-history-columns {
+  margin-top: 0.8rem;
+}
+
+.price-history-chart {
+  box-sizing: border-box;
+  width: 100%;
+  height: auto;
+  padding: 0.45rem;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.price-history-chart .axis-label {
+  fill: var(--ink-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.price-range-line {
+  stroke: var(--ink-faint);
+  stroke-width: 2;
+  opacity: 0.55;
+}
+
+.price-median-line {
+  fill: none;
+  stroke: var(--leaf);
+  stroke-width: 2.5;
+}
+
+.price-median-point {
+  fill: var(--leaf);
+}
+
+.price-volume-bar {
+  fill: var(--leaf-dim);
+  opacity: 0.75;
+}
+
+.specialty-marker line {
+  stroke: var(--meteor);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  opacity: 0.8;
+}
+
+.specialty-marker circle {
+  fill: var(--meteor);
+}
+
+.specialty-marker text {
+  fill: var(--meteor);
+  stroke: var(--bg);
+  stroke-width: 3px;
+  paint-order: stroke fill;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.price-histogram {
+  display: flex;
+  align-items: stretch;
+  gap: 0.35rem;
+  height: 220px;
+  padding: 0.75rem 0.6rem;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.price-histogram-bin {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  align-items: end;
+  justify-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.price-histogram-count,
+.price-histogram-range {
+  color: var(--ink-faint);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.price-histogram-bar {
+  align-self: end;
+  width: min(80%, 44px);
+  min-height: 3px;
+  border-radius: 5px 5px 2px 2px;
+  background: var(--leaf);
+}
+
 /* ---- civics (/civics) ---- */
 /* Two-series legend for the turnout chart — identity is never colour-alone.
    Namespaced `civ-` so it never collides with the world surface's own
@@ -1174,15 +1359,27 @@ a.dir-card:hover {
 }
 
 .warn-list {
+  box-sizing: border-box;
+  width: 100%;
   margin: 0;
   padding: 0;
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.8rem;
-  color: var(--meteor);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.warn-list li {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--card-border);
+  border-left: 3px solid var(--meteor-deep);
+  border-radius: 10px;
+  background: var(--card);
+  line-height: 1.45;
 }
 
 /* Progression / skills-history surface (eco-app#64). Trend small-multiples:

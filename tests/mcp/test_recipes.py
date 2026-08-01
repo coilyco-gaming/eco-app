@@ -27,7 +27,22 @@ from eco_mcp_app.recipes import build_recipe_index, filter_index, load_recipe_in
 _RAW = {
     "Version": 3,
     "Skills": [
-        {"Name": "MasonrySkill", "LocalizedName": {"en-US": "Masonry"}, "MaxLevel": 7},
+        {"Name": "MasonSkill", "LocalizedName": {"en-US": "Mason"}, "MaxLevel": 0},
+        {
+            "Name": "MasonrySkill",
+            "LocalizedName": {"en-US": "Masonry"},
+            "Profession": "MasonSkill",
+            "MaxLevel": 7,
+            "Talents": [
+                {
+                    "Name": "MasonryMortarTalent",
+                    "LocalizedName": {"en-US": "Mortar Saver"},
+                    "LocalizedDescription": {"en-US": "Reduces mortar use."},
+                    "Level": 3,
+                    "MaxLevel": 1,
+                }
+            ],
+        },
         {"Name": "CarpentrySkill", "LocalizedName": {"en-US": "Carpentry"}, "MaxLevel": 7},
     ],
     "Items": [
@@ -149,6 +164,21 @@ def test_recipe_with_no_products_is_skipped_with_warning() -> None:
 def test_tags_map_exposes_associated_items() -> None:
     index = build_recipe_index(_RAW)
     assert index.tags["Wood"] == ["LumberItem"]
+
+
+def test_skill_definitions_preserve_profession_and_talent_tree() -> None:
+    index = build_recipe_index(_RAW)
+    masonry = next(skill for skill in index.skills if skill["name"] == "MasonrySkill")
+    assert masonry["profession"] == "MasonSkill"
+    assert masonry["talents"] == [
+        {
+            "name": "MasonryMortarTalent",
+            "displayName": "Mortar Saver",
+            "description": "Reduces mortar use.",
+            "level": 3,
+            "maxLevel": 1,
+        }
+    ]
 
 
 def test_to_dict_is_json_shaped() -> None:

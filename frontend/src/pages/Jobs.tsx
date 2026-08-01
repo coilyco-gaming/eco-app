@@ -6,7 +6,11 @@ import { useJobsData } from "../hooks/useJobsData"
 import { fetchLogistics, type GapReason, type LogisticsBoard } from "../lib/logisticsApi"
 import { fetchMarket, type MarketIntelligence } from "../lib/marketApi"
 import { formatCount, prettifyEcoName } from "../lib/format"
-import { fetchRecipeIndexWithCost, type RecipeIndexWithCost } from "../lib/recipesApi"
+import {
+  fetchRecipeIndexWithCost,
+  type RecipeIndexWithCost,
+  type RecipeSkillDef,
+} from "../lib/recipesApi"
 import { fetchTradesLedger, type TradesLedger } from "../lib/tradesApi"
 import type { PlayerRow, ProfessionStat, SpecialtyStat } from "../lib/jobsApi"
 import {
@@ -68,6 +72,51 @@ interface ProfessionValueBoard {
   key: string
   label: string
   rows: ValueRow[]
+}
+
+interface SkillTree {
+  key: string
+  label: string
+  specialties: RecipeSkillDef[]
+}
+
+function SkillTreeCard({ tree }: { tree: SkillTree }) {
+  return (
+    <section className="skill-tree card" data-testid="skill-tree">
+      <h3 className="card-title skill-tree-root">{tree.label}</h3>
+      <ul className="skill-tree-branches">
+        {tree.specialties.map((skill) => (
+          <li key={skill.name}>
+            <details className="skill-tree-specialty">
+              <summary>
+                <span>{skill.displayName}</span>
+                <span className="section-sub">
+                  level {skill.maxLevel} · {formatCount(skill.talents.length)} talents
+                </span>
+              </summary>
+              {skill.talents.length === 0 ? (
+                <p className="empty-note">No talent branches recorded for this specialty.</p>
+              ) : (
+                <ul className="skill-tree-talents">
+                  {skill.talents.map((talent) => (
+                    <li key={talent.name}>
+                      <span className="pill pill-active">level {talent.level}</span>
+                      <span>
+                        <strong>{talent.displayName}</strong>
+                        {talent.description && (
+                          <span className="skill-tree-description">{talent.description}</span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </details>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
 }
 
 function ProfessionCard({ stat }: { stat: ProfessionStat }) {
@@ -473,6 +522,30 @@ export default function Jobs() {
     return boards
   }, [recipeIndex, logistics, market, trades])
 
+  const skillTrees = useMemo<SkillTree[]>(() => {
+    if (!recipeIndex) return []
+    const roots = new Map(
+      recipeIndex.skills
+        .filter((skill) => !skill.profession)
+        .map((skill) => [skill.name, skill] as const),
+    )
+    const byProfession = new Map<string, RecipeSkillDef[]>()
+    for (const skill of recipeIndex.skills) {
+      if (!skill.profession || isUniversalSkill(skill.name)) continue
+      const siblings = byProfession.get(skill.profession) ?? []
+      siblings.push(skill)
+      byProfession.set(skill.profession, siblings)
+    }
+    return [...byProfession.entries()]
+      .map(([profession, treeSkills]) => ({
+        key: profession,
+        label: roots.get(profession)?.displayName ?? prettifyEcoName(profession),
+        specialties: treeSkills.sort((a, b) => a.displayName.localeCompare(b.displayName)),
+      }))
+      .filter((tree) => !isUniversalSkill(tree.label) && tree.specialties.length > 0)
+      .sort((a, b) => a.label.localeCompare(b.label))
+  }, [recipeIndex])
+
   // Same exclusion for the progression rank lists (name-keyed leaderboards).
   const dropUniversal = (rows: Array<[string, number]>) =>
     rows.filter(([name]) => !isUniversalSkill(name))
@@ -612,6 +685,22 @@ export default function Jobs() {
               ))}
             </ul>
           </section>
+
+          {skillTrees.length > 0 && (
+            <section data-testid="jobs-skill-trees">
+              <h2 className="section-title">
+                Skill trees{" "}
+                <span className="section-sub">
+                  (profession → specialty → level-gated talents)
+                </span>
+              </h2>
+              <div className="skill-tree-grid">
+                {skillTrees.map((tree) => (
+                  <SkillTreeCard key={tree.key} tree={tree} />
+                ))}
+              </div>
+            </section>
+          )}
 
           <section>
             <h2 className="section-title">Specialties</h2>

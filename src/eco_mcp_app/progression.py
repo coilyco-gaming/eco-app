@@ -184,6 +184,10 @@ class ProgressionHistory:
     class_completions: list[tuple[str, int]] = field(default_factory=list)
     # (citizen_name, level_up_count), heaviest first.
     top_levelers: list[tuple[str, int]] = field(default_factory=list)
+    # First server-wide observation for every gained specialty. This is folded
+    # from the uncapped event set before citizen timelines are bounded, so item
+    # price-history markers never disappear behind the presentation cap.
+    first_specialty_gains: list[dict[str, Any]] = field(default_factory=list)
     # Best-effort discovered progression daily series: name -> [(day, value)].
     daily_series: dict[str, list[tuple[float, float]]] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
@@ -200,6 +204,7 @@ class ProgressionHistory:
             "byProfession": [[n, c] for n, c in self.by_profession],
             "classCompletions": [[n, c] for n, c in self.class_completions],
             "topLevelers": [[n, c] for n, c in self.top_levelers],
+            "firstSpecialtyGains": list(self.first_specialty_gains),
             "dailySeries": {
                 name: [[d, v] for d, v in points] for name, points in self.daily_series.items()
             },
@@ -385,12 +390,16 @@ def build_history(
     by_specialty: dict[str, int] = defaultdict(int)
     by_profession: dict[str, int] = defaultdict(int)
     class_completions: dict[str, int] = defaultdict(int)
+    first_specialty_gains: dict[str, _ParsedEvent] = {}
     per_citizen: dict[str, list[_ParsedEvent]] = defaultdict(list)
 
     for e in parsed:
         trend_buckets[e.kind][int(e.day)] += 1
         if e.kind == "specialty" and e.skill:
             by_specialty[e.skill] += 1
+            first = first_specialty_gains.get(e.skill)
+            if first is None or e.time_s < first.time_s:
+                first_specialty_gains[e.skill] = e
         elif e.kind == "profession" and e.skill:
             by_profession[e.skill] += 1
         elif e.kind == "class" and e.skill:
@@ -409,6 +418,15 @@ def build_history(
     history.class_completions = sorted(
         class_completions.items(), key=lambda kv: (kv[1], kv[0]), reverse=True
     )
+    history.first_specialty_gains = [
+        {
+            "skill": event.skill,
+            "pretty": prettify_eco_name(event.skill),
+            "day": int(event.day),
+            "time": event.time_s,
+        }
+        for event in sorted(first_specialty_gains.values(), key=lambda event: event.time_s)
+    ]
 
     # Per-citizen trajectory cards, busiest first, capped.
     citizen_cards = [
@@ -560,6 +578,7 @@ def _history_from_dict(data: dict[str, Any]) -> ProgressionHistory:
         by_profession=[(n, int(c)) for n, c in data.get("byProfession", [])],
         class_completions=[(n, int(c)) for n, c in data.get("classCompletions", [])],
         top_levelers=[(n, int(c)) for n, c in data.get("topLevelers", [])],
+        first_specialty_gains=list(data.get("firstSpecialtyGains", [])),
         daily_series={
             name: [(float(d), float(v)) for d, v in points]
             for name, points in data.get("dailySeries", {}).items()

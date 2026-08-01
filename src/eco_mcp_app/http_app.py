@@ -50,6 +50,7 @@ from .items import fetch_item_index, fetch_item_pivot
 from .livereload import DEBUG, livereload_route
 from .map import build_map_payload, fetch_map_bundle
 from .market import fetch_price_map
+from .price_history import fetch_item_price_history
 from .recipes import filter_index, load_recipe_index
 from .server import (
     ADMIN_API_KEY_ENV,
@@ -681,6 +682,27 @@ def create_app() -> Starlette:
             return JSONResponse({"error": str(e)}, status_code=502)
         return JSONResponse(pivot.to_dict())
 
+    async def preview_price_history_json(request: Request) -> JSONResponse:
+        """Current-cycle unit-price distribution and specialty unlock markers.
+
+        `item` and `currency` are both required so two currency markets are
+        never blended. The source fetches degrade inside the contract rather
+        than turning missing progression or recipes into a misleading 500.
+        """
+        item = request.query_params.get("item", "").strip()
+        currency = request.query_params.get("currency", "").strip()
+        if not item or not currency:
+            return JSONResponse(
+                {"error": "item and currency query params are required"}, status_code=400
+            )
+        payload = await fetch_item_price_history(
+            item,
+            currency,
+            base_url=request.query_params.get("server"),
+            api_key=_resolve_admin_key(),
+        )
+        return JSONResponse(payload)
+
     async def preview_recipes_json(request: Request) -> JSONResponse:
         """`/preview/recipes.json` — the SPA's recipe bill-of-materials plane.
 
@@ -808,6 +830,7 @@ def create_app() -> Starlette:
         Route("/preview/items.json", preview_items_json, methods=["GET"]),
         Route("/preview/food.json", preview_food_json, methods=["GET"]),
         Route("/preview/item.json", preview_item_json, methods=["GET"]),
+        Route("/preview/price-history.json", preview_price_history_json, methods=["GET"]),
         Route("/preview/recipes.json", preview_recipes_json, methods=["GET"]),
         Route("/preview/{tool}", preview_tool, methods=["GET"]),
         Mount("/mcp", app=handle_mcp),

@@ -1,13 +1,13 @@
 """Food restock signals stay bounded to positively identified recipe products."""
 
 import pytest
+from starlette.testclient import TestClient
 
 from eco_mcp_app.food import FoodReport, build_food_report, food_product_ids
 from eco_mcp_app.http_app import create_app
 from eco_mcp_app.items import ItemIndex
 from eco_mcp_app.logistics import LogisticsReport
 from eco_mcp_app.recipes import Recipe, RecipeComponent, RecipeIndex
-from starlette.testclient import TestClient
 
 
 def _recipes() -> RecipeIndex:

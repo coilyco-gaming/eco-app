@@ -2,11 +2,16 @@ import { useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import ItemLink from "../components/ItemLink"
 import Layout from "../components/Layout"
+import PriceHistoryPanel from "../components/PriceHistoryPanel"
 import { fetchFairPrice, type FairPriceResult } from "../lib/fairPriceApi"
 import { fetchJsonOrNull } from "../lib/api"
 import { fetchLogistics, type LogisticsBoard, type PricedBoardRow, type ShelfOffer } from "../lib/logisticsApi"
 import { fetchMarket, type ItemMarket, type MarketIntelligence, type MarketTrend } from "../lib/marketApi"
 import { formatCount, prettifyEcoName } from "../lib/format"
+import {
+  fetchItemPriceHistory,
+  type ItemPriceHistory,
+} from "../lib/priceHistoryApi"
 
 const PICK_ROWS = 200
 const TARGET_MARKUP = 1.25
@@ -54,6 +59,7 @@ type CostRecipeIndex = {
 type MarketOption = {
   item: string
   pretty: string
+  currency: string
   score: number
   detail: string
 }
@@ -163,14 +169,37 @@ function marketSummary(row: ItemMarket): string {
 export default function UsesPrice() {
   const [params, setParams] = useSearchParams()
   const item = params.get("item") ?? ""
+  const requestedCurrency = params.get("currency") ?? ""
   const [market, setMarket] = useState<MarketIntelligence | null>(null)
   const [logistics, setLogistics] = useState<LogisticsBoard | null>(null)
   const [fairPrice, setFairPrice] = useState<FairPriceResult | null>(null)
   const [recipes, setRecipes] = useState<CostRecipeIndex | null>(null)
+  const [priceHistory, setPriceHistory] = useState<ItemPriceHistory | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [detailLoadedFor, setDetailLoadedFor] = useState("")
   const [fairPriceFor, setFairPriceFor] = useState("")
   const [recipesFor, setRecipesFor] = useState("")
+  const [priceHistoryFor, setPriceHistoryFor] = useState("")
+
+  const marketRowsForItem = useMemo(
+    () => market?.markets.filter((row) => row.item === item) ?? [],
+    [market, item],
+  )
+  const fallbackShelfCurrency = useMemo(() => {
+    const row =
+      logistics?.cheapest.find((candidate) => candidate.item === item) ??
+      logistics?.resale.find((candidate) => candidate.item === item)
+    return row?.currency ?? ""
+  }, [logistics, item])
+  const requestedMarketRow = marketRowsForItem.find(
+    (row) => row.currency.toLowerCase() === requestedCurrency.toLowerCase(),
+  )
+  const selectedCurrency =
+    requestedMarketRow?.currency ||
+    marketRowsForItem[0]?.currency ||
+    requestedCurrency ||
+    fallbackShelfCurrency
+  const selectedMarketRow = requestedMarketRow ?? marketRowsForItem[0] ?? null
 
   useEffect(() => {
     const controller = new AbortController()
@@ -218,8 +247,37 @@ export default function UsesPrice() {
     return () => controller.abort()
   }, [item])
 
-  const pickItem = (nextItem: string) => {
-    setParams(nextItem ? { item: nextItem } : {}, { replace: false })
+  useEffect(() => {
+    if (!item || !selectedCurrency) return
+    const controller = new AbortController()
+    const key = `${item}\u0000${selectedCurrency}`
+    fetchItemPriceHistory(item, selectedCurrency, controller.signal).then(
+      (result) => {
+        if (!controller.signal.aborted) {
+          setPriceHistory(result)
+          setPriceHistoryFor(key)
+        }
+      },
+      () => {
+        if (!controller.signal.aborted) {
+          setPriceHistory(null)
+          setPriceHistoryFor(key)
+        }
+      },
+    )
+    return () => controller.abort()
+  }, [item, selectedCurrency])
+
+  const pickItem = (nextItem: string, nextCurrency = "") => {
+    setParams(
+      nextItem ? { item: nextItem, ...(nextCurrency ? { currency: nextCurrency } : {}) } : {},
+      { replace: false },
+    )
+  }
+
+  const pickCurrency = (nextCurrency: string) => {
+    if (!item) return
+    setParams({ item, currency: nextCurrency }, { replace: false })
   }
 
   const options = useMemo(() => {
@@ -227,12 +285,17 @@ export default function UsesPrice() {
     if (market) {
       for (const row of market.markets) {
         const detail = `${fmtPrice(row.medianPrice)} ${row.currency} median · ${formatCount(row.totalTrades)} trades`
-        byItem.set(row.item, {
-          item: row.item,
-          pretty: row.itemPretty,
-          score: row.totalTrades * 1000 + row.totalVolume,
-          detail,
-        })
+        const score = row.totalTrades * 1000 + row.totalVolume
+        const previous = byItem.get(row.item)
+        if (!previous || score > previous.score) {
+          byItem.set(row.item, {
+            item: row.item,
+            pretty: row.itemPretty,
+            currency: row.currency,
+            score,
+            detail,
+          })
+        }
       }
     }
     if (logistics) {
@@ -244,6 +307,7 @@ export default function UsesPrice() {
         byItem.set(row.item, {
           item: row.item,
           pretty: row.itemPretty,
+          currency: row.currency,
           score,
           detail,
         })
@@ -256,10 +320,7 @@ export default function UsesPrice() {
 
   const visibleOptions = useMemo(() => options.slice(0, PICK_ROWS), [options])
 
-  const marketRow = useMemo(
-    () => market?.markets.find((row) => row.item === item) ?? null,
-    [market, item],
-  )
+  const marketRow = selectedMarketRow
   const cheapest = useMemo(() => logistics?.cheapest.find((row) => row.item === item) ?? null, [
     logistics,
     item,
@@ -271,13 +332,17 @@ export default function UsesPrice() {
 
   const selectedOption = options.find((row) => row.item === item) ?? null
   const pretty = item ? marketRow?.itemPretty ?? selectedOption?.pretty ?? prettifyEcoName(item) : ""
-  const currency = marketRow?.currency ?? cheapest?.currency ?? resale?.currency ?? ""
+  const currency = selectedCurrency || cheapest?.currency || resale?.currency || ""
   const moneyUnit = currency || "currency"
   const band = marketRow ? bandFor(marketRow) : null
 
   const detailReady = !item || detailLoadedFor === item
   const currentFairPrice = fairPriceFor === item ? fairPrice : null
   const currentRecipes = recipesFor === item ? recipes : null
+  const currentPriceHistory =
+    priceHistoryFor === `${item}\u0000${selectedCurrency}` ? priceHistory : null
+  const priceHistoryReady =
+    !item || !selectedCurrency || priceHistoryFor === `${item}\u0000${selectedCurrency}`
 
   const recipeRows = useMemo(() => {
     if (!currentRecipes) return []
@@ -366,7 +431,7 @@ export default function UsesPrice() {
                   <span className="rank-count">{o.detail}</span>
                   <button
                     className="linklike"
-                    onClick={() => pickItem(o.item)}
+                    onClick={() => pickItem(o.item, o.currency)}
                     aria-label={`Price ${o.pretty}`}
                   >
                     Price
@@ -389,6 +454,48 @@ export default function UsesPrice() {
 
       {item && (
         <>
+          {marketRowsForItem.length > 1 && (
+            <section data-testid="price-currency-picker">
+              <h2 className="section-title">Currency</h2>
+              <div className="filter-row">
+                {marketRowsForItem.map((row) => (
+                  <button
+                    key={row.currency}
+                    className={`button${row.currency === currency ? " button-primary" : ""}`}
+                    onClick={() => pickCurrency(row.currency)}
+                    aria-pressed={row.currency === currency}
+                  >
+                    {row.currency} · {formatCount(row.totalTrades)} trades
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {!selectedCurrency ? (
+            <section>
+              <p className="empty-note" data-testid="price-history-no-currency">
+                No currency market is known for this item yet, so its price distribution cannot be
+                separated honestly.
+              </p>
+            </section>
+          ) : !priceHistoryReady ? (
+            <section>
+              <p className="empty-note" data-testid="price-history-loading">
+                Loading current-cycle price distribution and specialty markers…
+              </p>
+            </section>
+          ) : currentPriceHistory ? (
+            <PriceHistoryPanel history={currentPriceHistory} />
+          ) : (
+            <section>
+              <p className="empty-note" data-testid="price-history-unavailable">
+                Current-cycle price interpretation is unavailable right now. The market and cost
+                evidence below remain independent.
+              </p>
+            </section>
+          )}
+
           <section className="atlas-columns">
             <div data-testid="price-market-band">
               <h2 className="section-title">

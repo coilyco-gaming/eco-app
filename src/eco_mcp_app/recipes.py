@@ -235,11 +235,29 @@ def build_recipe_index(raw: dict[str, Any], *, source: str = GNOME_DATA_SOURCE) 
         name = s.get("Name")
         if not name:
             continue
+        talents = []
+        for talent in s.get("Talents") or []:
+            talent_name = talent.get("Name")
+            if not talent_name:
+                continue
+            description = talent.get("LocalizedDescription") or {}
+            talents.append(
+                {
+                    "name": talent_name,
+                    "displayName": _en_name(talent, talent_name),
+                    "description": (description.get("en-US") or "").strip(),
+                    "level": int(talent.get("Level", 0) or 0),
+                    "maxLevel": int(talent.get("MaxLevel", 0) or 0),
+                }
+            )
+        talents.sort(key=lambda d: (d["level"], d["displayName"]))
         index.skills.append(
             {
                 "name": name,
                 "displayName": _en_name(s, name),
+                "profession": s.get("Profession") or None,
                 "maxLevel": int(s.get("MaxLevel", 0) or 0),
+                "talents": talents,
             }
         )
     index.skills.sort(key=lambda d: d["displayName"])

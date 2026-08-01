@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
 import UsesPrice from "./UsesPrice"
@@ -152,15 +152,96 @@ const RECIPE_COST = {
   ],
 }
 
+const PRICE_HISTORY = {
+  view: "item-price-history",
+  fetchedAtISO: "2026-07-07T13:00:00+00:00",
+  item: "IronIngotItem",
+  itemPretty: "Iron Ingot",
+  currency: "Credit",
+  scope: {
+    label: "Current cycle only",
+    cycle: "current",
+    progressionRulesVersion: "current-cycle-v1",
+    historicalCyclesIncluded: false,
+  },
+  window: {
+    label: "Current cycle",
+    firstObservedDay: 1,
+    latestPriceDay: 4,
+    observedThroughDay: 4,
+  },
+  distribution: {
+    sampleCount: 8,
+    sampleState: "representative",
+    freshnessState: "current",
+    shapeState: "observed",
+    median: 9.5,
+    min: 7,
+    max: 13,
+    percentiles: { p10: 7.7, p25: 8.5, p50: 9.5, p75: 11, p90: 12.3 },
+    histogram: [
+      { low: 7, high: 9, count: 3 },
+      { low: 9, high: 11, count: 3 },
+      { low: 11, high: 13, count: 2 },
+    ],
+  },
+  daily: [
+    { day: 1, median: 8, min: 7, max: 9, volume: 12, trades: 3 },
+    { day: 2, median: 10, min: 9, max: 11, volume: 15, trades: 4 },
+    { day: 4, median: 12, min: 11, max: 13, volume: 4, trades: 1 },
+  ],
+  totalVolume: 31,
+  recipes: [
+    {
+      name: "IronIngotBloomeryRecipe",
+      displayName: "Iron Ingot",
+      product: "IronIngotItem",
+      skill: "SmeltingSkill",
+      skillPretty: "Smelting",
+      skillLevel: 2,
+    },
+    {
+      name: "IronIngotBlastRecipe",
+      displayName: "Iron Ingot",
+      product: "IronIngotItem",
+      skill: "AdvancedSmeltingSkill",
+      skillPretty: "Advanced Smelting",
+      skillLevel: 4,
+    },
+  ],
+  specialtyUnlocks: [
+    {
+      skill: "SmeltingSkill",
+      skillPretty: "Smelting",
+      day: 1,
+      time: 86400,
+      status: "observed",
+      recipeVariants: ["IronIngotBloomeryRecipe"],
+    },
+    {
+      skill: "AdvancedSmeltingSkill",
+      skillPretty: "Advanced Smelting",
+      day: 3,
+      time: 259200,
+      status: "observed",
+      recipeVariants: ["IronIngotBlastRecipe"],
+    },
+  ],
+  states: [],
+  warnings: [],
+}
+
 function stubFetch(route: {
   market?: unknown
   logistics?: unknown
   fairPrice?: unknown
   recipes?: unknown
+  priceHistory?: unknown
   marketOk?: boolean
   logisticsOk?: boolean
   fairPriceOk?: boolean
   recipesOk?: boolean
+  priceHistoryOk?: boolean
 }) {
   vi.stubGlobal(
     "fetch",
@@ -193,6 +274,14 @@ function stubFetch(route: {
         return Promise.resolve(
           new Response(JSON.stringify(route.recipes ?? {}), {
             status: route.recipesOk === false ? 404 : 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        )
+      }
+      if (url.includes("/preview/price-history.json")) {
+        return Promise.resolve(
+          new Response(JSON.stringify(route.priceHistory ?? PRICE_HISTORY), {
+            status: route.priceHistoryOk === false ? 404 : 200,
             headers: { "Content-Type": "application/json" },
           }),
         )
@@ -243,6 +332,242 @@ describe("UsesPrice", () => {
     expect(screen.getByTestId("price-assumptions")).toHaveTextContent("Observed market")
     expect(screen.getByTestId("price-assumptions")).toHaveTextContent("Labor valuation")
     expect(within(screen.getByTestId("price-comparison-table")).getAllByTestId("price-sell-row")).toHaveLength(1)
+  })
+
+  it("renders a representative current-cycle distribution with every recipe specialty marker", async () => {
+    stubFetch({
+      market: MARKET,
+      logistics: LOGISTICS,
+      fairPrice: FAIR_PRICE,
+      recipes: RECIPE_COST,
+      priceHistory: PRICE_HISTORY,
+    })
+    renderPage("/uses/price?item=IronIngotItem&currency=Credit")
+
+    await waitFor(() => {
+      expect(screen.getByTestId("price-history")).toBeInTheDocument()
+    })
+    expect(screen.getByTestId("price-history-scope")).toHaveTextContent("Older cycles are excluded")
+    expect(screen.getByTestId("price-histogram")).toHaveAccessibleName(
+      "Histogram of 8 observed unit prices",
+    )
+    expect(screen.getByTestId("price-distribution-evidence")).toHaveTextContent(
+      "8 trades · representative · current",
+    )
+    expect(screen.getByTestId("price-history-chart")).toBeInTheDocument()
+    expect(screen.getAllByTestId("specialty-marker")).toHaveLength(2)
+    expect(screen.getByTestId("price-unlocks")).toHaveTextContent("Smelting")
+    expect(screen.getByTestId("price-unlocks")).toHaveTextContent("Advanced Smelting")
+    expect(screen.getByTestId("price-unlocks")).toHaveTextContent("first observed day 3")
+    expect(screen.getByTestId("price-unlocks")).toHaveTextContent("Iron Ingot Blast Recipe")
+  })
+
+  it("lets the player select a currency without blending markets", async () => {
+    const gold = {
+      ...MARKET.markets[0],
+      currency: "Gold",
+      medianPrice: 2,
+      latestPrice: 2,
+      totalTrades: 2,
+      totalVolume: 2,
+    }
+    stubFetch({
+      market: { ...MARKET, markets: [...MARKET.markets, gold] },
+      logistics: LOGISTICS,
+      fairPrice: FAIR_PRICE,
+      recipes: RECIPE_COST,
+    })
+    renderPage("/uses/price?item=IronIngotItem&currency=Credit")
+
+    await waitFor(() => {
+      expect(screen.getByTestId("price-currency-picker")).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole("button", { name: /Gold · 2 trades/ }))
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("currency=Gold"),
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      )
+    })
+  })
+
+  it("keeps thin and stale samples explicit", async () => {
+    const thin = {
+      ...PRICE_HISTORY,
+      window: { ...PRICE_HISTORY.window, latestPriceDay: 1, observedThroughDay: 8 },
+      distribution: {
+        ...PRICE_HISTORY.distribution,
+        sampleCount: 1,
+        sampleState: "thin",
+        freshnessState: "stale",
+        shapeState: "unknown",
+        median: 10,
+        min: 10,
+        max: 10,
+        percentiles: { p10: 10, p25: 10, p50: 10, p75: 10, p90: 10 },
+        histogram: [{ low: 10, high: 10, count: 1 }],
+      },
+      daily: [{ day: 1, median: 10, min: 10, max: 10, volume: 1, trades: 1 }],
+      states: ["thin", "stale"],
+    }
+    stubFetch({
+      market: MARKET,
+      logistics: LOGISTICS,
+      fairPrice: FAIR_PRICE,
+      recipes: RECIPE_COST,
+      priceHistory: thin,
+    })
+    renderPage("/uses/price?item=IronIngotItem&currency=Credit")
+
+    await waitFor(() => {
+      expect(screen.getByTestId("price-history-states")).toBeInTheDocument()
+    })
+    expect(screen.getByTestId("price-history-states")).toHaveTextContent("Thin sample")
+    expect(screen.getByTestId("price-history-states")).toHaveTextContent("Stale sample")
+  })
+
+  it("labels a multimodal distribution instead of collapsing it to one curve", async () => {
+    const multimodal = {
+      ...PRICE_HISTORY,
+      distribution: {
+        ...PRICE_HISTORY.distribution,
+        shapeState: "multimodal",
+        histogram: [
+          { low: 7, high: 9, count: 4 },
+          { low: 9, high: 11, count: 0 },
+          { low: 11, high: 13, count: 4 },
+        ],
+      },
+      states: ["multimodal"],
+    }
+    stubFetch({
+      market: MARKET,
+      logistics: LOGISTICS,
+      fairPrice: FAIR_PRICE,
+      recipes: RECIPE_COST,
+      priceHistory: multimodal,
+    })
+    renderPage("/uses/price?item=IronIngotItem&currency=Credit")
+
+    await waitFor(() => {
+      expect(screen.getByTestId("price-history-states")).toBeInTheDocument()
+    })
+    expect(screen.getByTestId("price-history-states")).toHaveTextContent(
+      "Multiple price clusters are visible",
+    )
+    expect(screen.getByTestId("price-histogram")).toBeInTheDocument()
+  })
+
+  it("renders empty, missing-recipe, and missing-progression states without implying unlocks", async () => {
+    const empty = {
+      ...PRICE_HISTORY,
+      distribution: {
+        sampleCount: 0,
+        sampleState: "no_data",
+        freshnessState: "unknown",
+        shapeState: "unknown",
+        median: null,
+        min: null,
+        max: null,
+        percentiles: null,
+        histogram: [],
+      },
+      daily: [],
+      recipes: [],
+      specialtyUnlocks: [],
+      states: ["no_data", "missing_recipes", "missing_progression"],
+    }
+    stubFetch({
+      market: MARKET,
+      logistics: LOGISTICS,
+      fairPrice: FAIR_PRICE,
+      recipes: RECIPE_COST,
+      priceHistory: empty,
+    })
+    renderPage("/uses/price?item=IronIngotItem&currency=Credit")
+
+    await waitFor(() => {
+      expect(screen.getByTestId("price-history-states")).toBeInTheDocument()
+    })
+    expect(screen.getByTestId("price-history-states")).toHaveTextContent(
+      "No unit-price observations",
+    )
+    expect(screen.getByTestId("price-history-states")).toHaveTextContent(
+      "No known recipe produces this item",
+    )
+    expect(screen.getByTestId("price-history-states")).toHaveTextContent(
+      "progression export is unavailable",
+    )
+    expect(screen.getByTestId("price-unlocks-empty")).toBeInTheDocument()
+    expect(screen.queryByTestId("specialty-marker")).not.toBeInTheDocument()
+  })
+
+  it("shows an unobserved specialty separately from a missing progression export", async () => {
+    const unobserved = {
+      ...PRICE_HISTORY,
+      specialtyUnlocks: [
+        {
+          ...PRICE_HISTORY.specialtyUnlocks[0],
+          day: null,
+          time: null,
+          status: "unobserved",
+        },
+      ],
+      states: ["unobserved_unlocks"],
+    }
+    stubFetch({
+      market: MARKET,
+      logistics: LOGISTICS,
+      fairPrice: FAIR_PRICE,
+      recipes: RECIPE_COST,
+      priceHistory: unobserved,
+    })
+    renderPage("/uses/price?item=IronIngotItem&currency=Credit")
+
+    await waitFor(() => {
+      expect(screen.getByTestId("price-unlocks")).toBeInTheDocument()
+    })
+    expect(screen.getByTestId("price-unlocks")).toHaveTextContent(
+      "no observed current-cycle gain",
+    )
+    expect(screen.getByTestId("price-history-states")).toHaveTextContent(
+      "not evidence that the specialty was never available",
+    )
+  })
+
+  it("keeps an outlier visible without rendering a normal curve", async () => {
+    const outlier = {
+      ...PRICE_HISTORY,
+      distribution: {
+        ...PRICE_HISTORY.distribution,
+        sampleCount: 10,
+        shapeState: "observed",
+        median: 11,
+        min: 10,
+        max: 100,
+        percentiles: { p10: 10, p25: 10, p50: 11, p75: 12, p90: 21 },
+        histogram: [
+          { low: 10, high: 40, count: 9 },
+          { low: 40, high: 70, count: 0 },
+          { low: 70, high: 100, count: 1 },
+        ],
+      },
+    }
+    stubFetch({
+      market: MARKET,
+      logistics: LOGISTICS,
+      fairPrice: FAIR_PRICE,
+      recipes: RECIPE_COST,
+      priceHistory: outlier,
+    })
+    renderPage("/uses/price?item=IronIngotItem&currency=Credit")
+
+    await waitFor(() => {
+      expect(screen.getByTestId("price-distribution-evidence")).toBeInTheDocument()
+    })
+    expect(screen.getByTestId("price-distribution-evidence")).toHaveTextContent("10–100")
+    expect(screen.getByTestId("price-distribution-evidence")).toHaveTextContent("p90 21")
+    expect(screen.queryByText(/normal curve/i)).not.toBeInTheDocument()
   })
 
   it("shows the cost-model-pending note when the recipe plane is missing", async () => {

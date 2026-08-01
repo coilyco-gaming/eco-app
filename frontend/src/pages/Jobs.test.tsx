@@ -82,7 +82,7 @@ const VALUE_RECIPES = {
   fetchedAtISO: "2026-07-07T13:00:00+00:00",
   source: "test",
   version: 1,
-  counts: { recipes: 4, skills: 2, tags: 0, products: 4, stations: 2 },
+  counts: { recipes: 4, skills: 4, tags: 0, products: 4, stations: 2 },
   recipes: [
     {
       name: "PlankRecipe",
@@ -169,8 +169,30 @@ const VALUE_RECIPES = {
   },
   byStation: { WorkbenchItem: ["PlankRecipe", "BeamRecipe", "NeedleRecipe"], KilnItem: ["BrickRecipe"] },
   skills: [
-    { name: "CarpentrySkill", displayName: "Carpentry", maxLevel: 7 },
-    { name: "MasonrySkill", displayName: "Masonry", maxLevel: 7 },
+    { name: "CarpenterSkill", displayName: "Carpenter", profession: null, maxLevel: 0, talents: [] },
+    {
+      name: "CarpentrySkill",
+      displayName: "Carpentry",
+      profession: "CarpenterSkill",
+      maxLevel: 7,
+      talents: [
+        {
+          name: "CarpentrySpeedTalent",
+          displayName: "Quick Joinery",
+          description: "Craft carpentry recipes faster.",
+          level: 3,
+          maxLevel: 1,
+        },
+      ],
+    },
+    { name: "MasonSkill", displayName: "Mason", profession: null, maxLevel: 0, talents: [] },
+    {
+      name: "MasonrySkill",
+      displayName: "Masonry",
+      profession: "MasonSkill",
+      maxLevel: 7,
+      talents: [],
+    },
   ],
   tags: {},
   warnings: [],
@@ -428,6 +450,24 @@ describe("Jobs", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Carpentry/ }))
     expect(screen.getAllByText("coilysiren").length).toBe(before + 1)
+  })
+
+  it("renders profession, specialty, and level-gated talent branches", async () => {
+    stubJobsFetch()
+    renderJobs()
+
+    await waitFor(() => {
+      expect(screen.getByTestId("jobs-skill-trees")).toBeInTheDocument()
+    })
+    expect(screen.getAllByTestId("skill-tree")).toHaveLength(2)
+    const carpentry = [...screen.getByTestId("jobs-skill-trees").querySelectorAll("summary")].find(
+      (row) => row.textContent?.includes("Carpentry"),
+    )
+    expect(carpentry).toBeDefined()
+    fireEvent.click(carpentry!)
+    expect(screen.getByText("Quick Joinery")).toBeInTheDocument()
+    expect(screen.getByText("Craft carpentry recipes faster.")).toBeInTheDocument()
+    expect(screen.getByText("level 3")).toBeInTheDocument()
   })
 
   it("folds the server-wide progression layer and leaderboards into the page", async () => {

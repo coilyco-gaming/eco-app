@@ -47,11 +47,22 @@ export interface Recipe {
   isBlueprint: boolean
 }
 
-// A skill/profession definition — the profession axis for the skill facet.
+export interface RecipeSkillTalent {
+  name: string
+  displayName: string
+  description: string
+  level: number
+  maxLevel: number
+}
+
+// A skill/profession definition. Root profession rows have `profession: null`;
+// specialty rows point back to that root and carry their level-gated talents.
 export interface RecipeSkillDef {
   name: string
   displayName: string
+  profession: string | null
   maxLevel: number
+  talents: RecipeSkillTalent[]
 }
 
 export interface RecipeCounts {
