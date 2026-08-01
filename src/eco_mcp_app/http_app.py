@@ -45,6 +45,7 @@ from . import page_auth
 from . import users as users_mod
 from .admin import build_admin_server
 from .cost import CostParams, annotate_payload
+from .food import fetch_food_report
 from .items import fetch_item_index, fetch_item_pivot
 from .livereload import DEBUG, livereload_route
 from .map import build_map_payload, fetch_map_bundle
@@ -654,6 +655,15 @@ def create_app() -> Starlette:
             return JSONResponse({"error": str(e)}, status_code=502)
         return JSONResponse(index.to_dict())
 
+    async def preview_food_json(request: Request) -> JSONResponse:
+        """`/preview/food.json` - confirmed-food restock and overstock signals."""
+        server_arg = request.query_params.get("server")
+        try:
+            report = await fetch_food_report(base_url=server_arg, api_key=_resolve_admin_key())
+        except httpx.HTTPError as e:
+            return JSONResponse({"error": str(e)}, status_code=502)
+        return JSONResponse(report.to_dict())
+
     async def preview_item_json(request: Request) -> JSONResponse:
         """`/preview/item.json?item=<id>` — the SPA's per-item pivot data plane.
 
@@ -796,6 +806,7 @@ def create_app() -> Starlette:
         Route("/preview/watchers.json", preview_watchers_json, methods=["GET"]),
         Route("/preview/user.json", preview_user_json, methods=["GET"]),
         Route("/preview/items.json", preview_items_json, methods=["GET"]),
+        Route("/preview/food.json", preview_food_json, methods=["GET"]),
         Route("/preview/item.json", preview_item_json, methods=["GET"]),
         Route("/preview/recipes.json", preview_recipes_json, methods=["GET"]),
         Route("/preview/{tool}", preview_tool, methods=["GET"]),

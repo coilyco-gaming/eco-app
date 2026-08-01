@@ -16,6 +16,7 @@ afterEach(cleanup)
 describe("Uses hub", () => {
   it("lists the live, linked use-case cards", () => {
     renderUses()
+    expect(screen.getByTestId("use-food").closest("a")).toHaveAttribute("href", "/uses/food")
     expect(screen.getByTestId("use-demand").closest("a")).toHaveAttribute("href", "/uses/demand")
     expect(screen.getByTestId("use-buy-sell").closest("a")).toHaveAttribute(
       "href",

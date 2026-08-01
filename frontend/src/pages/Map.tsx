@@ -4,7 +4,7 @@ import Layout from "../components/Layout"
 import Loading from "../components/Loading"
 import { type ClimateSnapshot, fetchClimate } from "../lib/climateApi"
 import { type DriftRow, type EcoregionSnapshot, fetchEcoregion } from "../lib/ecoregionApi"
-import { formatCount, prettifyEcoName } from "../lib/format"
+import { formatCount, formatFetchedAt, prettifyEcoName } from "../lib/format"
 import { type MapPayload, fetchMap } from "../lib/mapApi"
 import { type WorldActivity, fetchWorld } from "../lib/worldApi"
 
@@ -295,7 +295,38 @@ interface ClimateStat {
   tone?: "add" | "remove"
 }
 
-function ClimateSection({ snap }: { snap: ClimateSnapshot }) {
+function ClimateCoordination({ snap }: { snap: ClimateSnapshot }) {
+  const net = snap.breakdown.net_per_day
+  const risk =
+    snap.status === "critical"
+      ? "Climate risk is elevated. Current measurements warrant a shared check before changing major production plans."
+      : snap.status === "warming"
+        ? "Climate is trending warmer. Coordinate around the observed direction, not assumed machine-level attribution."
+        : snap.status === "stable"
+          ? "Current readings are stable. Continue watching the observed trend rather than treating this as a permanent all-clear."
+          : "Climate risk is unknown because the available readings are incomplete."
+  const guidance =
+    net == null
+      ? "No net CO₂ direction is available, so this surface cannot recommend a production change."
+      : net > 0
+        ? "The observed CO₂ balance is rising. Compare active production and trade needs before coordinating voluntary reductions."
+        : "The observed CO₂ balance is falling or steady. Keep watching the next snapshots before changing production plans."
+
+  return (
+    <section data-testid="climate-coordination">
+      <h2 className="section-title">Climate coordination</h2>
+      <p className="intro"><span><strong>Observed risk:</strong> {risk}</span></p>
+      <p className="intro"><span><strong>Guidance:</strong> {guidance} This is read-only decision context, not a control panel.</span></p>
+      <p className="gap-who">
+        <Link className="linklike" to="/crafting">Crafting activity</Link>{" · "}
+        <Link className="linklike" to="/trade">Trade and supply</Link>{" · "}
+        <Link className="linklike" to="/jobs">Available specialties</Link>
+      </p>
+    </section>
+  )
+}
+
+function ClimateSection({ snap, pageLoadedAt }: { snap: ClimateSnapshot; pageLoadedAt: Date }) {
   const atmosphere: ClimateStat[] = [
     {
       label: "CO₂",
@@ -366,6 +397,11 @@ function ClimateSection({ snap }: { snap: ClimateSnapshot }) {
         <span className="pulse-dot" aria-hidden="true" />
         {snap.narrative}
       </p>
+      <p className="gap-who" data-testid="climate-freshness" title={snap.fetched_at_iso}>
+        Snapshot fetched {formatFetchedAt(snap.fetched_at_iso)}. The backend may reuse it for up to 60 seconds.
+        This page loaded at {pageLoadedAt.toLocaleTimeString("en-US", { timeZone: "UTC", hour: "2-digit", minute: "2-digit" })} UTC.
+        The source observation timestamp is unavailable.
+      </p>
       <div className="stats">
         {atmosphere.map((s) => (
           <div className="stat" key={s.label}>
@@ -401,6 +437,7 @@ function ClimateSection({ snap }: { snap: ClimateSnapshot }) {
           ))}
         </ul>
       )}
+      <ClimateCoordination snap={snap} />
     </section>
   )
 }
@@ -517,6 +554,7 @@ export default function MapPage() {
   const [climate, setClimate] = useState<ClimateSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
   const [hoveredBiome, setHoveredBiome] = useState<string | null>(null)
+  const [pageLoadedAt] = useState(() => new Date())
 
   useEffect(() => {
     const controller = new AbortController()
@@ -641,7 +679,7 @@ export default function MapPage() {
           {/* Climate as the environmental overlay on the world's physical
               composition (eco-app#90) — sits with the biomes it acts on, not as
               a tacked-on trailer. */}
-          {climate && <ClimateSection snap={climate} />}
+          {climate && <ClimateSection snap={climate} pageLoadedAt={pageLoadedAt} />}
 
           {snap && (
             <section>

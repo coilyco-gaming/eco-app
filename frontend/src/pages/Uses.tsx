@@ -19,6 +19,12 @@ interface UseCard {
 
 const LIVE: UseCard[] = [
   {
+    to: "/uses/food",
+    testid: "use-food",
+    title: "Which food should we restock or watch?",
+    blurb: "Confirmed food recipes only, with live shelf, trade, and production evidence.",
+  },
+  {
     to: "/uses/demand",
     testid: "use-demand",
     title: "What's in demand right now",

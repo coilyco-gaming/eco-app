@@ -203,6 +203,8 @@ describe("Map page", () => {
     // The climate narrative pill and the CO2 atmosphere tile both render.
     expect(screen.getByTestId("climate-pill")).toHaveTextContent("warming")
     expect(screen.getByTestId("climate")).toHaveTextContent("325 ppm")
+    expect(screen.getByTestId("climate-freshness")).toHaveTextContent("Snapshot fetched")
+    expect(screen.getByTestId("climate-coordination")).toHaveTextContent("Observed risk")
     // The former standalone /climate cross-link card is gone — it's folded in.
     expect(screen.queryByTestId("link-climate")).not.toBeInTheDocument()
   })

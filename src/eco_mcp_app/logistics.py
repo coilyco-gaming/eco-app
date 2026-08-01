@@ -157,6 +157,7 @@ class LogisticsReport:
     resale: list[dict[str, Any]] = field(default_factory=list)
     arbitrage: list[dict[str, Any]] = field(default_factory=list)
     supply_gaps: list[dict[str, Any]] = field(default_factory=list)
+    market_summaries: list[dict[str, Any]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -171,6 +172,7 @@ class LogisticsReport:
             "resale": list(self.resale),
             "arbitrage": list(self.arbitrage),
             "supplyGaps": list(self.supply_gaps),
+            "marketSummaries": list(self.market_summaries),
             "warnings": list(self.warnings),
         }
 
@@ -237,12 +239,28 @@ def build_logistics(
     resale: list[dict[str, Any]] = []
     arbitrage: list[dict[str, Any]] = []
     supply_gaps: list[dict[str, Any]] = []
+    market_summaries: list[dict[str, Any]] = []
 
     for (item_name, cur), sides in markets.items():
         sells = sorted(sides["sell"], key=lambda o: o.price)  # cheapest first
         buys = sorted(sides["buy"], key=lambda o: o.price, reverse=True)  # best paid first
         pretty = prettify_eco_name(item_name) if item_name else item_name
         median = medians.get((item_name, cur))
+
+        market_summaries.append(
+            {
+                "item": item_name,
+                "itemPretty": pretty,
+                "currency": cur,
+                "sellerCount": len({o.store_key for o in sells}),
+                "buyerCount": len({o.store_key for o in buys}),
+                "supplyQty": round(sum(o.quantity for o in sells), 2),
+                "demandQty": round(sum(o.quantity for o in buys), 2),
+                "cheapestSell": round(sells[0].price, 4) if sells else None,
+                "bestBuy": round(buys[0].price, 4) if buys else None,
+                "sources": sorted({o.source for o in sells + buys}),
+            }
+        )
 
         # --- Cheapest source: where to BUY (stores selling), cheapest first ---
         if sells:
@@ -327,6 +345,14 @@ def build_logistics(
     report.resale = resale[:top_rows]
     report.arbitrage = arbitrage[:top_rows]
     report.supply_gaps = supply_gaps[:top_gap_rows]
+    report.market_summaries = sorted(
+        market_summaries,
+        key=lambda row: (
+            row["supplyQty"] + row["demandQty"],
+            row["sellerCount"] + row["buyerCount"],
+        ),
+        reverse=True,
+    )
 
     # Honest depth note — the whole point of the "single-store" acceptance case.
     if report.total_offers == 0:

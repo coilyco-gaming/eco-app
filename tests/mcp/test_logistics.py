@@ -115,6 +115,30 @@ def test_barter_and_zero_prices_skipped() -> None:
     assert report.cheapest[0]["cheapest"] == pytest.approx(1.5)
 
 
+def test_market_summaries_preserve_stock_demand_and_provenance() -> None:
+    report = build_logistics(
+        [
+            _offer("StoreA", "CornItem", "sell", 1.5, quantity=40, source="live"),
+            _offer("StoreB", "CornItem", "buy", 2.0, quantity=10, source="live"),
+        ]
+    )
+
+    assert report.market_summaries == [
+        {
+            "item": "CornItem",
+            "itemPretty": "Corn",
+            "currency": "Credit",
+            "sellerCount": 1,
+            "buyerCount": 1,
+            "supplyQty": 40,
+            "demandQty": 10,
+            "cheapestSell": 1.5,
+            "bestBuy": 2.0,
+            "sources": ["live"],
+        }
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Arbitrage spread detection + depth honesty
 # ---------------------------------------------------------------------------
