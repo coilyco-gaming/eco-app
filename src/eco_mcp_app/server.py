@@ -1737,17 +1737,15 @@ def build_server() -> Server:
             ),
             Tool(
                 name="get_eco_social",
-                title="Eco — social / chat surface",
+                title="Eco - community activity",
                 description=(
-                    "Reconstruct the social side of an Eco server from its "
-                    "action-log exporter: an activity timeline (play + new "
-                    "arrivals from FirstLogin), chat volume over time and by "
-                    "channel, a reputation graph (who reps whom), and redacted "
-                    "recent-chat samples. Chat is player-authored content, so "
-                    "player names are hashed to stable handles and message "
-                    "bodies are scrubbed of real names **by default** — a "
-                    "names-in-the-clear mode is operator-gated (needs "
-                    "ECO_SOCIAL_ALLOW_NAMES set server-side plus reveal_names), "
+                    "Reconstruct the community side of an Eco server from its "
+                    "action-log exporter: play activity, new arrivals from "
+                    "FirstLogin, and a reputation graph showing who reps whom. "
+                    "ChatSent is deliberately not fetched. Player names are "
+                    "hashed to stable handles by default. A names-in-the-clear "
+                    "mode is operator-gated and needs "
+                    "ECO_SOCIAL_ALLOW_NAMES set server-side plus reveal_names, "
                     "never public. Requires an admin API key configured "
                     "server-side (same exporter as get_eco_trades). Returns a "
                     "markdown summary plus structured JSON data (no MCP-app "
@@ -1767,8 +1765,8 @@ def build_server() -> Server:
                         "reveal_names": {
                             "type": "boolean",
                             "description": (
-                                "Show player names + raw chat bodies instead of "
-                                "redacted handles. Operator-gated: only takes "
+                                "Show player names instead of redacted handles. "
+                                "Operator-gated: only takes "
                                 "effect when the deploy sets ECO_SOCIAL_ALLOW_NAMES "
                                 "(default-deny), so a public call is always "
                                 "redacted regardless. Default false."

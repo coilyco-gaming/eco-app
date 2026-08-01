@@ -567,8 +567,8 @@ def create_app() -> Starlette:
 
         Dispatches `get_eco_social` and returns its JSON block. This is a
         **public** path, so it never forwards `reveal_names`: the surface is
-        always redacted (handles + name-scrubbed message bodies), regardless of
-        any server-side names gate. A dedicated route (not the generic
+        always redacted to stable handles, regardless of any server-side names
+        gate. A dedicated route (not the generic
         `/preview/<tool>.json`) so `?server=` passes straight through and the
         redaction posture is pinned here rather than left to a query param
         (eco-app#63).

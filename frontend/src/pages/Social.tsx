@@ -3,16 +3,15 @@ import { Link } from "react-router-dom"
 import Layout from "../components/Layout"
 import Loading from "../components/Loading"
 import { fetchSocial, type ReputationEdge, type SocialSurface } from "../lib/socialApi"
-import { formatCount, formatRelativeTime } from "../lib/format"
+import { formatCount } from "../lib/format"
 
 const TOP_N = 12
 // Cap the reputation graph to the busiest nodes so the circular layout stays
-// legible — the ranked giver/receiver lists below carry the long tail.
+// legible. The ranked giver/receiver lists below carry the long tail.
 const MAX_GRAPH_NODES = 10
 
-// Single-series bar chart of a per-in-game-day count series (chat volume, new
-// arrivals). One hue, no legend — the section title names the series (dataviz:
-// a single series needs no legend box). Hand-rolled SVG keeps the bundle lean
+// Single-series bar chart of a per-in-game-day count series. One hue, no legend.
+// The section title names the series. Hand-rolled SVG keeps the bundle lean
 // and CSP trivial, matching the /trades PriceChart.
 function VolumeChart({
   points,
@@ -37,7 +36,7 @@ function VolumeChart({
   const maxDay = Math.max(...days)
   const maxCount = Math.max(...counts, 1)
   const daySpan = maxDay - minDay || 1
-  // Bar width scales to the day span; clamp so a sparse series still reads.
+  // Bar width scales to the day span. Clamp so a sparse series still reads.
   const slot = (width - 2 * pad) / (daySpan + 1)
   const barW = Math.max(3, Math.min(28, slot * 0.7))
 
@@ -89,7 +88,7 @@ function VolumeChart({
   )
 }
 
-// Directed "who reps whom" graph. Nodes are laid out on a circle; each edge is
+// Directed "who reps whom" graph. Nodes are laid out on a circle. Each edge is
 // a curved arrow from giver to receiver, thickness scaled to the reputation
 // moved. Node radius scales to reputation received. The ranked lists below are
 // the table-view companion (dataviz accessibility pass), so the graph never
@@ -134,7 +133,7 @@ function ReputationGraph({ edges }: { edges: ReputationEdge[] }) {
       viewBox={`0 0 ${size} ${size}`}
       preserveAspectRatio="xMidYMid meet"
       role="img"
-      aria-label="Reputation transfer graph — who reps whom"
+      aria-label="Reputation transfer graph, who reps whom"
       data-testid="rep-graph"
     >
       <defs>
@@ -206,7 +205,7 @@ interface RankListProps {
   emptyNote: string
 }
 
-// Ranked bar list — the table-view companion for the charts. Labels are already
+// Ranked bar list. This is the table-view companion for the charts. Labels are already
 // redacted handles from the server, shown verbatim.
 function RankList({ rows, emptyNote }: RankListProps) {
   const top = rows.slice(0, TOP_N)
@@ -245,7 +244,6 @@ export default function Social() {
 
   const isEmpty =
     surface !== null &&
-    surface.totalChat === 0 &&
     surface.totalReputationTransfers === 0 &&
     surface.totalFirstLogins === 0 &&
     surface.totalPlayEvents === 0
@@ -253,21 +251,21 @@ export default function Social() {
   return (
     <Layout>
       <section className="hero hero-compact">
-        <p className="hero-kicker">Social &amp; chat</p>
+        <p className="hero-kicker">Community activity</p>
         <h1 className="hero-title">
-          The <span className="accent">room</span>, not just the ledger
+          The <span className="accent">people</span> behind the world
         </h1>
         {surface && !isEmpty && (
           <p className="hero-pill" data-testid="social-pill">
             <span className="pulse-dot" aria-hidden="true" />
-            {formatCount(surface.totalChat)} messages · {formatCount(surface.totalReputationTransfers)}{" "}
-            rep transfers · {formatCount(surface.totalFirstLogins)} new arrivals
+            {formatCount(surface.totalPlayEvents)} play events ·{" "}
+            {formatCount(surface.totalReputationTransfers)} rep transfers ·{" "}
+            {formatCount(surface.totalFirstLogins)} new arrivals
           </p>
         )}
         {surface?.redacted && (
           <p className="redaction-note" data-testid="redaction-note">
-            🔒 Names are redacted to stable handles and chat bodies are scrubbed of real names.
-            This is a public surface — names in the clear are an operator-only mode.
+            Names are redacted to stable handles. Names in the clear are an operator-only mode.
           </p>
         )}
         {!surface && error && (
@@ -277,12 +275,12 @@ export default function Social() {
         )}
       </section>
 
-      {!surface && !error && <Loading label="Reading the room…" testid="social-loading" />}
+      {!surface && !error && <Loading label="Reading community activity..." testid="social-loading" />}
 
       {surface && isEmpty && (
         <section>
           <p className="empty-note" data-testid="social-empty">
-            No social activity recorded on this server yet. Early in a cycle this is normal — check
+            No community activity recorded on this server yet. Early in a cycle this is normal. Check
             back after a few days of play.
           </p>
         </section>
@@ -291,30 +289,9 @@ export default function Social() {
       {surface && !isEmpty && (
         <>
           <section>
-            <h2 className="section-title">Chat volume over time</h2>
-            <VolumeChart
-              points={surface.chatByDay}
-              color="var(--leaf)"
-              label="Chat messages"
-              testid="chat-volume-chart"
-            />
-          </section>
-
-          <div className="atlas-columns">
-            <section>
-              <h2 className="section-title">Busiest channels</h2>
-              <RankList rows={surface.chatByChannel} emptyNote="No chat channels recorded." />
-            </section>
-            <section>
-              <h2 className="section-title">Top chatters</h2>
-              <RankList rows={surface.topChatters} emptyNote="No chat authors recorded." />
-            </section>
-          </div>
-
-          <section>
             <h2 className="section-title">
               Reputation graph{" "}
-              <span className="section-sub">(who reps whom — top {MAX_GRAPH_NODES} by volume)</span>
+              <span className="section-sub">(who reps whom, top {MAX_GRAPH_NODES} by volume)</span>
             </h2>
             <div className="rep-layout">
               <ReputationGraph edges={surface.reputationEdges} />
@@ -351,42 +328,6 @@ export default function Social() {
             </section>
           )}
 
-          <section>
-            <h2 className="section-title">
-              Recent chat{" "}
-              <span className="section-sub">
-                (every message · {formatCount(surface.recentChat.length)}
-                {surface.redacted ? " · redacted" : ""})
-              </span>
-            </h2>
-            {surface.recentChat.length === 0 ? (
-              <p className="empty-note">No chat samples available.</p>
-            ) : (
-              <table className="ledger-table" data-testid="chat-feed">
-                <thead>
-                  <tr>
-                    <th>When</th>
-                    <th>Author</th>
-                    <th>Channel</th>
-                    <th>Message</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {surface.recentChat.map((m, i) => (
-                    <tr key={`${m.timeS}-${i}`} data-testid="chat-row">
-                      <td className="chat-when" title={`in-game day ${m.day}`}>
-                        {formatRelativeTime(m.timeS, surface.latestTimeS)}
-                      </td>
-                      <td>{m.author}</td>
-                      <td>{m.channel}</td>
-                      <td className="chat-msg">{m.message}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </section>
-
           {surface.warnings.length > 0 && (
             <section>
               <ul className="warn-list" data-testid="social-warnings">
@@ -400,11 +341,11 @@ export default function Social() {
           <section className="dir-cards">
             <Link className="dir-card" to="/trade" data-testid="link-trade">
               <h3>Trade →</h3>
-              <p>The material side — the market, the trade ledger, and money supply.</p>
+              <p>The material side: the market, the trade ledger, and money supply.</p>
             </Link>
             <Link className="dir-card" to="/jobs" data-testid="link-jobs">
               <h3>Jobs →</h3>
-              <p>Who can make what — professions, specialties, and every settler's skills.</p>
+              <p>Who can make what: professions, specialties, and every settler's skills.</p>
             </Link>
           </section>
         </>

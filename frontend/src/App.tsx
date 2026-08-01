@@ -21,6 +21,7 @@ import UsesBuySell from "./pages/UsesBuySell"
 import UsesDemand from "./pages/UsesDemand"
 import UsesPrice from "./pages/UsesPrice"
 import UsesShopCheck from "./pages/UsesShopCheck"
+import Wiki from "./pages/Wiki"
 
 // Route table for the SPA. The homepage is a thin directory of surfaces;
 // per-feature pages (map, species, milestones) join /info and /jobs here as
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/info" element={<Info />} />
         <Route path="/mods" element={<Mods />} />
+        <Route path="/wiki" element={<Wiki />} />
         {/* /server renamed to /info (eco-app#90); keep old links alive. */}
         <Route path="/server" element={<Navigate to="/info" replace />} />
         <Route path="/jobs/*" element={<Jobs />} />

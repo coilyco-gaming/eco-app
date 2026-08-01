@@ -1,52 +1,54 @@
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, within } from "@testing-library/react"
 import { afterEach, describe, expect, it } from "vitest"
 import { MemoryRouter } from "react-router-dom"
 import Mods from "./Mods"
 
 afterEach(cleanup)
 
-describe("Mods reference", () => {
-  it("documents all production mods with their package and site contracts", () => {
-    render(
-      <MemoryRouter initialEntries={["/mods"]}>
-        <Mods />
-      </MemoryRouter>,
-    )
+function renderMods() {
+  return render(
+    <MemoryRouter initialEntries={["/mods"]}>
+      <Mods />
+    </MemoryRouter>,
+  )
+}
 
-    const jobs = screen.getByTestId("mod-eco-jobs-tracker")
-    expect(jobs).toHaveTextContent("GET /api/v1/skills")
-    expect(jobs).toHaveTextContent("SPA: /jobs and /crafting")
+describe("Mod catalog", () => {
+  it("lists every canonical catalog group in a compact inventory", () => {
+    renderMods()
 
-    const replay = screen.getByTestId("mod-eco-replay")
-    expect(replay).toHaveTextContent("Storage/EcoReplay.db")
-    expect(replay).toHaveTextContent("/replay/api/v1/*")
-
-    const stores = screen.getByTestId("mod-eco-store-exporter")
-    expect(stores).toHaveTextContent("GET /api/v1/stores")
-    expect(stores).toHaveTextContent("/preview/logistics.json")
-
-    const telemetry = screen.getByTestId("mod-eco-telemetry")
-    expect(telemetry).toHaveTextContent("GET /api/v1/climate-settings")
-    expect(telemetry).toHaveTextContent("/preview/get_eco_climate.json")
-
-    for (const mod of [jobs, replay, stores, telemetry]) {
-      expect(mod).toHaveTextContent("Install-ready package")
-      expect(mod).toHaveTextContent("Eco coupling and current limit")
-      expect(mod).toHaveTextContent("0.13.0.4-beta-release-1024")
-    }
+    expect(within(screen.getByTestId("catalog-app")).getAllByRole("article")).toHaveLength(4)
+    expect(within(screen.getByTestId("catalog-public")).getAllByRole("article")).toHaveLength(9)
+    expect(within(screen.getByTestId("catalog-server")).getAllByRole("article")).toHaveLength(21)
+    expect(within(screen.getByTestId("catalog-nid")).getAllByRole("article")).toHaveLength(11)
   })
 
-  it("links each mod to tracked source docs and the shared package contract", () => {
-    render(
-      <MemoryRouter initialEntries={["/mods"]}>
-        <Mods />
-      </MemoryRouter>,
-    )
+  it("links every public upstream and labels entries without a public source", () => {
+    renderMods()
 
-    expect(screen.getByRole("link", { name: "Jobs Tracker source and API notes ↗" })).toHaveAttribute(
+    expect(within(screen.getByTestId("public-agricultural")).getByRole("link")).toHaveAttribute(
       "href",
-      "https://forgejo.coilysiren.me/coilyco-gaming/eco-app/src/branch/main/mods/jobs/README.md",
+      "https://forgejo.coilysiren.me/coilyco-gaming/eco-mods/src/branch/main/mods/Mods/UserCode/BunWulfAgricultural",
     )
-    expect(screen.getAllByRole("link", { name: "Package contract ↗" })).toHaveLength(4)
+    expect(within(screen.getByTestId("server-beekeeping")).getByRole("link")).toHaveAttribute(
+      "href",
+      "https://mod.io/g/eco/m/beekeeping",
+    )
+    expect(screen.getByTestId("server-cavrn")).toHaveTextContent(
+      "Discord-only release. No public source page.",
+    )
+    expect(screen.getByTestId("server-cavrn").querySelector("a")).toBeNull()
+  })
+
+  it("keeps each Nid Toolbox module separately visible", () => {
+    renderMods()
+
+    expect(screen.getByTestId("nid-core")).toHaveTextContent("Core")
+    expect(screen.getByTestId("nid-chat-logger")).toHaveTextContent("Chat Logger")
+    expect(screen.getByTestId("nid-timed-messages")).toHaveTextContent("Timed Messages")
+    expect(within(screen.getByTestId("nid-laws")).getByRole("link")).toHaveAttribute(
+      "href",
+      "https://mod.io/g/eco/m/nidtoolbox-full-pack",
+    )
   })
 })

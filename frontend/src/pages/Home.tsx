@@ -66,6 +66,11 @@ export default function Home() {
           )}
         </Link>
 
+        <Link className="dir-card" to="/wiki" data-testid="dir-wiki">
+          <h3>Eco Wiki</h3>
+          <p>Stable official guides for getting started, skills, economy, civics, and modding.</p>
+        </Link>
+
         {/* Trade + the trades ledger are one surface now (eco-app#90). The
             badge strip fixes the old empty bubbles: markets falls back to a
             graceful 0 (the market plane is empty on servers that trade but have

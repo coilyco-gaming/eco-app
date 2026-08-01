@@ -5,10 +5,17 @@ import App from "./App"
 afterEach(cleanup)
 
 describe("SPA routes", () => {
-  it("serves the production-mod reference on a direct /mods route", () => {
+  it("serves the complete mod catalog on a direct /mods route", () => {
     window.history.pushState({}, "", "/mods")
     render(<App />)
 
-    expect(screen.getByRole("heading", { name: "The C# mods behind the site" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "The complete mod catalog" })).toBeInTheDocument()
+  })
+
+  it("serves the official Wiki snapshot on a direct /wiki route", () => {
+    window.history.pushState({}, "", "/wiki")
+    render(<App />)
+
+    expect(screen.getByRole("heading", { name: "Official Eco Wiki snapshot" })).toBeInTheDocument()
   })
 })

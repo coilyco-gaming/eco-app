@@ -1,19 +1,4 @@
-"""Tests for the social / chat surface aggregator + redaction (eco-app#63).
-
-Covers:
-  - Folding ChatSent / ReputationTransfer / FirstLogin / Play CSVs into the
-    right shapes (chat samples, reputation edges, activity by in-game day).
-  - **Redaction is load-bearing**: on the public path neither raw player names
-    nor raw message bodies are emitted — names become stable handles and known
-    names inside chat text are scrubbed to those handles.
-  - Names-in-the-clear is operator-gated (default-deny): reveal_names only takes
-    effect when ECO_SOCIAL_ALLOW_NAMES is set.
-  - respx-mocked fetch merges the four actions and joins ids to names.
-  - Missing-endpoint (401 / connect error) becomes a non-fatal warning.
-  - Empty CSVs produce a clean "no social activity" surface.
-  - The /preview/social.json data plane is always redacted.
-  - Tool wiring returns markdown + JSON blocks and no widget (just-data per eco-app#87).
-"""
+"""Tests for the chat-free community activity surface (eco-app#185)."""
 
 from __future__ import annotations
 
@@ -36,14 +21,12 @@ from eco_mcp_app.social import (
     fetch_social,
     hash_handle,
     parse_activity_rows,
-    parse_chat_rows,
     parse_reputation_rows,
     social_markdown,
     social_template_context,
 )
 
 BASE = "http://eco.example.com:3001"
-CHAT_URL = f"{BASE}/api/v1/exporter/actions?actionName=ChatSent"
 PLAY_URL = f"{BASE}/api/v1/exporter/actions?actionName=Play"
 LOGIN_URL = f"{BASE}/api/v1/exporter/actions?actionName=FirstLogin"
 REP_URL = f"{BASE}/api/v1/exporter/actions?actionName=ReputationTransfer"
@@ -54,15 +37,6 @@ _CITIZENS_JSON = [
     {"id": 130409, "name": "ekans"},
     {"id": 129580, "name": "redwood"},
 ]
-
-# Author id, channel/tag, message, then the trailing Count/Time the exporter
-# appends to every action row.
-_CHAT_CSV = (
-    "Citizen,Tag,Message,Count,Time\n"
-    '129312,General,"selling iron, ping ekans please",1,300000\n'
-    '130409,Trade,"anyone need wood?",1,200000\n'
-    '129312,General,"gg",1,260000\n'
-)
 _REP_CSV = (
     "Citizen,ReceiverCitizen,Amount,Count,Time\n"
     "129312,130409,5.0,1,250000\n"
@@ -70,6 +44,7 @@ _REP_CSV = (
 )
 _LOGIN_CSV = "Citizen,Count,Time\n130409,1,100000\n"
 _PLAY_CSV = "Citizen,Count,Time\n129312,1,50000\n129580,1,60000\n"
+NAME_MAP = {"129312": "coilysiren", "130409": "ekans", "129580": "redwood"}
 
 
 @pytest.fixture(autouse=True)
@@ -83,153 +58,82 @@ def _rows(csv_text: str) -> list[list[str]]:
     return list(csv.reader(csv_text.splitlines()))
 
 
-def _parse_all(surface: SocialSurface) -> tuple[list, list, list]:
-    chat: list = []
+def _parse_all(surface: SocialSurface) -> tuple[list, list]:
     edges: list = []
     activity: list = []
-    parse_chat_rows(_rows(_CHAT_CSV), surface, chat)
     parse_reputation_rows(_rows(_REP_CSV), surface, edges)
     parse_activity_rows("FirstLogin", _rows(_LOGIN_CSV), surface, activity)
     parse_activity_rows("Play", _rows(_PLAY_CSV), surface, activity)
-    return chat, edges, activity
-
-
-NAME_MAP = {"129312": "coilysiren", "130409": "ekans", "129580": "redwood"}
+    return edges, activity
 
 
 def test_parse_and_fold_shapes() -> None:
     surface = SocialSurface(fetched_at_iso="t", source_base_url="b")
-    chat, edges, activity = _parse_all(surface)
-    build_surface(surface, chat, edges, activity, NAME_MAP, show_names=True)
+    edges, activity = _parse_all(surface)
+    build_surface(surface, edges, activity, NAME_MAP, show_names=True)
 
-    assert surface.total_chat == 3
     assert surface.total_reputation_transfers == 2
     assert surface.total_first_logins == 1
     assert surface.total_play_events == 2
-    # Chat bucketed by in-game day (Time / 86400).
-    assert dict(surface.chat_by_day) == {2: 1, 3: 2}
-    # Busiest channel is General (2 of 3 messages).
-    assert surface.chat_by_channel[0] == ("General", 2)
-    # ekans received 8 reputation across two transfers → most-repped.
+    assert surface.play_by_day == [(0, 2)]
     assert surface.top_reputation_receivers[0] == ("ekans", pytest.approx(8.0))
-    # Directed edges carry the amount + count.
-    edge = next(e for e in surface.reputation_edges if e["source"] == "coilysiren")
+    edge = next(edge for edge in surface.reputation_edges if edge["source"] == "coilysiren")
     assert edge["target"] == "ekans"
     assert edge["amount"] == pytest.approx(5.0)
-    # New arrival from FirstLogin.
     assert surface.new_arrivals == [{"label": "ekans", "day": 1}]
-
-
-def test_hash_prefixed_channels_are_filtered_everywhere() -> None:
-    """`#`-prefixed channels are system/noise — dropped before any aggregate
-    counts them, with a warning naming how many were hidden (eco-app#74)."""
-    csv_text = (
-        "Citizen,Tag,Message,Count,Time\n"
-        '129312,General,"hello",1,100000\n'
-        '130409,#system,"[auto] world tick",1,110000\n'
-        '129580,#trade-bot,"beep",1,120000\n'
-    )
-    surface = SocialSurface(fetched_at_iso="t", source_base_url="b")
-    chat: list = []
-    parse_chat_rows(_rows(csv_text), surface, chat)
-    build_surface(surface, chat, [], [], NAME_MAP, show_names=True)
-
-    # Only the non-# channel survives — count, channel rank, and feed alike.
-    assert surface.total_chat == 1
-    assert surface.chat_by_channel == [("General", 1)]
-    assert [m["channel"] for m in surface.recent_chat] == ["General"]
-    # The filter is transparent: a warning says how many were hidden.
-    assert any("hid 2" in w and "#" in w for w in surface.warnings)
-
-
-def test_recent_chat_lists_every_message_with_relative_time() -> None:
-    """No sample cap — every message ships (eco-app#74) — and each carries the
-    raw `timeS` the SPA renders against `latest_time_s` as "N ago"."""
-    lines = ["Citizen,Tag,Message,Count,Time"]
-    for i in range(60):
-        lines.append(f'129312,General,"msg {i}",1,{100000 + i}')
-    surface = SocialSurface(fetched_at_iso="t", source_base_url="b")
-    chat: list = []
-    parse_chat_rows(_rows("\n".join(lines) + "\n"), surface, chat)
-    build_surface(surface, chat, [], [], NAME_MAP, show_names=True)
-
-    # Every one of the 60 messages is in the feed (the old cap was 40).
-    assert surface.total_chat == 60
-    assert len(surface.recent_chat) == 60
-    # Newest first, each with its raw time; latest_time_s is the newest event.
-    assert surface.latest_time_s == 100059.0
-    assert surface.recent_chat[0]["timeS"] == 100059.0
-    assert surface.recent_chat[-1]["timeS"] == 100000.0
+    assert "ChatSent" not in surface.per_type_counts
+    assert "totalChat" not in surface.to_dict()
 
 
 def test_empty_reputation_graph_is_diagnosed() -> None:
-    """When transfers parse but the receiver column isn't recognized, every edge
-    drops and the graph reads empty — a warning names the culprit (eco-app#74)."""
-    csv_text = (
-        "Citizen,Beneficiary,Amount,Count,Time\n"  # `Beneficiary` isn't a known column
-        "129312,130409,5.0,1,250000\n"
-    )
+    csv_text = "Citizen,Beneficiary,Amount,Count,Time\n129312,130409,5.0,1,250000\n"
     surface = SocialSurface(fetched_at_iso="t", source_base_url="b")
     edges: list = []
     parse_reputation_rows(_rows(csv_text), surface, edges)
-    build_surface(surface, [], edges, [], NAME_MAP, show_names=True)
+    build_surface(surface, edges, [], NAME_MAP, show_names=True)
 
     assert surface.total_reputation_transfers == 1
     assert surface.reputation_edges == []
-    assert any("ReputationTransfer" in w and "receiver" in w for w in surface.warnings)
+    assert any(
+        "ReputationTransfer" in warning and "receiver" in warning for warning in surface.warnings
+    )
 
 
-def test_public_path_redacts_names_and_message_bodies() -> None:
-    """The load-bearing guarantee: no raw name / raw body on the public path."""
+def test_public_path_redacts_player_names() -> None:
     surface = SocialSurface(fetched_at_iso="t", source_base_url="b")
-    chat, edges, activity = _parse_all(surface)
-    build_surface(surface, chat, edges, activity, NAME_MAP, show_names=False)
+    edges, activity = _parse_all(surface)
+    build_surface(surface, edges, activity, NAME_MAP, show_names=False)
 
-    blob = json.dumps(surface.to_dict())
-    # Not one real player name survives anywhere in the serialized payload —
-    # not as an author, not as a graph node, not inside a chat body.
+    payload = json.dumps(surface.to_dict())
     for real_name in ("coilysiren", "ekans", "redwood"):
-        assert real_name not in blob, f"{real_name!r} leaked onto the public path"
-    # The redaction flag is honest.
+        assert real_name not in payload
     assert surface.redacted is True
-    # Authors + graph nodes are stable handles.
-    assert surface.recent_chat[0]["author"] == hash_handle("coilysiren")
     assert surface.top_reputation_receivers[0][0] == hash_handle("ekans")
-    # The "ping ekans" body was scrubbed to ekans's handle in place.
-    ping = next(m for m in surface.recent_chat if "ping" in m["message"])
-    assert hash_handle("ekans") in ping["message"]
-    assert "ekans" not in ping["message"].replace(hash_handle("ekans"), "")
+    assert surface.new_arrivals[0]["label"] == hash_handle("ekans")
 
 
 def test_operator_mode_shows_names_only_when_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Default-deny: reveal_names alone does nothing without the env gate.
     monkeypatch.delenv(social_mod.NAMES_ALLOW_ENV, raising=False)
     assert social_mod.effective_show_names(reveal_names=True) is False
-    # Gate lifted → names show.
     monkeypatch.setenv(social_mod.NAMES_ALLOW_ENV, "1")
     assert social_mod.effective_show_names(reveal_names=True) is True
-    # Even with the gate, a caller that doesn't ask stays redacted.
     assert social_mod.effective_show_names(reveal_names=False) is False
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_social_merges_actions_and_joins_names() -> None:
-    respx.get(CHAT_URL).mock(return_value=httpx.Response(200, text=_CHAT_CSV))
+async def test_fetch_social_uses_only_activity_and_reputation_exports() -> None:
     respx.get(PLAY_URL).mock(return_value=httpx.Response(200, text=_PLAY_CSV))
     respx.get(LOGIN_URL).mock(return_value=httpx.Response(200, text=_LOGIN_CSV))
     respx.get(REP_URL).mock(return_value=httpx.Response(200, text=_REP_CSV))
     respx.get(CITIZENS_URL).mock(return_value=httpx.Response(200, json=_CITIZENS_JSON))
 
     surface = await fetch_social(base_url=BASE, api_key="secret", cache_ttl_s=0)
-    assert surface.total_chat == 3
     assert surface.per_type_counts == {
-        "ChatSent": 3,
         "Play": 2,
         "FirstLogin": 1,
         "ReputationTransfer": 2,
     }
-    # Redacted by default (no env gate in this test) — no real names present.
     assert surface.redacted is True
     assert "ekans" not in json.dumps(surface.to_dict())
 
@@ -237,22 +141,19 @@ async def test_fetch_social_merges_actions_and_joins_names() -> None:
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_social_tolerates_partial_failure() -> None:
-    respx.get(CHAT_URL).mock(return_value=httpx.Response(200, text=_CHAT_CSV))
     respx.get(PLAY_URL).mock(return_value=httpx.Response(401))
     respx.get(LOGIN_URL).mock(return_value=httpx.Response(200, text=_LOGIN_CSV))
     respx.get(REP_URL).mock(return_value=httpx.Response(200, text=_REP_CSV))
     respx.get(CITIZENS_URL).mock(return_value=httpx.Response(200, json=_CITIZENS_JSON))
 
     surface = await fetch_social(base_url=BASE, api_key=None, cache_ttl_s=0)
-    assert surface.total_chat == 3  # chat still folded
-    assert any("Play" in w and "401" in w for w in surface.warnings)
+    assert surface.total_first_logins == 1
+    assert any("Play" in warning and "401" in warning for warning in surface.warnings)
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_social_empty_is_clean() -> None:
-    empty_chat = "Citizen,Tag,Message,Count,Time\n"
-    respx.get(CHAT_URL).mock(return_value=httpx.Response(200, text=empty_chat))
     respx.get(PLAY_URL).mock(return_value=httpx.Response(200, text="Citizen,Count,Time\n"))
     respx.get(LOGIN_URL).mock(return_value=httpx.Response(200, text="Citizen,Count,Time\n"))
     respx.get(REP_URL).mock(
@@ -260,19 +161,15 @@ async def test_fetch_social_empty_is_clean() -> None:
     )
 
     surface = await fetch_social(base_url=BASE, api_key=None, cache_ttl_s=0)
-    assert surface.total_chat == 0
     assert surface.reputation_edges == []
     assert social_template_context(surface)["empty"] is True
-    assert "no social activity" in social_markdown(surface).lower()
+    assert "no activity" in social_markdown(surface).lower()
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_tool_call_returns_text_blocks_and_fragment(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_tool_call_returns_text_and_json(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ECO_ADMIN_API_KEY", "k")
-    respx.get(CHAT_URL).mock(return_value=httpx.Response(200, text=_CHAT_CSV))
     respx.get(PLAY_URL).mock(return_value=httpx.Response(200, text=_PLAY_CSV))
     respx.get(LOGIN_URL).mock(return_value=httpx.Response(200, text=_LOGIN_CSV))
     respx.get(REP_URL).mock(return_value=httpx.Response(200, text=_REP_CSV))
@@ -280,22 +177,20 @@ async def test_tool_call_returns_text_blocks_and_fragment(
 
     mcp = build_server()
     handler = mcp.request_handlers[mt.CallToolRequest]
-    req = mt.CallToolRequest(
+    request = mt.CallToolRequest(
         method="tools/call",
         params=mt.CallToolRequestParams(
             name="get_eco_social",
             arguments={"server": "eco.example.com:3001"},
         ),
     )
-    result = await handler(req)
+    result = await handler(request)
     blocks = result.root.content
     assert len(blocks) == 2
     assert isinstance(blocks[0], mt.TextContent)
-    assert "Social" in blocks[0].text
-    # Just-data per eco-app#87: get_eco_social no longer emits a widget.
+    assert "Community activity" in blocks[0].text
     assert result.root.meta is None
-    # Even through the tool, redaction holds by default (no names env gate).
-    assert "ekans" not in json.dumps([b.text for b in blocks])
+    assert "ekans" not in json.dumps([block.text for block in blocks])
 
 
 @pytest.mark.asyncio
@@ -309,20 +204,18 @@ async def test_list_tools_includes_get_eco_social() -> None:
 
 @respx.mock
 def test_preview_social_json_is_redacted(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The public /preview/social.json data plane never leaks names — even if an
-    operator has lifted the names gate, the SPA path stays redacted."""
     monkeypatch.setenv("ECO_ADMIN_API_KEY", "k")
-    monkeypatch.setenv(social_mod.NAMES_ALLOW_ENV, "1")  # gate lifted server-side
-    respx.get(CHAT_URL).mock(return_value=httpx.Response(200, text=_CHAT_CSV))
+    monkeypatch.setenv(social_mod.NAMES_ALLOW_ENV, "1")
     respx.get(PLAY_URL).mock(return_value=httpx.Response(200, text=_PLAY_CSV))
     respx.get(LOGIN_URL).mock(return_value=httpx.Response(200, text=_LOGIN_CSV))
     respx.get(REP_URL).mock(return_value=httpx.Response(200, text=_REP_CSV))
     respx.get(CITIZENS_URL).mock(return_value=httpx.Response(200, json=_CITIZENS_JSON))
 
     client = TestClient(create_app())
-    resp = client.get("/preview/social.json?server=eco.example.com:3001")
-    assert resp.status_code == 200
-    payload = resp.json()
+    response = client.get("/preview/social.json?server=eco.example.com:3001")
+    assert response.status_code == 200
+    payload = response.json()
     assert payload["redacted"] is True
+    assert "totalChat" not in payload
     for real_name in ("coilysiren", "ekans", "redwood"):
         assert real_name not in json.dumps(payload)

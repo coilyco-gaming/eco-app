@@ -41,6 +41,7 @@ describe("Home", () => {
     ).toHaveTextContent("what happened while you were away")
     expect(screen.getByTestId("dir-info")).toHaveAttribute("href", "/info")
     expect(screen.getByTestId("dir-jobs")).toHaveAttribute("href", "/jobs")
+    expect(screen.getByTestId("dir-wiki")).toHaveAttribute("href", "/wiki")
     // The eco-gnome calculator is a homepage card that links out to the gnome
     // service, not a /calculator route anymore (eco-app#90).
     expect(screen.getByTestId("dir-gnome")).toHaveAttribute(
