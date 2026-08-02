@@ -1,6 +1,6 @@
-"""Wikidata + Wikipedia lookup for `explain_eco_item`.
+"""Wikidata + Wikipedia lookup for `explain_item`.
 
-Backs the `explain_eco_item` MCP tool. Flow:
+Backs the `explain_item` MCP tool. Flow:
 
 1. If `category` is provided, run a SPARQL query against `query.wikidata.org`
    scoped to that category's instance-of class and pull out the image (P18),
@@ -39,7 +39,7 @@ USER_AGENT = "eco-mcp-app/0.1 (coilysiren@gmail.com)"
 DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60
 
 # Wikidata instance-of (P31) classes used to disambiguate a bare item name.
-# Restricted to the five categories the `explain_eco_item` tool advertises.
+# Restricted to the five categories the `explain_item` tool advertises.
 CATEGORY_INSTANCE_OF: dict[str, list[str]] = {
     # Q11344 = chemical element. Eco's "materials" are mostly elements
     # (Iron, Copper, Gold) plus a few compounds; the element filter is a
@@ -124,7 +124,7 @@ def _cache_put(key: str, value: Any) -> None:
 
 @dataclass
 class EcopediaCard:
-    """Rendered payload for the `explain_eco_item` tool."""
+    """Rendered payload for the `explain_item` tool."""
 
     name: str
     category: str | None

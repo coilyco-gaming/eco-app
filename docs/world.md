@@ -7,10 +7,10 @@ The SPA's `/map` route is the readable state-of-the-world surface. It keeps the 
 The World page consumes three independent planes:
 
 * `/preview-map.json` - the map image and owner-coloured property deed polygons. Owner names can contain Eco rich-text markup, which the SPA parses through a safe allow-list renderer rather than raw HTML.
-* `/preview/get_eco_ecoregion.json` - biome and water composition, nearest ecoregion matches, biodiversity drift, and per-species risk evidence.
-* `/preview/get_eco_climate.json` - CO2, temperature, sea level, source and sink breakdowns, freshness, and read-only coordination guidance.
+* `/preview/get_region.json` - biome and water composition, nearest ecoregion matches, biodiversity drift, and per-species risk evidence.
+* `/preview/get_climate.json` - CO2, temperature, sea level, source and sink breakdowns, freshness, and read-only coordination guidance.
 
-Each plane degrades independently. The page does not fetch or render the world-mutation action summary. The backend `get_eco_world` MCP tool and `/preview/world.json` data plane remain available for structured action analysis and existing consumers.
+Each plane degrades independently. The page does not fetch or render the world-mutation action summary. The backend `get_world` MCP tool and `/preview/world.json` data plane remain available for structured action analysis and existing consumers.
 
 ## Climate source freshness
 

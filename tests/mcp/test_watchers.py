@@ -281,7 +281,7 @@ async def test_tool_create_list_evaluate_remove(monkeypatch: pytest.MonkeyPatch)
     # Create a price watcher for cheap iron.
     created = await _call(
         handler,
-        "eco_trade_watchers",
+        "trade_watchers",
         {
             "action": "create",
             "kind": "price",
@@ -297,14 +297,14 @@ async def test_tool_create_list_evaluate_remove(monkeypatch: pytest.MonkeyPatch)
     assert created_payload["watcher"]["op"] == "under"
 
     # List shows it.
-    listed = await _call(handler, "eco_trade_watchers", {"action": "list"})
+    listed = await _call(handler, "trade_watchers", {"action": "list"})
     listed_payload = json.loads(listed.content[1].text)
     assert any(w["id"] == wid for w in listed_payload["watchers"])
 
     # Evaluate against the live ledger — the one cheap iron row (unit price 2.0)
     # is a feed hit and the current match.
     evaluated = await _call(
-        handler, "eco_trade_watchers", {"action": "evaluate", "server": "eco.example.com:3001"}
+        handler, "trade_watchers", {"action": "evaluate", "server": "eco.example.com:3001"}
     )
     eval_payload = json.loads(evaluated.content[1].text)
     hit = next(h for h in eval_payload["hits"] if h["id"] == wid)
@@ -314,13 +314,13 @@ async def test_tool_create_list_evaluate_remove(monkeypatch: pytest.MonkeyPatch)
 
     # A second evaluate advanced the mark, so the feed is now empty.
     again = await _call(
-        handler, "eco_trade_watchers", {"action": "evaluate", "server": "eco.example.com:3001"}
+        handler, "trade_watchers", {"action": "evaluate", "server": "eco.example.com:3001"}
     )
     again_hit = next(h for h in json.loads(again.content[1].text)["hits"] if h["id"] == wid)
     assert again_hit["feedCount"] == 0
 
     # Remove it.
-    removed = await _call(handler, "eco_trade_watchers", {"action": "remove", "id": wid})
+    removed = await _call(handler, "trade_watchers", {"action": "remove", "id": wid})
     assert json.loads(removed.content[1].text)["removed"] is True
 
 
@@ -329,7 +329,7 @@ async def test_tool_create_rejects_bad_price() -> None:
     mcp = build_server()
     handler = mcp.request_handlers[mt.CallToolRequest]
     result = await _call(
-        handler, "eco_trade_watchers", {"action": "create", "kind": "price", "value": "iron"}
+        handler, "trade_watchers", {"action": "create", "kind": "price", "value": "iron"}
     )
     assert result.isError is True
 
@@ -340,7 +340,7 @@ async def test_list_tools_includes_watchers() -> None:
     handler = mcp.request_handlers[mt.ListToolsRequest]
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {tool.name for tool in result.root.tools}
-    assert "eco_trade_watchers" in names
+    assert "trade_watchers" in names
 
 
 @respx.mock

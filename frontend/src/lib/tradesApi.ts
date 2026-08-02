@@ -1,4 +1,4 @@
-// Typed client for the trades ledger (/preview/get_eco_trades.json).
+// Typed client for the trades ledger (/preview/get_trades.json).
 //
 // The endpoint returns TradesLedger.to_dict() from eco_mcp_app/trades.py: the
 // row-level detailed trades (newest first, capped) plus the aggregates that
@@ -49,7 +49,7 @@ export interface TradesLedger {
 }
 
 export async function fetchTradesLedger(signal?: AbortSignal): Promise<TradesLedger> {
-  const resp = await fetch("/preview/get_eco_trades.json", { signal })
+  const resp = await fetch("/preview/get_trades.json", { signal })
   if (!resp.ok) {
     throw new Error(`trades ledger fetch failed: HTTP ${resp.status}`)
   }

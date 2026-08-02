@@ -1,4 +1,4 @@
-"""Unit tests for the `get_eco_climate` tool.
+"""Unit tests for the `get_climate` tool.
 
 Covers:
 - ``fetch_climate`` dataset fan-out, candidate-name fallthrough, and
@@ -8,7 +8,7 @@ Covers:
 - Polluter attribution via the action-exporter CSV stream.
 - The MCP tool wiring end-to-end (call_tool returns markdown + JSON,
   and no widget — just-data per eco-app#87).
-- The ``get_eco_map`` pollution overlay pulls ``Layers/Pollution.gif`` and
+- The ``get_map`` pollution overlay pulls ``Layers/Pollution.gif`` and
   exposes it as ``pollutionDataUri``.
 """
 
@@ -916,17 +916,17 @@ def test_parse_dataset_point_drops_invalid() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_tools_includes_get_eco_climate() -> None:
+async def test_list_tools_includes_get_climate() -> None:
     mcp = build_server()
     handler = mcp.request_handlers[mt.ListToolsRequest]
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {tool.name for tool in result.root.tools}
-    assert "get_eco_climate" in names
+    assert "get_climate" in names
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_call_get_eco_climate_returns_iframe_fragment() -> None:
+async def test_call_get_climate_returns_iframe_fragment() -> None:
     respx.get(DEFAULT_ECO_INFO_URL).mock(return_value=httpx.Response(200, json=_info()))
     _route_datasets(
         {
@@ -944,7 +944,7 @@ async def test_call_get_eco_climate_returns_iframe_fragment() -> None:
     handler = mcp.request_handlers[mt.CallToolRequest]
     req = mt.CallToolRequest(
         method="tools/call",
-        params=mt.CallToolRequestParams(name="get_eco_climate", arguments={}),
+        params=mt.CallToolRequestParams(name="get_climate", arguments={}),
     )
     result = await handler(req)
     blocks = result.root.content
@@ -971,24 +971,24 @@ async def test_call_get_eco_climate_returns_iframe_fragment() -> None:
     assert payload["status"] in {"stable", "warming", "critical", "unknown"}
     assert "explainer" in payload
 
-    # Just-data per eco-app#87: get_eco_climate no longer emits a widget.
+    # Just-data per eco-app#87: get_climate no longer emits a widget.
     assert result.root.meta is None
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_call_get_eco_climate_handles_info_failure() -> None:
+async def test_call_get_climate_handles_info_failure() -> None:
     respx.get(DEFAULT_ECO_INFO_URL).mock(side_effect=httpx.ConnectError("refused"))
     mcp = build_server()
     handler = mcp.request_handlers[mt.CallToolRequest]
     req = mt.CallToolRequest(
         method="tools/call",
-        params=mt.CallToolRequestParams(name="get_eco_climate", arguments={}),
+        params=mt.CallToolRequestParams(name="get_climate", arguments={}),
     )
     result = await handler(req)
     assert result.root.isError is True
     assert "unreachable" in result.root.content[0].text.lower()
-    # Just-data per eco-app#87: get_eco_climate no longer emits a widget.
+    # Just-data per eco-app#87: get_climate no longer emits a widget.
     assert result.root.meta is None
 
 

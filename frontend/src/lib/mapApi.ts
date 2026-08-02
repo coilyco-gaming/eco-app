@@ -1,4 +1,4 @@
-// Typed client for the live world-map plane (/preview-map.json → get_eco_map,
+// Typed client for the live world-map plane (/preview-map.json → get_map,
 // with include_biomes so the SPA gets per-biome rasters for hover-highlight).
 //
 // The endpoint returns map.build_map_payload() from eco_mcp_app/map.py: the

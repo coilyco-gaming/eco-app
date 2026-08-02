@@ -1,5 +1,5 @@
 // Typed client for the biodiversity + ecoregion match card
-// (/preview/get_eco_ecoregion.json).
+// (/preview/get_region.json).
 //
 // The endpoint returns ecoregion.build_payload() from
 // eco_mcp_app/ecoregion.py: the 12 biome layers with raw + normalized share,
@@ -107,7 +107,7 @@ export interface EcoregionSnapshot {
 }
 
 export async function fetchEcoregion(signal?: AbortSignal): Promise<EcoregionSnapshot> {
-  const resp = await fetch("/preview/get_eco_ecoregion.json", { signal })
+  const resp = await fetch("/preview/get_region.json", { signal })
   if (!resp.ok) {
     throw new Error(`ecoregion fetch failed: HTTP ${resp.status}`)
   }

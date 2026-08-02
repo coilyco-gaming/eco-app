@@ -94,7 +94,7 @@ export default function App() {
         {/* /world + /ecoregion merged into /map (eco-app#82) and /climate folded
             in as the World page's environmental overlay (eco-app#90); keep the
             old links alive. The page is titled "World" — the canonical path
-            stays /map to avoid clashing with the get_eco_world data plane. */}
+            stays /map to avoid clashing with the get_world data plane. */}
         <Route path="/world" element={<Navigate to="/map" replace />} />
         <Route path="/ecoregion" element={<Navigate to="/map" replace />} />
         <Route path="/climate" element={<Navigate to="/map" replace />} />

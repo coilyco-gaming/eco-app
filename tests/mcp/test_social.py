@@ -180,7 +180,7 @@ async def test_tool_call_returns_text_and_json(monkeypatch: pytest.MonkeyPatch) 
     request = mt.CallToolRequest(
         method="tools/call",
         params=mt.CallToolRequestParams(
-            name="get_eco_social",
+            name="get_social",
             arguments={"server": "eco.example.com:3001"},
         ),
     )
@@ -194,12 +194,12 @@ async def test_tool_call_returns_text_and_json(monkeypatch: pytest.MonkeyPatch) 
 
 
 @pytest.mark.asyncio
-async def test_list_tools_includes_get_eco_social() -> None:
+async def test_list_tools_includes_get_social() -> None:
     mcp = build_server()
     handler = mcp.request_handlers[mt.ListToolsRequest]
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {tool.name for tool in result.root.tools}
-    assert "get_eco_social" in names
+    assert "get_social" in names
 
 
 @respx.mock

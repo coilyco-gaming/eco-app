@@ -184,7 +184,7 @@ class EcoRconClient:
                     except OSError:
                         pass
                 logger.info(
-                    "eco_admin_rcon query=%s outcome=%s latency_ms=%.3f",
+                    "admin_rcon query=%s outcome=%s latency_ms=%.3f",
                     query.value,
                     outcome,
                     (time.monotonic() - started) * 1000,

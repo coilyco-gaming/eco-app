@@ -1,4 +1,4 @@
-"""Unit tests for the `get_eco_map` tool.
+"""Unit tests for the `get_map` tool.
 
 Covers the pure-data helpers (polygon ordering, seam-splitting, payload
 shaping) plus the end-to-end tool call wired through the MCP handler with
@@ -285,17 +285,17 @@ async def test_fetch_map_bundle_raises_on_5xx() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_tools_advertises_get_eco_map() -> None:
+async def test_list_tools_advertises_get_map() -> None:
     mcp = build_server()
     handler = mcp.request_handlers[mt.ListToolsRequest]
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {tool.name for tool in result.root.tools}
-    assert "get_eco_map" in names
+    assert "get_map" in names
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_get_eco_map_call_tool_returns_data_only_result() -> None:
+async def test_get_map_call_tool_returns_data_only_result() -> None:
     respx.get(f"{ECO_BASE_URL_DEFAULT}/api/v1/map/dimension").mock(
         return_value=httpx.Response(200, json=_fake_dimension())
     )
@@ -312,7 +312,7 @@ async def test_get_eco_map_call_tool_returns_data_only_result() -> None:
     handler = mcp.request_handlers[mt.CallToolRequest]
     req = mt.CallToolRequest(
         method="tools/call",
-        params=mt.CallToolRequestParams(name="get_eco_map", arguments={}),
+        params=mt.CallToolRequestParams(name="get_map", arguments={}),
     )
     result = await handler(req)
     blocks = result.root.content
@@ -334,7 +334,7 @@ async def test_get_eco_map_call_tool_returns_data_only_result() -> None:
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_get_eco_map_call_tool_handles_upstream_failure() -> None:
+async def test_get_map_call_tool_handles_upstream_failure() -> None:
     respx.get(f"{ECO_BASE_URL_DEFAULT}/api/v1/map/dimension").mock(
         side_effect=httpx.ConnectError("refused")
     )
@@ -342,7 +342,7 @@ async def test_get_eco_map_call_tool_handles_upstream_failure() -> None:
     handler = mcp.request_handlers[mt.CallToolRequest]
     req = mt.CallToolRequest(
         method="tools/call",
-        params=mt.CallToolRequestParams(name="get_eco_map", arguments={}),
+        params=mt.CallToolRequestParams(name="get_map", arguments={}),
     )
     result = await handler(req)
     assert result.root.isError is True

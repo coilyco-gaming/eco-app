@@ -1,4 +1,4 @@
-"""Fetch + shape data for the `get_eco_map` tool.
+"""Fetch + shape data for the `get_map` tool.
 
 The card renders by overlaying SVG polygons on the live WorldPreview.gif
 (inlined as a data URI to satisfy Claude Desktop's CSP — see

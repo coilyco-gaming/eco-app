@@ -9,36 +9,36 @@ The surface is feature-flagged with `ECO_ADMIN_ENABLED`. The ordinary public app
 deployment leaves that flag off. A separate node-pinned deployment owns the
 privileged mount and network boundary.
 
-Every tool name starts with `eco_admin_`. The namespace makes privileged
+Every tool name starts with `admin_`. The namespace makes privileged
 operator capabilities distinct from the public Eco MCP during discovery. The
-former `eco_*` names are not aliases.
+former `eco_admin_*` names are not aliases.
 
 ## Capability groups
 
-* **Save and world** - `eco_admin_save_status`, `eco_admin_backup_list`, and
-  `eco_admin_world_meta` read the fixed save, backup, and world-generator
+* **Save and world** - `admin_save_status`, `admin_backup_list`, and
+  `admin_world_meta` read the fixed save, backup, and world-generator
   locations.
-* **Configs** - `eco_admin_config_get`, `eco_admin_config_diff`, and
-  `eco_admin_mod_configs` read fixed enums covering core Eco configs and the
+* **Configs** - `admin_config_get`, `admin_config_diff`, and
+  `admin_mod_configs` read fixed enums covering core Eco configs and the
   DiscordLink, MightyMoose, NidToolbox, and StrangeWorlds config families.
-* **Chronicler** - `eco_admin_events_recent` and
-  `eco_admin_player_activity` stream the fixed append-only
+* **Chronicler** - `admin_events_recent` and
+  `admin_player_activity` stream the fixed append-only
   `Storage/EcoReplay.jsonl` store. Reads retain only their bounded newest-event
   window in memory and skip malformed or partial rows. The legacy
   `Storage/EcoReplay.db` remains an untouched historical archive and is not
   silently imported.
-* **Logs** - `eco_admin_log_tail` and `eco_admin_log_grep` select a fixed
+* **Logs** - `admin_log_tail` and `admin_log_grep` select a fixed
   subsystem enum.
   Search is a bounded case-insensitive literal. The caller cannot supply a
   path or regex.
-* **Mods** - `eco_admin_mods_installed` inventories fixed `Mods/` and
+* **Mods** - `admin_mods_installed` inventories fixed `Mods/` and
   `Mods/UserCode/` roots, reads bounded manifest versions, and reports
   configured mod names that are not installed.
-* **Runtime** - `eco_admin_live_status` and `eco_admin_service_health` read the
+* **Runtime** - `admin_live_status` and `admin_service_health` read the
   fixed node-local `/info` route with timeout and response-size budgets.
-  `eco_admin_service_health` reports reachability. It does not run `systemctl`,
+  `admin_service_health` reports reachability. It does not run `systemctl`,
   enter a workload, or need a host root mount.
-* **RCON** - `eco_admin_rcon_query` maps one caller enum to one server-owned
+* **RCON** - `admin_rcon_query` maps one caller enum to one server-owned
   command. There is no free-form command argument.
 
 ## RCON v1 enum

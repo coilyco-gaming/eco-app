@@ -1,4 +1,4 @@
-"""Unit tests for the `get_eco_economy` tool.
+"""Unit tests for the `get_economy` tool.
 
 Covers: dataset fan-out + KPI computation (happy path), Day-3 empty-data
 paths, admin token absent → empty-state branch, classification thresholds,
@@ -296,17 +296,17 @@ def test_compute_handles_missing_economy_desc() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_tools_includes_get_eco_economy() -> None:
+async def test_list_tools_includes_get_economy() -> None:
     mcp = build_server()
     handler = mcp.request_handlers[mt.ListToolsRequest]
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {tool.name for tool in result.root.tools}
-    assert "get_eco_economy" in names
+    assert "get_economy" in names
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_call_get_eco_economy_returns_htmx_fragment() -> None:
+async def test_call_get_economy_returns_htmx_fragment() -> None:
     respx.get(DEFAULT_ECO_INFO_URL).mock(return_value=httpx.Response(200, json=_info_body()))
     _mock_all_datasets({name: [1.0, 2.0, 3.0] for name in ECONOMY_DATASETS})
 
@@ -314,13 +314,13 @@ async def test_call_get_eco_economy_returns_htmx_fragment() -> None:
     handler = mcp.request_handlers[mt.CallToolRequest]
     req = mt.CallToolRequest(
         method="tools/call",
-        params=mt.CallToolRequestParams(name="get_eco_economy", arguments={}),
+        params=mt.CallToolRequestParams(name="get_economy", arguments={}),
     )
     result = await handler(req)
     blocks = result.root.content
     assert len(blocks) == 2
     # Block 0: markdown fallback. Block 1: JSON. Just-data per eco-app#87:
-    # get_eco_economy no longer emits a widget, so there is no HTML fragment.
+    # get_economy no longer emits a widget, so there is no HTML fragment.
     assert isinstance(blocks[0], mt.TextContent)
     assert isinstance(blocks[1], mt.TextContent)
 
@@ -332,20 +332,20 @@ async def test_call_get_eco_economy_returns_htmx_fragment() -> None:
     assert payload["health"] in {"healthy", "booming", "stressed"}
     assert payload["kpis"]["trades_total"] == 524
 
-    # Just-data per eco-app#87: get_eco_economy no longer emits a widget.
+    # Just-data per eco-app#87: get_economy no longer emits a widget.
     assert result.root.meta is None
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_call_get_eco_economy_handles_info_failure() -> None:
+async def test_call_get_economy_handles_info_failure() -> None:
     respx.get(DEFAULT_ECO_INFO_URL).mock(side_effect=httpx.ConnectError("refused"))
 
     mcp = build_server()
     handler = mcp.request_handlers[mt.CallToolRequest]
     req = mt.CallToolRequest(
         method="tools/call",
-        params=mt.CallToolRequestParams(name="get_eco_economy", arguments={}),
+        params=mt.CallToolRequestParams(name="get_economy", arguments={}),
     )
     result = await handler(req)
     # Error path: isError=True, plain-text error block, and no widget

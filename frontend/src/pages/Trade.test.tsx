@@ -387,7 +387,7 @@ function stub(
     "stores.json": overrides.stores ?? STORES,
     "currency.json": overrides.currency ?? CURRENCY,
     "logistics.json": overrides.logistics ?? LOGISTICS,
-    "get_eco_trades.json": overrides.trades ?? TRADES,
+    "get_trades.json": overrides.trades ?? TRADES,
     "watchers.json": overrides.watchers ?? { hits: [] },
   }
   vi.stubGlobal(

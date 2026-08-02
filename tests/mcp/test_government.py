@@ -1,4 +1,4 @@
-"""Tests for the `get_eco_government` tool and its helpers.
+"""Tests for the `get_government` tool and its helpers.
 
 Mocks the three civic endpoints with respx and exercises both the payload
 shaping functions and the end-to-end tool path through the MCP server.
@@ -254,18 +254,18 @@ async def test_list_tools_includes_government() -> None:
     handler = mcp.request_handlers[mt.ListToolsRequest]
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {tool.name for tool in result.root.tools}
-    assert "get_eco_government" in names
+    assert "get_government" in names
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_call_tool_get_eco_government_happy_path() -> None:
+async def test_call_tool_get_government_happy_path() -> None:
     _mock_all()
     mcp = build_server()
     handler = mcp.request_handlers[mt.CallToolRequest]
     req = mt.CallToolRequest(
         method="tools/call",
-        params=mt.CallToolRequestParams(name="get_eco_government", arguments={}),
+        params=mt.CallToolRequestParams(name="get_government", arguments={}),
     )
     result = await handler(req)
     blocks = result.root.content
@@ -277,19 +277,19 @@ async def test_call_tool_get_eco_government_happy_path() -> None:
     assert "Steamtide Cay Foundation" in md
     assert "Scuba Steve" in md
     assert payload["scope"] == "Steamtide Cay Foundation"
-    # Just-data per eco-app#87: get_eco_government no longer emits a widget.
+    # Just-data per eco-app#87: get_government no longer emits a widget.
     assert result.root.meta is None
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_call_tool_get_eco_government_handles_upstream_error() -> None:
+async def test_call_tool_get_government_handles_upstream_error() -> None:
     respx.get(_TITLES_URL).mock(side_effect=httpx.ConnectError("refused"))
     mcp = build_server()
     handler = mcp.request_handlers[mt.CallToolRequest]
     req = mt.CallToolRequest(
         method="tools/call",
-        params=mt.CallToolRequestParams(name="get_eco_government", arguments={}),
+        params=mt.CallToolRequestParams(name="get_government", arguments={}),
     )
     result = await handler(req)
     assert result.root.isError is True

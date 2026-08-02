@@ -23,7 +23,7 @@ export interface SpeciesProfile {
 
 export async function fetchSpecies(name: string, signal?: AbortSignal): Promise<SpeciesProfile> {
   const response = await fetch(
-    `/preview/get_eco_species.json?name=${encodeURIComponent(name)}`,
+    `/preview/get_species.json?name=${encodeURIComponent(name)}`,
     { signal },
   )
   if (!response.ok) throw new Error(`species fetch failed: HTTP ${response.status}`)

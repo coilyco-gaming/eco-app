@@ -194,10 +194,10 @@ function stubFetch(ecoregion: EcoregionSnapshot = SNAP, climate: ClimateSnapshot
     "fetch",
     vi.fn((url: string) => {
       let body: unknown = {}
-      if (url.includes("get_eco_ecoregion")) body = ecoregion
+      if (url.includes("get_region")) body = ecoregion
       else if (url.includes("world.json")) body = WORLD
       else if (url.includes("preview-map.json")) body = MAP
-      else if (url.includes("get_eco_climate")) body = climate
+      else if (url.includes("get_climate")) body = climate
       return Promise.resolve(
         new Response(JSON.stringify(body), {
           status: 200,

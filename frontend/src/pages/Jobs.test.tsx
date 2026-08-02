@@ -381,7 +381,7 @@ function stubJobsFetch() {
       else if (url.includes("/preview/recipes.json?cost=1")) body = VALUE_RECIPES
       else if (url.endsWith("/preview/logistics.json")) body = VALUE_LOGISTICS
       else if (url.endsWith("/preview/market.json")) body = VALUE_MARKET
-      else if (url.endsWith("/preview/get_eco_trades.json")) body = VALUE_TRADES
+      else if (url.endsWith("/preview/get_trades.json")) body = VALUE_TRADES
       if (body === null) return Promise.reject(new Error(`unexpected fetch: ${url}`))
       return Promise.resolve(
         new Response(JSON.stringify(body), {

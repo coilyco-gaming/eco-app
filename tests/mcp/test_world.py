@@ -281,7 +281,7 @@ async def test_tool_call_returns_two_text_blocks(monkeypatch: pytest.MonkeyPatch
     req = mt.CallToolRequest(
         method="tools/call",
         params=mt.CallToolRequestParams(
-            name="get_eco_world",
+            name="get_world",
             arguments={"server": "eco.example.com:3001"},
         ),
     )
@@ -294,9 +294,9 @@ async def test_tool_call_returns_two_text_blocks(monkeypatch: pytest.MonkeyPatch
 
 
 @pytest.mark.asyncio
-async def test_list_tools_includes_get_eco_world() -> None:
+async def test_list_tools_includes_get_world() -> None:
     mcp = build_server()
     handler = mcp.request_handlers[mt.ListToolsRequest]
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {tool.name for tool in result.root.tools}
-    assert "get_eco_world" in names
+    assert "get_world" in names

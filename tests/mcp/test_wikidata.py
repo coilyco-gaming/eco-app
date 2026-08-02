@@ -1,4 +1,4 @@
-"""Tests for `wikidata.build_ecopedia_card` and the `explain_eco_item` tool.
+"""Tests for `wikidata.build_ecopedia_card` and the `explain_item` tool.
 
 Mirrors the respx-driven patterns used in `test_fetch_eco_info.py` +
 `test_smoke.py`. The SQLite cache is pointed at a per-test temp file so the
@@ -159,7 +159,7 @@ async def test_sparql_result_is_cached_on_repeat() -> None:
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_explain_eco_item_tool_wraps_card() -> None:
+async def test_explain_item_tool_wraps_card() -> None:
     respx.get(WIKIDATA_SPARQL_URL).mock(return_value=httpx.Response(200, json=_IRON_SPARQL))
     _mock_image("https://upload.wikimedia.org/iron.jpg")
     respx.get("https://en.wikipedia.org/api/rest_v1/page/summary/Iron").mock(
@@ -171,7 +171,7 @@ async def test_explain_eco_item_tool_wraps_card() -> None:
     req = mt.CallToolRequest(
         method="tools/call",
         params=mt.CallToolRequestParams(
-            name="explain_eco_item",
+            name="explain_item",
             arguments={"name": "Iron", "category": "material"},
         ),
     )
@@ -184,17 +184,17 @@ async def test_explain_eco_item_tool_wraps_card() -> None:
     payload = json.loads(blocks[1].text)
     assert "iron" in md.lower()
     assert payload["title"].lower() == "iron"
-    # Just-data per eco-app#87: explain_eco_item no longer emits a widget.
+    # Just-data per eco-app#87: explain_item no longer emits a widget.
     assert result.root.meta is None
 
 
 @pytest.mark.asyncio
-async def test_explain_eco_item_requires_name() -> None:
+async def test_explain_item_requires_name() -> None:
     mcp = build_server()
     handler = mcp.request_handlers[mt.CallToolRequest]
     req = mt.CallToolRequest(
         method="tools/call",
-        params=mt.CallToolRequestParams(name="explain_eco_item", arguments={"name": "   "}),
+        params=mt.CallToolRequestParams(name="explain_item", arguments={"name": "   "}),
     )
     result = await handler(req)
     assert result.root.isError is True

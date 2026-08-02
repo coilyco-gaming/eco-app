@@ -42,7 +42,7 @@
         "4004"
       ],
       "port": 4004,
-      "url": "/preview/get_eco_species?name=Bison"
+      "url": "/preview/get_species?name=Bison"
     },
     {
       "name": "eco-http-epic",
@@ -60,7 +60,7 @@
         "4002"
       ],
       "port": 4002,
-      "url": "/preview/get_eco_ecoregion"
+      "url": "/preview/get_region"
     }
   ]
 }

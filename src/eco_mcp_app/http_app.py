@@ -203,7 +203,7 @@ async def _gather_user_sources(server_arg: str | None) -> dict[str, Any]:
 
     async def _currency() -> dict[str, Any]:
         # Currency is the odd fetcher out: it needs /info (cycle day) and the
-        # admin token, mirroring the get_eco_currency tool dispatch in server.py.
+        # admin token, mirroring the get_currency tool dispatch in server.py.
         info = await fetch_eco_info(server_arg)
         days_elapsed = int(info.get("DaysRunning") or 0)
         if days_elapsed <= 0:
@@ -421,7 +421,7 @@ def create_app(route_registry: DualRouteRegistry | None = None) -> Starlette:
     async def preview_social_json(request: Request) -> JSONResponse:
         """`/preview/social.json` — the SPA's `/social` route data plane.
 
-        Dispatches `get_eco_social` and returns its JSON block. This is a
+        Dispatches `get_social` and returns its JSON block. This is a
         **public** path, so it never forwards `reveal_names`: the surface is
         always redacted to stable handles, regardless of any server-side names
         gate. A dedicated route (not the generic
@@ -432,7 +432,7 @@ def create_app(route_registry: DualRouteRegistry | None = None) -> Starlette:
         args = {k: v for k, v in request.query_params.items() if k in ("server",)}
         req = mt.CallToolRequest(
             method="tools/call",
-            params=mt.CallToolRequestParams(name="get_eco_social", arguments=args),
+            params=mt.CallToolRequestParams(name="get_social", arguments=args),
         )
         try:
             result = await call_tool_handler(req)
@@ -440,13 +440,13 @@ def create_app(route_registry: DualRouteRegistry | None = None) -> Starlette:
             return JSONResponse({"error": str(e)}, status_code=500)
         payload = _extract_json_block(cast(mt.CallToolResult, result.root))
         if payload is None:
-            return JSONResponse({"error": "no JSON block from get_eco_social"}, status_code=502)
+            return JSONResponse({"error": "no JSON block from get_social"}, status_code=502)
         return JSONResponse(payload)
 
     async def preview_watchers_json(request: Request) -> JSONResponse:
         """`/preview/watchers.json` — the SPA's trade-watcher data plane.
 
-        Dispatches `eco_trade_watchers` with `action=evaluate` in *peek* mode
+        Dispatches `trade_watchers` with `action=evaluate` in *peek* mode
         (`advance=false`), so loading the `/trades` page shows each watcher's
         current matching state without consuming its feed mark — only the MCP
         `evaluate` verb (advance defaulting true) advances the last-seen marks.
@@ -458,7 +458,7 @@ def create_app(route_registry: DualRouteRegistry | None = None) -> Starlette:
             args["server"] = request.query_params["server"]
         req = mt.CallToolRequest(
             method="tools/call",
-            params=mt.CallToolRequestParams(name="eco_trade_watchers", arguments=args),
+            params=mt.CallToolRequestParams(name="trade_watchers", arguments=args),
         )
         try:
             result = await call_tool_handler(req)
@@ -466,7 +466,7 @@ def create_app(route_registry: DualRouteRegistry | None = None) -> Starlette:
             return JSONResponse({"error": str(e)}, status_code=500)
         payload = _extract_json_block(cast(mt.CallToolResult, result.root))
         if payload is None:
-            return JSONResponse({"error": "no JSON block from eco_trade_watchers"}, status_code=502)
+            return JSONResponse({"error": "no JSON block from trade_watchers"}, status_code=502)
         return JSONResponse(payload)
 
     def _resolve_admin_key() -> str | None:
@@ -592,7 +592,7 @@ def create_app(route_registry: DualRouteRegistry | None = None) -> Starlette:
 
         The SPA consumes `/preview/<tool>.json?<args>` — query-string args pass
         straight through as the tool's `arguments`, so
-        `/preview/get_eco_species.json?name=Bison` works. The `.json` suffix is
+        `/preview/get_species.json?name=Bison` works. The `.json` suffix is
         required; the product UI is the SPA.
         """
         raw_name = request.path_params["tool"]

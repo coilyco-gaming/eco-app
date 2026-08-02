@@ -2,7 +2,7 @@
 
 ## Symptom
 
-In Claude Desktop, calling any tool that ships an HTMX widget fragment (e.g. `get_eco_server_status`) renders only the iframe shell's empty state:
+In Claude Desktop, calling any tool that ships an HTMX widget fragment (e.g. `get_server_status`) renders only the iframe shell's empty state:
 
 > Eco server status
 > Ask Claude to check the server status.
@@ -28,7 +28,7 @@ End-to-end behavior:
 
 1. `git checkout main` (any commit `7542e67` or later).
 2. Run the MCP server in Claude Desktop.
-3. Call `get_eco_server_status` (or any other tool with an HTMX fragment).
+3. Call `get_server_status` (or any other tool with an HTMX fragment).
 4. Observe: chat reply has correct data; iframe shows the empty placeholder.
 
 ## Suggested verification

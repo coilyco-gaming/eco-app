@@ -1,5 +1,5 @@
 // Typed client for the world / industry activity surface
-// (/preview/world.json → get_eco_world). byCitizen / byPolluter carry display
+// (/preview/world.json → get_world). byCitizen / byPolluter carry display
 // names joined from the jobs mod's /api/v1/citizens surface, falling back to
 // "Citizen #<id>" when a name is missing (eco-app#5, eco-app#62).
 

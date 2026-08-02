@@ -162,15 +162,15 @@ def test_registration_rejects_duplicate_surface_keys() -> None:
 
 
 WAVE1_PATHS = {
-    "list_public_eco_servers": "/preview/list_public_eco_servers.json",
-    "get_eco_server_status": "/preview.json",
-    "get_eco_currency": "/preview/currency.json",
-    "get_eco_market": "/preview/market.json",
-    "get_eco_stores": "/preview/stores.json",
-    "find_eco_trade": "/preview/logistics.json",
-    "get_eco_civics": "/preview/civics.json",
-    "get_eco_progression": "/preview/progression.json",
-    "get_eco_world": "/preview/world.json",
+    "list_public_servers": "/preview/list_public_eco_servers.json",
+    "get_server_status": "/preview.json",
+    "get_currency": "/preview/currency.json",
+    "get_market": "/preview/market.json",
+    "get_stores": "/preview/stores.json",
+    "find_trade": "/preview/logistics.json",
+    "get_civics": "/preview/civics.json",
+    "get_progression": "/preview/progression.json",
+    "get_world": "/preview/world.json",
 }
 
 
@@ -186,7 +186,7 @@ def _wave1_registry(
 @pytest.mark.asyncio
 async def test_wave1_routes_share_success_payloads(name: str, path: str) -> None:
     async def invoke(tool_name: str, arguments: dict[str, Any]) -> mt.CallToolResult:
-        if tool_name == "list_public_eco_servers":
+        if tool_name == "list_public_servers":
             payload: dict[str, Any] = {
                 "servers": [{"label": "Test", "host": "eco.test:3001", "notes": "Fixture"}]
             }
@@ -201,10 +201,10 @@ async def test_wave1_routes_share_success_payloads(name: str, path: str) -> None
         )
 
     registry = _wave1_registry(invoke)
-    arguments = {} if name == "list_public_eco_servers" else {"server": "eco.test:3001"}
+    arguments = {} if name == "list_public_servers" else {"server": "eco.test:3001"}
     expected = (
         {"servers": [{"label": "Test", "host": "eco.test:3001", "notes": "Fixture"}]}
-        if name == "list_public_eco_servers"
+        if name == "list_public_servers"
         else {"tool": name, "arguments": arguments}
     )
 
@@ -243,7 +243,7 @@ async def test_wave1_validation_failure_has_transport_parity() -> None:
         mt.CallToolRequest(
             method="tools/call",
             params=mt.CallToolRequestParams(
-                name="get_eco_server_status",
+                name="get_server_status",
                 arguments={"unknown": "value"},
             ),
         )
@@ -279,7 +279,7 @@ async def test_wave1_downstream_failure_has_transport_parity() -> None:
     called = await call_handler(
         mt.CallToolRequest(
             method="tools/call",
-            params=mt.CallToolRequestParams(name="get_eco_server_status", arguments={}),
+            params=mt.CallToolRequestParams(name="get_server_status", arguments={}),
         )
     )
     assert called.root.isError is True
@@ -306,7 +306,7 @@ async def test_wave1_unexpected_failure_stays_public_safe() -> None:
     called = await call_handler(
         mt.CallToolRequest(
             method="tools/call",
-            params=mt.CallToolRequestParams(name="get_eco_server_status", arguments={}),
+            params=mt.CallToolRequestParams(name="get_server_status", arguments={}),
         )
     )
     assert called.root.isError is True

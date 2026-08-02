@@ -429,7 +429,7 @@ async def test_tool_call_returns_three_text_blocks(
     req = mt.CallToolRequest(
         method="tools/call",
         params=mt.CallToolRequestParams(
-            name="get_eco_crafting_atlas",
+            name="get_crafting_atlas",
             arguments={"server": "eco.example.com:3001"},
         ),
     )
@@ -440,7 +440,7 @@ async def test_tool_call_returns_three_text_blocks(
     md = blocks[0].text
     assert "Crafting atlas" in md
     assert "Adobe" in md  # prettified AdobeItem
-    # Just-data per eco-app#87: get_eco_crafting_atlas no longer emits a widget.
+    # Just-data per eco-app#87: get_crafting_atlas no longer emits a widget.
     assert result.root.meta is None
 
 
@@ -450,4 +450,4 @@ async def test_list_tools_now_includes_crafting_atlas() -> None:
     handler = mcp.request_handlers[mt.ListToolsRequest]
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {tool.name for tool in result.root.tools}
-    assert "get_eco_crafting_atlas" in names
+    assert "get_crafting_atlas" in names

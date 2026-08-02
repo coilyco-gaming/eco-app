@@ -11,7 +11,7 @@ pull-everything survey [#7](https://forgejo.coilysiren.me/coilyco-gaming/eco-app
 
 ## Surfaces
 
-- **`get_eco_progression` MCP tool** - `src/eco_mcp_app/progression.py` + `server.py` wiring. Returns a markdown summary + the structured `ProgressionHistory.to_dict()` JSON. Requires an admin API key server-side (`ECO_ADMIN_API_KEY`, SSM in the homelab deploy).
+- **`get_progression` MCP tool** - `src/eco_mcp_app/progression.py` + `server.py` wiring. Returns a markdown summary + the structured `ProgressionHistory.to_dict()` JSON. Requires an admin API key server-side (`ECO_ADMIN_API_KEY`, SSM in the homelab deploy).
 - **The progression layer of `/jobs`** - `frontend/src/pages/Jobs.tsx`, consuming `/preview/progression.json`. This is where the product UX lives. There is no standalone `/progression` page. [#90](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/90) merged its server-wide **"How the world got here"** block into `/jobs`, with per-day trend small-multiples and the most-gained-specialty, busiest-leveler, and class-completion leaderboards. The standalone Players section and its per-player timelines were removed in [#192](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/192). The fetch stays best-effort, so a failure or thin server leaves the current-state profession and specialty tables intact and hides only the progression block. The old `/progression` route redirects to `/jobs`.
 
 ## Data source

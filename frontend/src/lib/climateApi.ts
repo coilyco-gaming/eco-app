@@ -1,4 +1,4 @@
-// Typed client for the climate snapshot (/preview/get_eco_climate.json).
+// Typed client for the climate snapshot (/preview/get_climate.json).
 //
 // The endpoint returns compute_climate_payload() from eco_mcp_app/climate.py:
 // headline status + narrative, four atmosphere KPIs, the CO2 source/sink
@@ -113,7 +113,7 @@ export interface ClimateSnapshot {
 }
 
 export async function fetchClimate(signal?: AbortSignal): Promise<ClimateSnapshot> {
-  const resp = await fetch("/preview/get_eco_climate.json", { signal })
+  const resp = await fetch("/preview/get_climate.json", { signal })
   if (!resp.ok) {
     throw new Error(`climate fetch failed: HTTP ${resp.status}`)
   }

@@ -6,7 +6,7 @@
 // civics/people daily-count series. Acting citizens are already joined to names
 // (proposer / winner / founder / voter), falling back to "Citizen #<id>" when
 // the jobs-mod citizens join misses one (eco-app#5). Current-state titles and
-// active laws live on the sibling get_eco_government / /server surface — the
+// active laws live on the sibling get_government / /server surface — the
 // action stream can't derive laws-in-effect.
 
 export interface ElectionEvent {

@@ -8,24 +8,30 @@ MCP server exposing live data from Eco game servers. Production: `https://eco-mc
 
 ## MCP tools
 
-Defined in [src/eco_mcp_app/server.py](../../src/eco_mcp_app/server.py). All accept optional `server` arg and return data-only results.
+Defined in [src/eco_mcp_app/server.py](../../src/eco_mcp_app/server.py) and the Wave 1 dual-route registry. Names are scoped to this MCP server and therefore omit a redundant Eco product prefix. Most accept an optional `server` argument, with each advertised input schema remaining authoritative. All return data-only results.
 
-- **get_eco_server_status** - Meteor countdown, players, world dims, cycle progress, version, economy summary.
-- **get_eco_economy** - Trades/day, contract completion, loan defaults, wages, tax flow, volatility sparklines. Admin `/datasets/get`.
-- **get_eco_map** - World map with property deeds. Translucent polygons, owner colors, Deck.gl WebGL.
-- **get_eco_milestones** - Culture achievement tracker. Per-goal bars, server-wide culture.
-- **get_eco_species** - Species card. iNaturalist/Wikipedia taxonomy + in-game population chart.
-- **explain_eco_item** - Wikidata + Wikipedia lookup. Images, category facts. 7-day cache.
-- **get_eco_crafting_atlas** - Live crafting from action-log exporter. Top items, station util, leaderboard.
-- **get_eco_social** - Community activity from the `Play`, `FirstLogin`, and `ReputationTransfer` action exporters: play volume, recent arrivals, and a who-reps-whom reputation graph. `ChatSent` is deliberately not fetched or returned ([#185](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/185)). Player names are hashed to stable handles by default. Names in the clear remain operator-gated (`ECO_SOCIAL_ALLOW_NAMES` + `reveal_names`) and never reach the public JSON path.
-- **get_eco_world** - World / industry activity from the action-log exporter. Construction, terraforming, roads, moved objects, explosions, garbage, and air pollution folded into a per-day mutation timeline by category, a top-world-shapers + top-polluters leaderboard, most-touched objects, and coarse-binned activity hotspots. No new mod, no restart - reuses the crafting atlas's streamed-CSV plumbing. Probe: [docs/world.md](../world.md).
+- **get_server_status** - Meteor countdown, players, world dims, cycle progress, version, economy summary.
+- **get_economy** - Trades/day, contract completion, loan defaults, wages, tax flow, volatility sparklines. Admin `/datasets/get`.
+- **get_map** - World map with property deeds. Translucent polygons, owner colors, Deck.gl WebGL.
+- **get_milestones** - Culture achievement tracker. Per-goal bars, server-wide culture.
+- **get_species** - Species card. iNaturalist/Wikipedia taxonomy + in-game population chart.
+- **explain_item** - Wikidata + Wikipedia lookup. Images, category facts. 7-day cache.
+- **get_crafting_atlas** - Live crafting from action-log exporter. Top items, station util, leaderboard.
+- **get_trades** - Detailed trade ledger with parties, items, stores, currencies, and price history.
+- **get_stores** - Store and trader directories derived from trade history.
+- **get_progression** - Server-wide profession and specialty progression history.
+- **get_social** - Community activity from the `Play`, `FirstLogin`, and `ReputationTransfer` action exporters: play volume, recent arrivals, and a who-reps-whom reputation graph. `ChatSent` is deliberately not fetched or returned ([#185](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/185)). Player names are hashed to stable handles by default. Names in the clear remain operator-gated (`ECO_SOCIAL_ALLOW_NAMES` + `reveal_names`) and never reach the public JSON path.
+- **get_world** - World / industry activity from the action-log exporter. Construction, terraforming, roads, moved objects, explosions, garbage, and air pollution folded into a per-day mutation timeline by category, a top-world-shapers + top-polluters leaderboard, most-touched objects, and coarse-binned activity hotspots. No new mod, no restart - reuses the crafting atlas's streamed-CSV plumbing. Probe: [docs/world.md](../world.md).
+- **get_market** - Per-item and per-currency price history, volume, and trend intelligence.
+- **find_trade** - Resale, arbitrage, and supply-gap decisions from history and live shelves.
 - **fair_price** - Real-world commodity prices via FRED (copper, wheat, lumber, iron, crude). 7d/30d/90d.
-- **get_eco_ecoregion** - WWF ecoregion classification. Donut, top-3 matches, boom/bust lists.
-- **get_eco_government** - Civic org chart. Elected titles, active elections, active laws (current-state snapshot from the live civic endpoints).
-- **get_eco_civics** - Civics & governance history + trend from the civic action exporters (`Vote`/`DidntVote`/`StartElection`/`WonElection`/`BecomeCitizen`/`SettlementFounded`/…) plus civics/people daily series: elections started + outcomes, voter turnout (cast vs abstained, participation rate, most-active-voter leaderboard), demographic movement (citizens gained/lost, residency moves), settlements founded + homesteads. Acting citizens resolved to names via the citizens surface (`Citizen #<id>` fallback). The website-and-MCP answer to DiscordLink's elections/votes/demographics displays, exceeding them with turnout + demographic trend over time; complements `get_eco_government` (laws-in-effect aren't derivable from the action stream). Probe: [docs/civics.md](../civics.md).
-- **get_eco_climate** - CO2 ppm, sea-level + drift, ground pollution, avg temperature, NOAA Mauna Loa anchor, top polluters. Plus a pollution-machine-style explainer: CO2 sources & sinks breakdown (pollution/animals/plants, lifetime + per-day), the CO2-effects mechanic (warming + sea-level thresholds), and a plain-language "what to expect" narration. Tolerant to dataset-name drift.
-- **get_eco_currency** - Currency & money-supply surface, meets DiscordLink `Currencies` / `Currency <name>`. Roster split minted/backed vs personal/credit (each with issuance + trade activity), money-supply totals (player wealth + gov holdings) and 7d trade value. Optional `currency` arg gives the per-currency report, including the live top account holders (per-account balances from the `mods/stores` `/api/v1/currency-holdings` exporter, joined to citizen names; flagged unavailable rather than faked when that mod is not deployed - [#58](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/58)). Roster + issuance from the `CreateCurrency` / `MintCurrency` / `CurrencyTrade` action exporters, supply from `/datasets/get`; degrades to the public `/info` headline without an admin key. Probe: [docs/datasets/currency.md](../datasets/currency.md).
-- **list_public_eco_servers** - 6 known public servers with labels + notes.
+- **get_region** - WWF ecoregion classification. Donut, top-3 matches, boom/bust lists.
+- **get_government** - Civic org chart. Elected titles, active elections, active laws (current-state snapshot from the live civic endpoints).
+- **get_civics** - Civics & governance history + trend from the civic action exporters (`Vote`/`DidntVote`/`StartElection`/`WonElection`/`BecomeCitizen`/`SettlementFounded`/…) plus civics/people daily series: elections started + outcomes, voter turnout (cast vs abstained, participation rate, most-active-voter leaderboard), demographic movement (citizens gained/lost, residency moves), settlements founded + homesteads. Acting citizens resolved to names via the citizens surface (`Citizen #<id>` fallback). The website-and-MCP answer to DiscordLink's elections/votes/demographics displays, exceeding them with turnout + demographic trend over time; complements `get_government` (laws-in-effect aren't derivable from the action stream). Probe: [docs/civics.md](../civics.md).
+- **get_climate** - CO2 ppm, sea-level + drift, ground pollution, avg temperature, NOAA Mauna Loa anchor, top polluters. Plus a pollution-machine-style explainer: CO2 sources & sinks breakdown (pollution/animals/plants, lifetime + per-day), the CO2-effects mechanic (warming + sea-level thresholds), and a plain-language "what to expect" narration. Tolerant to dataset-name drift.
+- **get_currency** - Currency & money-supply surface, meets DiscordLink `Currencies` / `Currency <name>`. Roster split minted/backed vs personal/credit (each with issuance + trade activity), money-supply totals (player wealth + gov holdings) and 7d trade value. Optional `currency` arg gives the per-currency report, including the live top account holders (per-account balances from the `mods/stores` `/api/v1/currency-holdings` exporter, joined to citizen names; flagged unavailable rather than faked when that mod is not deployed - [#58](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/58)). Roster + issuance from the `CreateCurrency` / `MintCurrency` / `CurrencyTrade` action exporters, supply from `/datasets/get`; degrades to the public `/info` headline without an admin key. Probe: [docs/datasets/currency.md](../datasets/currency.md).
+- **trade_watchers** - Persistent create, list, remove, and evaluate operations for item, store, trader, and price predicates.
+- **list_public_servers** - 6 known public servers with labels + notes.
 
 ## Runtime surfaces
 
@@ -69,7 +75,7 @@ The React SPA (`frontend/`) is the product UI. The MCP service renders no HTML a
 ## Dev tooling
 
 - **ward verbs** in [.ward/ward.yaml](../../.ward/ward.yaml), each delegating to Make.
-  - `ward exec smoke` - Stdio test of all 12 tools.
+  - `ward exec smoke` - Stdio initialization, discovery, and representative tool calls.
   - `ward exec http` - Local HTTP on 4000 with hot reload.
   - `ward exec harness` - Browser dev harness on `:8765`.
   - `ward exec install-desktop` - Auto-register in Claude Desktop config.

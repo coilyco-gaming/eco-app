@@ -261,7 +261,7 @@ async def test_fetch_inat_taxon_bison_prefers_genus_over_grass() -> None:
 
 
 @respx.mock
-async def test_get_eco_species_tool_returns_card_blocks() -> None:
+async def test_get_species_tool_returns_card_blocks() -> None:
     respx.get(f"{ECO_BASE_URL}/api/v1/exporter/species").mock(
         return_value=httpx.Response(200, text='"Time","Value"\n"600","22"\n"1200","24"\n')
     )
@@ -272,7 +272,7 @@ async def test_get_eco_species_tool_returns_card_blocks() -> None:
     handler = mcp.request_handlers[mt.CallToolRequest]
     req = mt.CallToolRequest(
         method="tools/call",
-        params=mt.CallToolRequestParams(name="get_eco_species", arguments={"name": "Bison"}),
+        params=mt.CallToolRequestParams(name="get_species", arguments={"name": "Bison"}),
     )
     result = await handler(req)
     blocks = result.root.content
@@ -284,5 +284,5 @@ async def test_get_eco_species_tool_returns_card_blocks() -> None:
     payload = json.loads(raw_json)
     assert payload["speciesId"] == "BisonSpecies"
     assert payload["populationLatest"] == 24
-    # Just-data per eco-app#87: get_eco_species no longer emits a widget.
+    # Just-data per eco-app#87: get_species no longer emits a widget.
     assert result.root.meta is None

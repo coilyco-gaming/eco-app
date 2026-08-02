@@ -17,38 +17,38 @@ async def test_list_tools_advertises_all_tools() -> None:
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {tool.name for tool in result.root.tools}
     assert names == {
-        "get_eco_server_status",
-        "list_public_eco_servers",
-        "get_eco_economy",
-        "get_eco_map",
-        "get_eco_milestones",
-        "get_eco_species",
-        "explain_eco_item",
-        "get_eco_crafting_atlas",
-        "get_eco_world",
-        "get_eco_trades",
-        "get_eco_market",
-        "get_eco_stores",
-        "get_eco_progression",
-        "get_eco_social",
-        "find_eco_trade",
+        "get_server_status",
+        "list_public_servers",
+        "get_economy",
+        "get_map",
+        "get_milestones",
+        "get_species",
+        "explain_item",
+        "get_crafting_atlas",
+        "get_world",
+        "get_trades",
+        "get_market",
+        "get_stores",
+        "get_progression",
+        "get_social",
+        "find_trade",
         "fair_price",
-        "get_eco_government",
-        "get_eco_civics",
-        "get_eco_ecoregion",
-        "get_eco_climate",
-        "get_eco_currency",
-        "eco_trade_watchers",
+        "get_government",
+        "get_civics",
+        "get_region",
+        "get_climate",
+        "get_currency",
+        "trade_watchers",
     }
 
 
 @pytest.mark.asyncio
-async def test_list_public_eco_servers_returns_curated_list() -> None:
+async def test_list_public_servers_returns_curated_list() -> None:
     mcp = build_server()
     handler = mcp.request_handlers[mt.CallToolRequest]
     req = mt.CallToolRequest(
         method="tools/call",
-        params=mt.CallToolRequestParams(name="list_public_eco_servers", arguments={}),
+        params=mt.CallToolRequestParams(name="list_public_servers", arguments={}),
     )
     result = await handler(req)
     assert result.root.structuredContent == {"servers": KNOWN_PUBLIC_SERVERS}
@@ -66,11 +66,11 @@ async def test_list_public_eco_servers_returns_curated_list() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_public_eco_servers_advertises_safe_structured_metadata() -> None:
+async def test_list_public_servers_advertises_safe_structured_metadata() -> None:
     mcp = build_server()
     handler = mcp.request_handlers[mt.ListToolsRequest]
     result = await handler(mt.ListToolsRequest(method="tools/list"))
-    tool = next(tool for tool in result.root.tools if tool.name == "list_public_eco_servers")
+    tool = next(tool for tool in result.root.tools if tool.name == "list_public_servers")
 
     assert tool.annotations is not None
     assert tool.annotations.readOnlyHint is True

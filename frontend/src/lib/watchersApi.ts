@@ -6,7 +6,7 @@
 // DiscordLink semantics: the feed (matching trades new since the watcher last
 // checked, as a count here) and the display (the current matching state). See
 // eco_mcp_app/watchers.py (eco-app#52). Watchers are created / removed over MCP
-// (`eco_trade_watchers`); the SPA is a read-only surface for them.
+// (`trade_watchers`); the SPA is a read-only surface for them.
 
 import type { Trade } from "./tradesApi"
 

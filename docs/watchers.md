@@ -37,7 +37,7 @@ The two DiscordLink semantics both fall out of one pass over the ledger:
 
 ## Surfaces
 
-- **`eco_trade_watchers` MCP tool** - `src/eco_mcp_app/watchers.py` +
+- **`trade_watchers` MCP tool** - `src/eco_mcp_app/watchers.py` +
   `server.py` wiring. One tool, four verbs via the `action` argument:
   - `create` - `kind` + `value`; for `kind=price` also `op` + `threshold`.
     Optional `label`, `server`.
@@ -46,7 +46,7 @@ The two DiscordLink semantics both fall out of one pass over the ledger:
   - `evaluate` - run all watchers against the live ledger. `advance` defaults
     true (the feed semantic - consumes each feed hit); pass false to peek.
     Needs an admin API key server-side (`ECO_ADMIN_API_KEY`, SSM in the homelab
-    deploy) to reach the exporter, same as `get_eco_trades`.
+    deploy) to reach the exporter, same as `get_trades`.
   Each verb returns a markdown summary plus a structured JSON block.
 - **`/trade` SPA sidebar** - `frontend/src/pages/Trade.tsx` consuming
   `/preview/watchers.json` (the watchers sidebar moved to `/trade` when the

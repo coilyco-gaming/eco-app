@@ -2,7 +2,7 @@
 
 Probe capture: Eco via Sirens, **cycle 14 day 1** (2026-07-05), server
 `eco.coilysiren.me:3001`, Eco `0.13.0.4 beta release-1024`. Drives the
-`get_eco_currency` tool ([#53](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/53),
+`get_currency` tool ([#53](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/53),
 under the DiscordLink-replacement epic [#37](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/37)).
 Recipe is the shared one in [README.md](README.md); this page records the
 **reachable-vs-deferred** line for currency data so the tool's scope is
@@ -23,7 +23,7 @@ is the admin dataset catalog. `GET /datasets/flatlist` is **public** (no
 * `CurrencyTrade` - action (EventValue) - per-trade rows: buyer/seller/shop-owner ids, `BoughtOrSold` enum (32/33, [#6](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/6)), amount, and the currency traded.
 * `MintCurrency` - action - minting events. A currency that mints is **backed/minted**; the summed amount is its issuance.
 * `CreateCurrency` - action - currency-creation events. The full roster of currencies plus their founder.
-* `TransferMoney` - action - money transfers (already consumed by `get_eco_economy`).
+* `TransferMoney` - action - money transfers (already consumed by `get_economy`).
 * `BarterTrade` - action - itemless barter (no currency leg).
 
 The four series come from `GET /datasets/get?dataset=<Name>&dayStart=0&dayEnd=<day>`
@@ -35,7 +35,7 @@ approach `crafting.py` and `climate.py` already use), and the tool degrades to
 the public headline when the token is absent, exactly like the sibling economy
 and climate tools.
 
-## Reachable now (built into `get_eco_currency`)
+## Reachable now (built into `get_currency`)
 
 * **Currency roster + type** - union of `CreateCurrency` (all currencies) and `MintCurrency` (the minted ones). A currency present in `MintCurrency` is classed **minted/backed**; otherwise **personal/credit**, matching the split `Currencies` shows.
 * **Per-currency issuance** - summed `MintCurrency` amount per currency (the backing/minted-supply signal).

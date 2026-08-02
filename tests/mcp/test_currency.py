@@ -1,4 +1,4 @@
-"""Unit tests for the `get_eco_currency` tool.
+"""Unit tests for the `get_currency` tool.
 
 Covers:
 - ``fetch_currency`` money-supply series fan-out, action-exporter aggregation
@@ -500,17 +500,17 @@ def test_compute_empty_roster_narrative_without_token() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_tools_includes_get_eco_currency() -> None:
+async def test_list_tools_includes_get_currency() -> None:
     mcp = build_server()
     handler = mcp.request_handlers[mt.ListToolsRequest]
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {tool.name for tool in result.root.tools}
-    assert "get_eco_currency" in names
+    assert "get_currency" in names
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_call_get_eco_currency_returns_iframe_fragment() -> None:
+async def test_call_get_currency_returns_iframe_fragment() -> None:
     respx.get(DEFAULT_ECO_INFO_URL).mock(return_value=httpx.Response(200, json=_info()))
     _route_datasets(
         {
@@ -526,7 +526,7 @@ async def test_call_get_eco_currency_returns_iframe_fragment() -> None:
     handler = mcp.request_handlers[mt.CallToolRequest]
     req = mt.CallToolRequest(
         method="tools/call",
-        params=mt.CallToolRequestParams(name="get_eco_currency", arguments={}),
+        params=mt.CallToolRequestParams(name="get_currency", arguments={}),
     )
     result = await handler(req)
     blocks = result.root.content
@@ -543,13 +543,13 @@ async def test_call_get_eco_currency_returns_iframe_fragment() -> None:
     # _route_all_actions routes the holdings endpoint too, so the fold reached it.
     assert payload["holders_reachable"] is True
 
-    # Just-data per eco-app#87: get_eco_currency no longer emits a widget.
+    # Just-data per eco-app#87: get_currency no longer emits a widget.
     assert result.root.meta is None
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_call_get_eco_currency_report_mode() -> None:
+async def test_call_get_currency_report_mode() -> None:
     respx.get(DEFAULT_ECO_INFO_URL).mock(return_value=httpx.Response(200, json=_info()))
     _route_datasets({})
     _route_flatlist([])
@@ -559,7 +559,7 @@ async def test_call_get_eco_currency_report_mode() -> None:
     handler = mcp.request_handlers[mt.CallToolRequest]
     req = mt.CallToolRequest(
         method="tools/call",
-        params=mt.CallToolRequestParams(name="get_eco_currency", arguments={"currency": "Sirens"}),
+        params=mt.CallToolRequestParams(name="get_currency", arguments={"currency": "Sirens"}),
     )
     result = await handler(req)
     payload = json.loads(result.root.content[1].text)
@@ -572,24 +572,24 @@ async def test_call_get_eco_currency_report_mode() -> None:
     assert holders["list"][0] == {"account": "Treasury", "holder": None, "balance": 6000.0}
     # The report markdown renders the holder table, not a deferred note.
     assert "Treasury" in result.root.content[0].text
-    # Just-data per eco-app#87: get_eco_currency no longer emits a widget.
+    # Just-data per eco-app#87: get_currency no longer emits a widget.
     assert result.root.meta is None
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_call_get_eco_currency_handles_info_failure() -> None:
+async def test_call_get_currency_handles_info_failure() -> None:
     respx.get(DEFAULT_ECO_INFO_URL).mock(side_effect=httpx.ConnectError("refused"))
     mcp = build_server()
     handler = mcp.request_handlers[mt.CallToolRequest]
     req = mt.CallToolRequest(
         method="tools/call",
-        params=mt.CallToolRequestParams(name="get_eco_currency", arguments={}),
+        params=mt.CallToolRequestParams(name="get_currency", arguments={}),
     )
     result = await handler(req)
     assert result.root.isError is True
     assert "unreachable" in result.root.content[0].text.lower()
-    # Just-data per eco-app#87: get_eco_currency no longer emits a widget.
+    # Just-data per eco-app#87: get_currency no longer emits a widget.
     assert result.root.meta is None
 
 
@@ -599,7 +599,7 @@ async def test_tool_declaration_uses_currency_uri() -> None:
     mcp = build_server()
     handler = mcp.request_handlers[mt.ListToolsRequest]
     result = await handler(mt.ListToolsRequest(method="tools/list"))
-    tool = next(t for t in result.root.tools if t.name == "get_eco_currency")
+    tool = next(t for t in result.root.tools if t.name == "get_currency")
     assert tool.meta is None
 
 

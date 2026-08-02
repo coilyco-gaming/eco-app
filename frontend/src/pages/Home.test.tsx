@@ -67,20 +67,20 @@ describe("Home", () => {
   it("renders per-surface sub-card badges from the live pulse endpoints", async () => {
     const byUrl: Record<string, unknown> = {
       "/preview.json": SAMPLE_STATUS,
-      "/preview/get_eco_trades.json": {
+      "/preview/get_trades.json": {
         totalTrades: 1341,
         totalCurrencyVolume: 4907,
         byItem: [["BunWulfRawMeatItem", 90, 400]],
       },
-      "/preview/get_eco_crafting_atlas.json": {
+      "/preview/get_crafting_atlas.json": {
         totalEvents: 512,
         byCrafted: [["WoodenChairItem", 40]],
       },
-      "/preview/get_eco_climate.json": {
+      "/preview/get_climate.json": {
         status: "warming",
         co2: { current: 620 },
       },
-      "/preview/get_eco_ecoregion.json": {
+      "/preview/get_region.json": {
         biomes: [{ display: "Grassland" }],
         ecoregionMatches: [{ name: "Serengeti" }],
       },

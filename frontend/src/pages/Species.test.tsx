@@ -49,7 +49,7 @@ describe("Species page", () => {
       expect(screen.getByTestId("species-population-curve")).toBeInTheDocument()
     })
     expect(fetchMock).toHaveBeenCalledWith(
-      "/preview/get_eco_species.json?name=WolfSpecies",
+      "/preview/get_species.json?name=WolfSpecies",
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
     expect(screen.getByRole("heading", { name: "Wolf" })).toBeInTheDocument()

@@ -457,7 +457,7 @@ async def test_mcp_tool_call_end_to_end(monkeypatch: pytest.MonkeyPatch) -> None
     handler = mcp.request_handlers[mt.CallToolRequest]
     req = mt.CallToolRequest(
         method="tools/call",
-        params=mt.CallToolRequestParams(name="get_eco_ecoregion", arguments={}),
+        params=mt.CallToolRequestParams(name="get_region", arguments={}),
     )
     result = await handler(req)
     blocks = result.root.content

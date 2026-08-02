@@ -87,7 +87,7 @@ ECONOMY_DATASETS: tuple[str, ...] = (
 ADMIN_API_KEY_ENV = "ECO_ADMIN_API_KEY"
 
 # Single source of truth for the public servers surfaced both as "try-others"
-# pills on the rendered card and as the `list_public_eco_servers` tool's
+# pills on the rendered card and as the `list_public_servers` tool's
 # response. Curated from eco-servers.org, chosen for variety in Eco markup
 # patterns + ruleset (so the iframe gets exercised against diverse titles).
 KNOWN_PUBLIC_SERVERS: list[dict[str, str]] = [
@@ -1385,7 +1385,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
     async def list_tools() -> list[Tool]:
         tools = [
             Tool(
-                name="get_eco_economy",
+                name="get_economy",
                 title="Eco — economic health dashboard",
                 description=(
                     "Show live economic vitals for an Eco server: trades/day, "
@@ -1409,7 +1409,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 },
             ),
             Tool(
-                name="get_eco_map",
+                name="get_map",
                 title="Eco — world map + property deeds",
                 description=(
                     "Render the live Eco world preview with property deed "
@@ -1435,7 +1435,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 },
             ),
             Tool(
-                name="get_eco_milestones",
+                name="get_milestones",
                 title="Eco — milestone tracker",
                 description=(
                     "Show progress toward each server-wide culture achievement on "
@@ -1444,7 +1444,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                     "ladder of progress bars sorted by completion percentage "
                     "descending. Also surfaces the top-level `TotalCulture` stat. "
                     "Accepts the same `server` argument shape as "
-                    "`get_eco_server_status`. Returns plain-text + structured "
+                    "`get_server_status`. Returns plain-text + structured "
                     "JSON data (no MCP-app widget)."
                 ),
                 inputSchema={
@@ -1463,7 +1463,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 },
             ),
             Tool(
-                name="get_eco_species",
+                name="get_species",
                 title="Eco — species profile",
                 description=(
                     "Show a species profile card for an Eco game species: "
@@ -1490,7 +1490,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 },
             ),
             Tool(
-                name="explain_eco_item",
+                name="explain_item",
                 title="Eco — explain item (Wikidata + Wikipedia)",
                 description=(
                     "Look up any Eco item (material, plant, animal, mineral, or "
@@ -1531,7 +1531,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 },
             ),
             Tool(
-                name="get_eco_crafting_atlas",
+                name="get_crafting_atlas",
                 title="Eco — crafting activity atlas",
                 description=(
                     "Reconstruct a live picture of crafting / harvesting / "
@@ -1563,7 +1563,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 },
             ),
             Tool(
-                name="get_eco_trades",
+                name="get_trades",
                 title="Eco — trades ledger",
                 description=(
                     "Pull the detailed trades ledger from an Eco server's "
@@ -1598,7 +1598,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 },
             ),
             Tool(
-                name="get_eco_social",
+                name="get_social",
                 title="Eco - community activity",
                 description=(
                     "Reconstruct the community side of an Eco server from its "
@@ -1609,7 +1609,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                     "mode is operator-gated and needs "
                     "ECO_SOCIAL_ALLOW_NAMES set server-side plus reveal_names, "
                     "never public. Requires an admin API key configured "
-                    "server-side (same exporter as get_eco_trades). Returns a "
+                    "server-side (same exporter as get_trades). Returns a "
                     "markdown summary plus structured JSON data (no MCP-app "
                     "widget)."
                 ),
@@ -1682,7 +1682,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 },
             ),
             Tool(
-                name="get_eco_ecoregion",
+                name="get_region",
                 title="Eco — biodiversity & ecoregion match",
                 description=(
                     "Classify the world's biome composition against real-world "
@@ -1709,7 +1709,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 },
             ),
             Tool(
-                name="get_eco_climate",
+                name="get_climate",
                 title="Eco — climate & pollution",
                 description=(
                     "Surface global atmospheric state for an Eco server: live "
@@ -1738,7 +1738,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 },
             ),
             Tool(
-                name="get_eco_government",
+                name="get_government",
                 title="Eco — government org-chart",
                 description=(
                     "Show the civic structure of an Eco server: elected titles "
@@ -1765,7 +1765,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 },
             ),
             Tool(
-                name="eco_trade_watchers",
+                name="trade_watchers",
                 title="Eco — trade watchers",
                 description=(
                     "Host-agnostic trade watchers — the website-and-MCP answer to "
@@ -1859,7 +1859,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
         return [*tools, *registered_tools]
 
     async def _dispatch_call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
-        if name == "explain_eco_item":
+        if name == "explain_item":
             from .wikidata import build_ecopedia_card
 
             item_name = (arguments or {}).get("name", "").strip() if arguments else ""
@@ -1894,7 +1894,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 ],
             )
 
-        if name == "get_eco_crafting_atlas":
+        if name == "get_crafting_atlas":
             server_arg = arguments.get("server") if arguments else None
             api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
             try:
@@ -1918,7 +1918,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 ],
             )
 
-        if name == "get_eco_world":
+        if name == "get_world":
             server_arg = arguments.get("server") if arguments else None
             api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
             try:
@@ -1942,7 +1942,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 ],
             )
 
-        if name == "get_eco_trades":
+        if name == "get_trades":
             server_arg = arguments.get("server") if arguments else None
             api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
             try:
@@ -1966,7 +1966,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 ],
             )
 
-        if name == "get_eco_civics":
+        if name == "get_civics":
             server_arg = arguments.get("server") if arguments else None
             api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
             try:
@@ -1990,7 +1990,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 ],
             )
 
-        if name == "get_eco_progression":
+        if name == "get_progression":
             server_arg = arguments.get("server") if arguments else None
             api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
             try:
@@ -2014,7 +2014,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 ],
             )
 
-        if name == "eco_trade_watchers":
+        if name == "trade_watchers":
             args = arguments or {}
             action = (args.get("action") or "").strip().lower()
 
@@ -2118,7 +2118,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 isError=True,
             )
 
-        if name == "get_eco_stores":
+        if name == "get_stores":
             server_arg = arguments.get("server") if arguments else None
             api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
             try:
@@ -2142,7 +2142,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 ],
             )
 
-        if name == "get_eco_social":
+        if name == "get_social":
             server_arg = arguments.get("server") if arguments else None
             reveal_names = bool(arguments.get("reveal_names")) if arguments else False
             api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
@@ -2169,7 +2169,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 ],
             )
 
-        if name == "list_public_eco_servers":
+        if name == "list_public_servers":
             lines = ["**Known public Eco servers:**", ""]
             for s in KNOWN_PUBLIC_SERVERS:
                 lines.append(f"- **{s['label']}** — `{s['host']}` · {s['notes']}")
@@ -2184,7 +2184,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 structuredContent={"servers": KNOWN_PUBLIC_SERVERS},
             )
 
-        if name == "get_eco_economy":
+        if name == "get_economy":
             server_arg = arguments.get("server") if arguments else None
             try:
                 raw = await fetch_economy(server_arg)
@@ -2205,7 +2205,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 ],
             )
 
-        if name == "get_eco_map":
+        if name == "get_map":
             server_arg = arguments.get("server") if arguments else None
             try:
                 bundle = await fetch_map_bundle(server_arg)
@@ -2229,7 +2229,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 ],
             )
 
-        if name == "get_eco_ecoregion":
+        if name == "get_region":
             server_arg = arguments.get("server") if arguments else None
             info_url = normalize_server_url(server_arg)
             try:
@@ -2255,7 +2255,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 ],
             )
 
-        if name == "get_eco_species":
+        if name == "get_species":
             species_arg = (arguments or {}).get("name") or ""
             species_id = _resolve_species_id(species_arg)
             try:
@@ -2277,7 +2277,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 ],
             )
 
-        if name == "get_eco_government":
+        if name == "get_government":
             server_arg = arguments.get("server") if arguments else None
             try:
                 raw_gov = await fetch_eco_government(server_arg)
@@ -2300,7 +2300,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 ],
             )
 
-        if name == "get_eco_climate":
+        if name == "get_climate":
             server_arg = arguments.get("server") if arguments else None
             try:
                 info = await fetch_eco_info(server_arg)
@@ -2339,7 +2339,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 ],
             )
 
-        if name == "get_eco_currency":
+        if name == "get_currency":
             server_arg = arguments.get("server") if arguments else None
             currency_arg = (arguments.get("currency") if arguments else None) or None
             try:
@@ -2401,7 +2401,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 isError=is_error,
             )
 
-        if name == "get_eco_market":
+        if name == "get_market":
             server_arg = arguments.get("server") if arguments else None
             item_arg = (arguments.get("item") if arguments else None) or None
             currency_arg = (arguments.get("currency") if arguments else None) or None
@@ -2432,7 +2432,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 ],
             )
 
-        if name == "find_eco_trade":
+        if name == "find_trade":
             server_arg = arguments.get("server") if arguments else None
             item_arg = (arguments.get("item") if arguments else None) or None
             currency_arg = (arguments.get("currency") if arguments else None) or None
@@ -2463,7 +2463,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 ],
             )
 
-        if name not in ("get_eco_server_status", "get_eco_milestones"):
+        if name not in ("get_server_status", "get_milestones"):
             raise ValueError(f"Unknown tool: {name}")
 
         server_arg = arguments.get("server") if arguments else None
@@ -2481,7 +2481,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
 
         raw["_fetchedAtISO"] = datetime.now(UTC).isoformat()
 
-        if name == "get_eco_milestones":
+        if name == "get_milestones":
             milestones_payload = build_milestones_payload(raw)
             return CallToolResult(
                 content=[

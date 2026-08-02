@@ -4,7 +4,7 @@ series into an elections / turnout / demographics / settlements report.
 The DiscordLink-parity epic (eco-app#37) wants elections, votes, laws, and
 demographics on the website instead of Discord embeds. The live civic
 endpoints (`/api/v1/elections*`, `/api/v1/laws`) already feed the
-`get_eco_government` org-chart card — that's the *current-state* snapshot
+`get_government` org-chart card — that's the *current-state* snapshot
 (who holds which title, which laws are active right now). This module is the
 *history + trend* half: it consumes the civic **action exporters** the server
 already ships (one CSV row per civic event) plus a handful of civics/people
@@ -31,7 +31,7 @@ Two data planes, both already live on the server:
 Everything degrades on the Day-3 sparse state: "no civic events yet" is a
 valid report, not an error. Laws-in-effect are **not** derivable from the
 action stream (there is no per-law event) — the civics card cross-links the
-`get_eco_government` / `/server` law surface for those rather than
+`get_government` / `/server` law surface for those rather than
 fabricating them.
 
 Cache: an in-process `TTLCache` keyed per (base_url, api_key_hash), mirroring

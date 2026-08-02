@@ -164,7 +164,7 @@ def test_preview_tool_requires_json_suffix(client: TestClient) -> None:
     # served. The bare tool path is rejected at the route (it does not fall
     # through to a Jinja card). `/preview` and `/preview-map` are no longer
     # special routes — they fall to the SPA catch-all like any client path.
-    r = client.get("/preview/get_eco_server_status")
+    r = client.get("/preview/get_server_status")
     assert r.status_code == 404
     assert r.json()["error"]
 
@@ -198,7 +198,7 @@ def test_preview_json_upstream_error(client: TestClient) -> None:
 @respx.mock
 def test_preview_tool_json_suffix(client: TestClient) -> None:
     respx.get(DEFAULT_ECO_INFO_URL).mock(return_value=httpx.Response(200, json=_FAKE_INFO))
-    r = client.get("/preview/get_eco_server_status.json")
+    r = client.get("/preview/get_server_status.json")
     assert r.status_code == 200
     body = r.json()
     assert isinstance(body, dict)

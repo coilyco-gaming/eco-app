@@ -11,7 +11,7 @@ Covers:
     skipped) and live offers winning over history in `_merge`.
   - `fetch_logistics` folding the trades ledger (respx-mocked exporter CSVs) and
     a best-effort live shelf; the live-absent (404) path degrading to history.
-  - Tool wiring: `find_eco_trade` registered, returns text blocks and no widget
+  - Tool wiring: `find_trade` registered, returns text blocks and no widget
     (just-data per eco-app#87), and the `/preview/logistics.json` data plane.
 """
 
@@ -526,17 +526,17 @@ def test_logistics_markdown_populated() -> None:
 
 
 @pytest.mark.asyncio
-async def test_find_eco_trade_registered() -> None:
+async def test_find_trade_registered() -> None:
     mcp = build_server()
     handler = mcp.request_handlers[mt.ListToolsRequest]
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {t.name for t in result.root.tools}
-    assert "find_eco_trade" in names
+    assert "find_trade" in names
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_find_eco_trade_tool_returns_blocks_and_fragment(
+async def test_find_trade_tool_returns_blocks_and_fragment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ECO_ADMIN_API_KEY", "k")
@@ -550,7 +550,7 @@ async def test_find_eco_trade_tool_returns_blocks_and_fragment(
     req = mt.CallToolRequest(
         method="tools/call",
         params=mt.CallToolRequestParams(
-            name="find_eco_trade", arguments={"server": "eco.example.com:3001"}
+            name="find_trade", arguments={"server": "eco.example.com:3001"}
         ),
     )
     result = await handler(req)
@@ -562,7 +562,7 @@ async def test_find_eco_trade_tool_returns_blocks_and_fragment(
     payload = _json.loads(blocks[1].text)
     assert payload["view"] == "logistics"
     assert payload["cheapest"][0]["item"] == "IronIngotItem"
-    # Just-data per eco-app#87: find_eco_trade no longer emits a widget.
+    # Just-data per eco-app#87: find_trade no longer emits a widget.
     assert result.root.meta is None
 
 

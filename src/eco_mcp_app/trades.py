@@ -1,6 +1,6 @@
 """Trades ledger — pull detailed CurrencyTrade / BarterTrade rows.
 
-The economy card (`get_eco_economy`) only consumes aggregate time-series
+The economy card (`get_economy`) only consumes aggregate time-series
 counters, but the action exporter ships *every individual trade*:
 `/api/v1/exporter/actions?actionName=CurrencyTrade` returns one CSV row per
 trade with columns::

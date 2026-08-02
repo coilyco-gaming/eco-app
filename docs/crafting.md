@@ -9,8 +9,8 @@ or mined. Filed as [#17](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/is
 
 ## Surfaces
 
-- **`get_eco_crafting_atlas` MCP tool** - `src/eco_mcp_app/crafting.py` + `server.py` wiring. Returns a markdown summary + the structured `CraftingAtlas.to_dict()` JSON. Requires an admin API key server-side (`ECO_ADMIN_API_KEY`, populated from SSM `/eco-mcp-app/api-admin-token` in the homelab deploy).
-- **`/crafting` SPA page** - `frontend/src/pages/Crafting.tsx`, consuming `/preview/get_eco_crafting_atlas.json` via `lib/craftingApi.ts`. Product UX lives here. Ranked items/stations feed a `?q=` filter with filter-on-click deep links; the top-crafters list and the sankey do not filter. Cross-links `/trade` and `/items` (the former `/economy` and `/trades` cross-links were repointed in the [#90](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/90) IA cleanup).
+- **`get_crafting_atlas` MCP tool** - `src/eco_mcp_app/crafting.py` + `server.py` wiring. Returns a markdown summary + the structured `CraftingAtlas.to_dict()` JSON. Requires an admin API key server-side (`ECO_ADMIN_API_KEY`, populated from SSM `/eco-mcp-app/api-admin-token` in the homelab deploy).
+- **`/crafting` SPA page** - `frontend/src/pages/Crafting.tsx`, consuming `/preview/get_crafting_atlas.json` via `lib/craftingApi.ts`. Product UX lives here. Ranked items/stations feed a `?q=` filter with filter-on-click deep links; the top-crafters list and the sankey do not filter. Cross-links `/trade` and `/items` (the former `/economy` and `/trades` cross-links were repointed in the [#90](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/90) IA cleanup).
 
 ## Data sources
 

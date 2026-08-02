@@ -93,15 +93,15 @@ PUBLIC_SERVERS_OUTPUT_SCHEMA: dict[str, Any] = PublicServersOutput.model_json_sc
 
 WAVE1_TOOL_NAMES = frozenset(
     {
-        "list_public_eco_servers",
-        "get_eco_server_status",
-        "get_eco_currency",
-        "get_eco_market",
-        "get_eco_stores",
-        "find_eco_trade",
-        "get_eco_civics",
-        "get_eco_progression",
-        "get_eco_world",
+        "list_public_servers",
+        "get_server_status",
+        "get_currency",
+        "get_market",
+        "get_stores",
+        "find_trade",
+        "get_civics",
+        "get_progression",
+        "get_world",
     }
 )
 
@@ -119,7 +119,7 @@ def register_wave1_routes(registry: DualRouteRegistry, invoke: ToolInvoker) -> N
     _register_json_route(
         registry,
         invoke,
-        name="get_eco_server_status",
+        name="get_server_status",
         title="Eco - server status",
         description=(
             "Show a public Eco server's online players, meteor countdown, world "
@@ -132,7 +132,7 @@ def register_wave1_routes(registry: DualRouteRegistry, invoke: ToolInvoker) -> N
     _register_json_route(
         registry,
         invoke,
-        name="get_eco_currency",
+        name="get_currency",
         title="Eco - currency and money supply",
         description=(
             "Show live Eco currencies, issuance, trade activity, money supply, "
@@ -145,7 +145,7 @@ def register_wave1_routes(registry: DualRouteRegistry, invoke: ToolInvoker) -> N
     _register_json_route(
         registry,
         invoke,
-        name="get_eco_market",
+        name="get_market",
         title="Eco - market price intelligence",
         description=(
             "Build per-item market history, volume, and price trends from the "
@@ -158,7 +158,7 @@ def register_wave1_routes(registry: DualRouteRegistry, invoke: ToolInvoker) -> N
     _register_json_route(
         registry,
         invoke,
-        name="get_eco_stores",
+        name="get_stores",
         title="Eco - store and trader directory",
         description=(
             "Build store and trader profiles from Eco trade history, including "
@@ -171,7 +171,7 @@ def register_wave1_routes(registry: DualRouteRegistry, invoke: ToolInvoker) -> N
     _register_json_route(
         registry,
         invoke,
-        name="find_eco_trade",
+        name="find_trade",
         title="Eco - trade and store logistics",
         description=(
             "Turn trade history and live store shelves into resale, arbitrage, "
@@ -184,7 +184,7 @@ def register_wave1_routes(registry: DualRouteRegistry, invoke: ToolInvoker) -> N
     _register_json_route(
         registry,
         invoke,
-        name="get_eco_civics",
+        name="get_civics",
         title="Eco - civics and governance",
         description=(
             "Show election outcomes, turnout, demographic movement, settlements, "
@@ -197,7 +197,7 @@ def register_wave1_routes(registry: DualRouteRegistry, invoke: ToolInvoker) -> N
     _register_json_route(
         registry,
         invoke,
-        name="get_eco_progression",
+        name="get_progression",
         title="Eco - progression and skills history",
         description=(
             "Reconstruct server-wide skill trajectories and progression trends "
@@ -210,7 +210,7 @@ def register_wave1_routes(registry: DualRouteRegistry, invoke: ToolInvoker) -> N
     _register_json_route(
         registry,
         invoke,
-        name="get_eco_world",
+        name="get_world",
         title="Eco - world and industry activity",
         description=(
             "Reconstruct construction, terraforming, roads, pollution, garbage, "
@@ -224,11 +224,11 @@ def register_wave1_routes(registry: DualRouteRegistry, invoke: ToolInvoker) -> N
 
 def _register_public_servers(registry: DualRouteRegistry, invoke: ToolInvoker) -> None:
     @registry.register(
-        name="list_public_eco_servers",
+        name="list_public_servers",
         title="Eco - list public servers",
         description=(
             "List the curated public Eco servers known to this service. Feed a "
-            "returned host into get_eco_server_status to fetch live status."
+            "returned host into get_server_status to fetch live status."
         ),
         rest_path="/preview/list_public_eco_servers.json",
         rest_method="GET",
@@ -237,7 +237,7 @@ def _register_public_servers(registry: DualRouteRegistry, invoke: ToolInvoker) -
         annotations=CURATED_SERVERS_ANNOTATIONS,
     )
     async def public_servers(request: EmptyInput) -> DualRouteResult[PublicServersOutput]:
-        result = await invoke("list_public_eco_servers", request.model_dump())
+        result = await invoke("list_public_servers", request.model_dump())
         text, payload, is_error = _extract_result(result)
         return DualRouteResult(
             text=text,

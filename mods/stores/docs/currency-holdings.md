@@ -8,7 +8,7 @@ under the DiscordLink-replacement epic
 
 ## Why this exists
 
-`get_eco_currency` already meets DiscordLink's `Currencies` and most of
+`get_currency` already meets DiscordLink's `Currencies` and most of
 `Currency <name>` from the admin dataset + action-exporter surface. The one
 piece history cannot reconstruct is the **top-holders list**:
 

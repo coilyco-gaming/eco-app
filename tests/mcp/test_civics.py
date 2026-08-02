@@ -328,7 +328,7 @@ async def test_tool_call_returns_text_blocks_and_fragment(
     req = mt.CallToolRequest(
         method="tools/call",
         params=mt.CallToolRequestParams(
-            name="get_eco_civics",
+            name="get_civics",
             arguments={"server": "eco.example.com:3001"},
         ),
     )
@@ -341,9 +341,9 @@ async def test_tool_call_returns_text_blocks_and_fragment(
 
 
 @pytest.mark.asyncio
-async def test_list_tools_includes_get_eco_civics() -> None:
+async def test_list_tools_includes_get_civics() -> None:
     mcp = build_server()
     handler = mcp.request_handlers[mt.ListToolsRequest]
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {tool.name for tool in result.root.tools}
-    assert "get_eco_civics" in names
+    assert "get_civics" in names

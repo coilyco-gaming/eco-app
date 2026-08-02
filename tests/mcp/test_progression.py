@@ -342,7 +342,7 @@ async def test_tool_call_returns_text_blocks_and_fragment(
     req = mt.CallToolRequest(
         method="tools/call",
         params=mt.CallToolRequestParams(
-            name="get_eco_progression",
+            name="get_progression",
             arguments={"server": "eco.example.com:3001"},
         ),
     )
@@ -351,14 +351,14 @@ async def test_tool_call_returns_text_blocks_and_fragment(
     assert len(blocks) == 2
     assert isinstance(blocks[0], mt.TextContent)
     assert "Progression history" in blocks[0].text
-    # Just-data per eco-app#87: get_eco_progression no longer emits a widget.
+    # Just-data per eco-app#87: get_progression no longer emits a widget.
     assert result.root.meta is None
 
 
 @pytest.mark.asyncio
-async def test_list_tools_includes_get_eco_progression() -> None:
+async def test_list_tools_includes_get_progression() -> None:
     mcp = build_server()
     handler = mcp.request_handlers[mt.ListToolsRequest]
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {tool.name for tool in result.root.tools}
-    assert "get_eco_progression" in names
+    assert "get_progression" in names

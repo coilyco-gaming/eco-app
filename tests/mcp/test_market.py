@@ -14,7 +14,7 @@ Covers:
   - The fair-value merge in `fair_price.fetch_fair_price` (respx-mocked FRED):
     trend-divergence verdict and the calibration-anchored verdict.
   - Thin-data / zero-trade render paths (markdown + card context).
-  - Tool wiring: `get_eco_market` registered, returns text blocks and no widget
+  - Tool wiring: `get_market` registered, returns text blocks and no widget
     (just-data per eco-app#87); the `fair_price` tool merges the in-game read
     when an admin key is set.
 """
@@ -427,17 +427,17 @@ async def test_fair_price_no_in_game_stays_fred_only(_fred_env: None) -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_eco_market_registered() -> None:
+async def test_get_market_registered() -> None:
     mcp = build_server()
     handler = mcp.request_handlers[mt.ListToolsRequest]
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {t.name for t in result.root.tools}
-    assert "get_eco_market" in names
+    assert "get_market" in names
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_get_eco_market_tool_returns_blocks_and_fragment(
+async def test_get_market_tool_returns_blocks_and_fragment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ECO_ADMIN_API_KEY", "k")
@@ -450,7 +450,7 @@ async def test_get_eco_market_tool_returns_blocks_and_fragment(
     req = mt.CallToolRequest(
         method="tools/call",
         params=mt.CallToolRequestParams(
-            name="get_eco_market", arguments={"server": "eco.example.com:3001"}
+            name="get_market", arguments={"server": "eco.example.com:3001"}
         ),
     )
     result = await handler(req)
@@ -462,7 +462,7 @@ async def test_get_eco_market_tool_returns_blocks_and_fragment(
     payload = _json.loads(blocks[1].text)
     assert payload["view"] == "market"
     assert payload["markets"][0]["item"] == "IronIngotItem"
-    # Just-data per eco-app#87: get_eco_market no longer emits a widget.
+    # Just-data per eco-app#87: get_market no longer emits a widget.
     assert result.root.meta is None
 
 

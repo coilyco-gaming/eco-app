@@ -130,18 +130,18 @@ async def test_list_tools_advertises_milestones() -> None:
     handler = mcp.request_handlers[mt.ListToolsRequest]
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {tool.name for tool in result.root.tools}
-    assert "get_eco_milestones" in names
+    assert "get_milestones" in names
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_call_get_eco_milestones_happy_path() -> None:
+async def test_call_get_milestones_happy_path() -> None:
     respx.get(DEFAULT_ECO_INFO_URL).mock(return_value=httpx.Response(200, json=_FAKE_INFO))
     mcp = build_server()
     handler = mcp.request_handlers[mt.CallToolRequest]
     req = mt.CallToolRequest(
         method="tools/call",
-        params=mt.CallToolRequestParams(name="get_eco_milestones", arguments={}),
+        params=mt.CallToolRequestParams(name="get_milestones", arguments={}),
     )
     result = await handler(req)
     blocks = result.root.content
@@ -156,13 +156,13 @@ async def test_call_get_eco_milestones_happy_path() -> None:
     payload = json.loads(json_block.text)
     assert payload["view"] == "eco_milestones"
     assert len(payload["milestones"]) == 5
-    # Just-data per eco-app#87: get_eco_milestones no longer emits a widget.
+    # Just-data per eco-app#87: get_milestones no longer emits a widget.
     assert result.root.meta is None
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_call_get_eco_milestones_empty_achievements() -> None:
+async def test_call_get_milestones_empty_achievements() -> None:
     # Early-cycle server: /info returns but ServerAchievementsDict is {}.
     respx.get(DEFAULT_ECO_INFO_URL).mock(
         return_value=httpx.Response(
@@ -174,10 +174,10 @@ async def test_call_get_eco_milestones_empty_achievements() -> None:
     handler = mcp.request_handlers[mt.CallToolRequest]
     req = mt.CallToolRequest(
         method="tools/call",
-        params=mt.CallToolRequestParams(name="get_eco_milestones", arguments={}),
+        params=mt.CallToolRequestParams(name="get_milestones", arguments={}),
     )
     result = await handler(req)
-    # Just-data per eco-app#87: get_eco_milestones no longer emits a widget.
+    # Just-data per eco-app#87: get_milestones no longer emits a widget.
     assert result.root.meta is None
     # Empty state is not a crash: the JSON payload carries an empty milestone list.
     payload = json.loads(result.root.content[1].text)
@@ -186,13 +186,13 @@ async def test_call_get_eco_milestones_empty_achievements() -> None:
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_call_get_eco_milestones_upstream_error_renders_error_fragment() -> None:
+async def test_call_get_milestones_upstream_error_renders_error_fragment() -> None:
     respx.get(DEFAULT_ECO_INFO_URL).mock(side_effect=httpx.ConnectError("refused"))
     mcp = build_server()
     handler = mcp.request_handlers[mt.CallToolRequest]
     req = mt.CallToolRequest(
         method="tools/call",
-        params=mt.CallToolRequestParams(name="get_eco_milestones", arguments={}),
+        params=mt.CallToolRequestParams(name="get_milestones", arguments={}),
     )
     result = await handler(req)
     assert result.root.isError is True
@@ -203,7 +203,7 @@ async def test_call_get_eco_milestones_upstream_error_renders_error_fragment() -
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_call_get_eco_milestones_forwards_server_arg() -> None:
+async def test_call_get_milestones_forwards_server_arg() -> None:
     route = respx.get("http://eco.example.com:5679/info").mock(
         return_value=httpx.Response(200, json=_FAKE_INFO)
     )
@@ -212,7 +212,7 @@ async def test_call_get_eco_milestones_forwards_server_arg() -> None:
     req = mt.CallToolRequest(
         method="tools/call",
         params=mt.CallToolRequestParams(
-            name="get_eco_milestones",
+            name="get_milestones",
             arguments={"server": "eco.example.com:5679"},
         ),
     )
