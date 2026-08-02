@@ -16,9 +16,9 @@ through a separate read-only package credential.
 `frontend/` is the browser face: a Vite + React + TypeScript SPA the fused service serves at `/`, headed for `eco-app.coilysiren.me`. It is the intelligence and companion layer for serious Eco servers, turning live world, trade, crafting, civics, and player data into practical answers.
 
 The feature-flagged privileged MCP at `/admin` is the inside-out operator
-surface. It reads fixed read-only Eco state mounts and node-local status, then
-adds twelve enum-only observational RCON queries. It has no arbitrary path,
-free-form command, or write capability. See
+surface. Its fourteen `eco_admin_*` tools read fixed read-only Eco state mounts
+and node-local status, then add twelve enum-only observational RCON queries. It
+has no arbitrary path, free-form command, or write capability. See
 [docs/admin-mcp.md](docs/admin-mcp.md) for its capability and disclosure
 contract.
 

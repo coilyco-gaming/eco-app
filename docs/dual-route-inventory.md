@@ -140,13 +140,15 @@ the public dual registry** because the feature flag, node-local mounts, RCON
 credential, disclosure levels, and operator-only text rules form one security
 boundary.
 
-* Save and world - `eco_save_status`, `eco_backup_list`, `eco_world_meta`.
-* Configs - `eco_config_get`, `eco_config_diff`, `eco_mod_configs`.
-* Replay state - `eco_events_recent`, `eco_player_activity`.
-* Logs - `eco_log_tail`, `eco_log_grep`.
-* Mods - `eco_mods_installed`.
-* Runtime - `eco_live_status`, `eco_service_health`.
-* RCON - `eco_rcon_query`.
+* Save and world - `eco_admin_save_status`, `eco_admin_backup_list`,
+  `eco_admin_world_meta`.
+* Configs - `eco_admin_config_get`, `eco_admin_config_diff`,
+  `eco_admin_mod_configs`.
+* Replay state - `eco_admin_events_recent`, `eco_admin_player_activity`.
+* Logs - `eco_admin_log_tail`, `eco_admin_log_grep`.
+* Mods - `eco_admin_mods_installed`.
+* Runtime - `eco_admin_live_status`, `eco_admin_service_health`.
+* RCON - `eco_admin_rcon_query`.
 
 If an admin REST API is ever required, it needs a separate registry mounted
 inside the existing admin feature flag and authorization boundary. Registering

@@ -165,22 +165,22 @@ def build_admin_server(
     async def list_tools() -> list[Tool]:
         return [
             _tool(
-                "eco_save_status",
+                "eco_admin_save_status",
                 "Eco admin - save status",
                 "Size and age of fixed world save files under the read-only Storage mount.",
             ),
             _tool(
-                "eco_backup_list",
+                "eco_admin_backup_list",
                 "Eco admin - backup list",
                 "Count, cadence, and newest/oldest fixed world backups.",
             ),
             _tool(
-                "eco_world_meta",
+                "eco_admin_world_meta",
                 "Eco admin - world metadata",
                 "Selected non-secret world generator metadata from Configs/WorldGenerator.eco.",
             ),
             _tool(
-                "eco_config_get",
+                "eco_admin_config_get",
                 "Eco admin - read config",
                 f"Read one known Eco config. {_NO_PATHS}",
                 {
@@ -193,7 +193,7 @@ def build_admin_server(
                 ["name"],
             ),
             _tool(
-                "eco_config_diff",
+                "eco_admin_config_diff",
                 "Eco admin - config diff",
                 f"Read the fixed current and diff files for one known config. {_NO_PATHS}",
                 {
@@ -206,7 +206,7 @@ def build_admin_server(
                 ["name"],
             ),
             _tool(
-                "eco_mod_configs",
+                "eco_admin_mod_configs",
                 "Eco admin - mod configs",
                 (
                     "Read the fixed DiscordLink, MightyMoose, NidToolbox, "
@@ -214,7 +214,7 @@ def build_admin_server(
                 ),
             ),
             _tool(
-                "eco_events_recent",
+                "eco_admin_events_recent",
                 "Eco admin - recent Chronicler events",
                 "Read recent events from fixed EcoReplay SQLite or JSONL storage.",
                 {
@@ -227,7 +227,7 @@ def build_admin_server(
                 },
             ),
             _tool(
-                "eco_player_activity",
+                "eco_admin_player_activity",
                 "Eco admin - player activity",
                 "Aggregate the bounded recent Chronicler event sample by citizen and action.",
                 {
@@ -240,7 +240,7 @@ def build_admin_server(
                 },
             ),
             _tool(
-                "eco_log_tail",
+                "eco_admin_log_tail",
                 "Eco admin - log tail",
                 f"Tail the newest file in one fixed subsystem log stream. {_NO_PATHS}",
                 {
@@ -255,7 +255,7 @@ def build_admin_server(
                 ["stream"],
             ),
             _tool(
-                "eco_log_grep",
+                "eco_admin_log_grep",
                 "Eco admin - literal log search",
                 (
                     "Search one fixed subsystem stream with a bounded, case-insensitive literal. "
@@ -274,12 +274,12 @@ def build_admin_server(
                 ["stream", "query"],
             ),
             _tool(
-                "eco_mods_installed",
+                "eco_admin_mods_installed",
                 "Eco admin - installed mods",
                 "Inventory fixed Mods/UserCode directories and compare configured mod names.",
             ),
             _tool(
-                "eco_live_status",
+                "eco_admin_live_status",
                 "Eco admin - live Eco status",
                 (
                     "Read the node-local Eco HTTP /info route with a fixed timeout "
@@ -287,7 +287,7 @@ def build_admin_server(
                 ),
             ),
             _tool(
-                "eco_service_health",
+                "eco_admin_service_health",
                 "Eco admin - service health",
                 (
                     "Report node-local Eco /info reachability. This does not execute systemctl "
@@ -295,7 +295,7 @@ def build_admin_server(
                 ),
             ),
             _tool(
-                "eco_rcon_query",
+                "eco_admin_rcon_query",
                 "Eco admin - read-only RCON query",
                 (
                     "Run one server-owned read-only RCON command. The caller chooses an enum only. "
@@ -319,14 +319,14 @@ def build_admin_server(
             return error
         assert level is not None
 
-        if name == "eco_save_status":
+        if name == "eco_admin_save_status":
             try:
                 payload = _store().save_status()
             except (RuntimeError, OSError) as exc:
                 return _error(str(exc))
             payload["level"] = level.value
             return _ok("Eco save status", payload)
-        if name == "eco_backup_list":
+        if name == "eco_admin_backup_list":
             try:
                 payload = _store().backup_list()
             except (RuntimeError, OSError) as exc:
@@ -338,9 +338,9 @@ def build_admin_server(
             ]
             payload["level"] = level.value
             return _ok("Eco backups", payload)
-        if name == "eco_world_meta":
+        if name == "eco_admin_world_meta":
             return _state_call("Eco world metadata", _store().world_meta, level)
-        if name == "eco_config_get":
+        if name == "eco_admin_config_get":
             config_name = args.get("name")
             if not isinstance(config_name, str):
                 return _error("`name` is required and must be a known config.")
@@ -349,7 +349,7 @@ def build_admin_server(
                 lambda: _store().read_config(config_name),
                 level,
             )
-        if name == "eco_config_diff":
+        if name == "eco_admin_config_diff":
             diff_name = args.get("name")
             if not isinstance(diff_name, str):
                 return _error("`name` is required and must be a known config diff.")
@@ -358,23 +358,23 @@ def build_admin_server(
                 lambda: _store().config_diff(diff_name),
                 level,
             )
-        if name == "eco_mod_configs":
+        if name == "eco_admin_mod_configs":
             return _state_call("Eco mod configs", _store().mod_configs, level)
-        if name == "eco_events_recent":
+        if name == "eco_admin_events_recent":
             limit = args.get("limit", 50)
             return _state_call(
                 "Recent Eco events",
                 lambda: _store().events_recent(limit),
                 level,
             )
-        if name == "eco_player_activity":
+        if name == "eco_admin_player_activity":
             limit = args.get("limit", MAX_EVENT_LIMIT)
             return _state_call(
                 "Eco player activity",
                 lambda: _store().player_activity(limit),
                 level,
             )
-        if name == "eco_log_tail":
+        if name == "eco_admin_log_tail":
             operator_error = _operator_only(level, "log reads")
             if operator_error is not None:
                 return operator_error
@@ -388,7 +388,7 @@ def build_admin_server(
             payload["lines"] = [redact_text(str(line), level) for line in payload["lines"]]
             payload["level"] = level.value
             return _ok("Eco log tail", payload)
-        if name == "eco_log_grep":
+        if name == "eco_admin_log_grep":
             operator_error = _operator_only(level, "log reads")
             if operator_error is not None:
                 return operator_error
@@ -404,9 +404,9 @@ def build_admin_server(
                 match["text"] = redact_text(str(match["text"]), level)
             payload["level"] = level.value
             return _ok("Eco log search", payload)
-        if name == "eco_mods_installed":
+        if name == "eco_admin_mods_installed":
             return _state_call("Installed Eco mods", _store().mods_installed, level)
-        if name == "eco_live_status":
+        if name == "eco_admin_live_status":
             try:
                 payload = await _runtime().live_status()
             except (RuntimeError, ValueError, OSError) as exc:
@@ -414,14 +414,14 @@ def build_admin_server(
             payload = redact_config(payload, level)
             payload["level"] = level.value
             return _ok("Live Eco status", payload)
-        if name == "eco_service_health":
+        if name == "eco_admin_service_health":
             try:
                 payload = await _runtime().service_health()
             except (RuntimeError, ValueError, OSError) as exc:
                 return _error(str(exc))
             payload["level"] = level.value
             return _ok("Eco service health", payload)
-        if name == "eco_rcon_query":
+        if name == "eco_admin_rcon_query":
             try:
                 query = coerce_query(args.get("query"))
             except ValueError as exc:

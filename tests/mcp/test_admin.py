@@ -322,27 +322,28 @@ async def test_list_tools_advertises_admin_tools(state_dir: Path) -> None:
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {t.name for t in result.root.tools}
     assert names == {
-        "eco_save_status",
-        "eco_backup_list",
-        "eco_world_meta",
-        "eco_config_get",
-        "eco_config_diff",
-        "eco_mod_configs",
-        "eco_events_recent",
-        "eco_player_activity",
-        "eco_log_tail",
-        "eco_log_grep",
-        "eco_mods_installed",
-        "eco_live_status",
-        "eco_service_health",
-        "eco_rcon_query",
+        "eco_admin_save_status",
+        "eco_admin_backup_list",
+        "eco_admin_world_meta",
+        "eco_admin_config_get",
+        "eco_admin_config_diff",
+        "eco_admin_mod_configs",
+        "eco_admin_events_recent",
+        "eco_admin_player_activity",
+        "eco_admin_log_tail",
+        "eco_admin_log_grep",
+        "eco_admin_mods_installed",
+        "eco_admin_live_status",
+        "eco_admin_service_health",
+        "eco_admin_rcon_query",
     }
-    # eco_config_get exposes an enum of names, never a free-form path field.
-    cfg_tool = next(t for t in result.root.tools if t.name == "eco_config_get")
+    assert all(name.startswith("eco_admin_") for name in names)
+    # eco_admin_config_get exposes an enum of names, never a free-form path field.
+    cfg_tool = next(t for t in result.root.tools if t.name == "eco_admin_config_get")
     props = cfg_tool.inputSchema["properties"]
     assert "enum" in props["name"]
     assert "network" in props["name"]["enum"]
-    rcon_tool = next(t for t in result.root.tools if t.name == "eco_rcon_query")
+    rcon_tool = next(t for t in result.root.tools if t.name == "eco_admin_rcon_query")
     assert rcon_tool.inputSchema["properties"]["query"]["enum"] == [
         item.value for item in RconQuery
     ]
@@ -351,8 +352,15 @@ async def test_list_tools_advertises_admin_tools(state_dir: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_legacy_admin_tool_names_are_not_dispatched(state_dir: Path) -> None:
+    result = await _call(StateStore(state_dir), "eco_save_status", {})
+    assert result.isError is True
+    assert _json_block(result)["message"] == "unknown tool 'eco_save_status'"
+
+
+@pytest.mark.asyncio
 async def test_config_get_operator_strips_secrets_shows_names(state_dir: Path) -> None:
-    result = await _call(StateStore(state_dir), "eco_config_get", {"name": "network"})
+    result = await _call(StateStore(state_dir), "eco_admin_config_get", {"name": "network"})
     payload = _json_block(result)
     cfg = payload["content"]["Config"]
     assert cfg["ServerApiToken"] == SECRET_SENTINEL
@@ -362,7 +370,7 @@ async def test_config_get_operator_strips_secrets_shows_names(state_dir: Path) -
 @pytest.mark.asyncio
 async def test_config_get_public_hashes_names(state_dir: Path) -> None:
     result = await _call(
-        StateStore(state_dir), "eco_config_get", {"name": "users", "level": "public"}
+        StateStore(state_dir), "eco_admin_config_get", {"name": "users", "level": "public"}
     )
     payload = _json_block(result)
     admins = payload["content"]["Config"]["Admins"]
@@ -375,7 +383,7 @@ async def test_config_get_raw_denied_by_default(
 ) -> None:
     monkeypatch.delenv("ECO_ADMIN_ALLOW_RAW", raising=False)
     result = await _call(
-        StateStore(state_dir), "eco_config_get", {"name": "discord", "level": "raw"}
+        StateStore(state_dir), "eco_admin_config_get", {"name": "discord", "level": "raw"}
     )
     assert result.isError is True
     payload = _json_block(result)
@@ -388,7 +396,7 @@ async def test_config_get_raw_allowed_with_flag(
 ) -> None:
     monkeypatch.setenv("ECO_ADMIN_ALLOW_RAW", "1")
     result = await _call(
-        StateStore(state_dir), "eco_config_get", {"name": "discord", "level": "raw"}
+        StateStore(state_dir), "eco_admin_config_get", {"name": "discord", "level": "raw"}
     )
     assert result.isError is None or result.isError is False
     payload = _json_block(result)
@@ -397,21 +405,21 @@ async def test_config_get_raw_allowed_with_flag(
 
 @pytest.mark.asyncio
 async def test_config_get_unknown_name_is_error(state_dir: Path) -> None:
-    result = await _call(StateStore(state_dir), "eco_config_get", {"name": "../../secrets"})
+    result = await _call(StateStore(state_dir), "eco_admin_config_get", {"name": "../../secrets"})
     assert result.isError is True
 
 
 @pytest.mark.asyncio
 async def test_config_get_unknown_level_is_error(state_dir: Path) -> None:
     result = await _call(
-        StateStore(state_dir), "eco_config_get", {"name": "network", "level": "god"}
+        StateStore(state_dir), "eco_admin_config_get", {"name": "network", "level": "god"}
     )
     assert result.isError is True
 
 
 @pytest.mark.asyncio
 async def test_save_status_tool(state_dir: Path) -> None:
-    result = await _call(StateStore(state_dir), "eco_save_status", {})
+    result = await _call(StateStore(state_dir), "eco_admin_save_status", {})
     payload = _json_block(result)
     assert payload["level"] == "operator"
     assert any(f["label"] == "Game.eco" and f["present"] for f in payload["files"])
@@ -419,7 +427,7 @@ async def test_save_status_tool(state_dir: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_backup_list_tool_hashes_names_at_public(state_dir: Path) -> None:
-    result = await _call(StateStore(state_dir), "eco_backup_list", {"level": "public"})
+    result = await _call(StateStore(state_dir), "eco_admin_backup_list", {"level": "public"})
     payload = _json_block(result)
     assert payload["count"] == 3
     # At public the backup filename (which can embed a world name) is hashed.
@@ -430,28 +438,30 @@ async def test_backup_list_tool_hashes_names_at_public(state_dir: Path) -> None:
 async def test_disk_group_tools_redact_structured_content(state_dir: Path) -> None:
     store = StateStore(state_dir)
     diff = _json_block(
-        await _call(store, "eco_config_diff", {"name": "network", "level": "operator"})
+        await _call(store, "eco_admin_config_diff", {"name": "network", "level": "operator"})
     )
     assert diff["diff"]["content"]["Config"]["ServerApiToken"] == SECRET_SENTINEL
-    mods = _json_block(await _call(store, "eco_mod_configs", {}))
+    mods = _json_block(await _call(store, "eco_admin_mod_configs", {}))
     mighty = next(item for item in mods["configs"] if item["name"] == "mighty_moose")
     assert mighty["content"]["Config"]["ApiKey"] == SECRET_SENTINEL
-    events = _json_block(await _call(store, "eco_events_recent", {"level": "public"}))
+    events = _json_block(await _call(store, "eco_admin_events_recent", {"level": "public"}))
     assert events["events"][0]["citizen"] == hash_name("SampleAdminOne")
     assert events["events"][0]["body"]["ApiToken"] == SECRET_SENTINEL
-    activity = _json_block(await _call(store, "eco_player_activity", {"level": "public"}))
+    activity = _json_block(await _call(store, "eco_admin_player_activity", {"level": "public"}))
     assert all(item["citizen"].startswith("[hashed:") for item in activity["players"])
 
 
 @pytest.mark.asyncio
 async def test_log_tools_are_operator_only_and_strip_secret_values(state_dir: Path) -> None:
     store = StateStore(state_dir)
-    denied = await _call(store, "eco_log_tail", {"stream": "web", "level": "public"})
+    denied = await _call(store, "eco_admin_log_tail", {"stream": "web", "level": "public"})
     assert denied.isError is True
-    payload = _json_block(await _call(store, "eco_log_tail", {"stream": "web", "lines": 3}))
+    payload = _json_block(await _call(store, "eco_admin_log_tail", {"stream": "web", "lines": 3}))
     assert any(f"token={SECRET_SENTINEL}" in line for line in payload["lines"])
     assert all("not-a-real-token" not in line for line in payload["lines"])
-    grep = _json_block(await _call(store, "eco_log_grep", {"stream": "web", "query": "TOKEN"}))
+    grep = _json_block(
+        await _call(store, "eco_admin_log_grep", {"stream": "web", "query": "TOKEN"})
+    )
     assert grep["matchCount"] == 1
     assert grep["matches"][0]["text"].endswith("request accepted")
 
@@ -459,9 +469,9 @@ async def test_log_tools_are_operator_only_and_strip_secret_values(state_dir: Pa
 @pytest.mark.asyncio
 async def test_mods_and_world_tools(state_dir: Path) -> None:
     store = StateStore(state_dir)
-    world = _json_block(await _call(store, "eco_world_meta", {}))
+    world = _json_block(await _call(store, "eco_admin_world_meta", {}))
     assert world["metadata"]["MeteorImpactDays"] == 30
-    mods = _json_block(await _call(store, "eco_mods_installed", {}))
+    mods = _json_block(await _call(store, "eco_admin_mods_installed", {}))
     assert mods["count"] == 1
 
 
@@ -486,14 +496,14 @@ async def test_runtime_tools_use_fixed_info_route_and_redact_names(state_dir: Pa
     status = _json_block(
         await _call(
             StateStore(state_dir),
-            "eco_live_status",
+            "eco_admin_live_status",
             {"level": "public"},
             runtime=runtime,
         )
     )
     assert status["status"]["OnlinePlayers"][0]["Name"] == hash_name("SampleAdminOne")
     health = _json_block(
-        await _call(StateStore(state_dir), "eco_service_health", {}, runtime=runtime)
+        await _call(StateStore(state_dir), "eco_admin_service_health", {}, runtime=runtime)
     )
     assert health["reachable"] is True
     assert health["version"] == "0.13-test"
@@ -520,7 +530,7 @@ async def test_rcon_tool_accepts_only_enum_and_redacts_output(state_dir: Path) -
     result = _json_block(
         await _call(
             StateStore(state_dir),
-            "eco_rcon_query",
+            "eco_admin_rcon_query",
             {"query": "world_time"},
             rcon=rcon,
         )
@@ -529,7 +539,7 @@ async def test_rcon_tool_accepts_only_enum_and_redacts_output(state_dir: Path) -
     assert result["response"] == f"token={SECRET_SENTINEL} Day 5"
     unknown = await _call(
         StateStore(state_dir),
-        "eco_rcon_query",
+        "eco_admin_rcon_query",
         {"query": "kick SampleAdminOne"},
         rcon=rcon,
     )
@@ -540,7 +550,7 @@ async def test_rcon_tool_accepts_only_enum_and_redacts_output(state_dir: Path) -
 async def test_identity_rcon_queries_are_public_denied(state_dir: Path) -> None:
     result = await _call(
         StateStore(state_dir),
-        "eco_rcon_query",
+        "eco_admin_rcon_query",
         {"query": "online_players", "level": "public"},
         rcon=StubRcon(),
     )
