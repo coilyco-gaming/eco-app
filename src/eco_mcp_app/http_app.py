@@ -59,7 +59,6 @@ from .server import (
     _get_admin_token,
     build_server,
     fetch_eco_info,
-    to_payload,
 )
 from .telemetry import init_telemetry, instrument_asgi
 
@@ -409,15 +408,6 @@ def create_app(route_registry: DualRouteRegistry | None = None) -> Starlette:
     # `/preview` cards that used to share these handlers were removed — product
     # UX lives in the SPA, the Jinja cards live only on MCP `_meta.ui` for in-chat
     # hosts.
-    async def preview_json(request: Request) -> JSONResponse:
-        server_arg = request.query_params.get("server")
-        try:
-            raw = await fetch_eco_info(server_arg)
-        except httpx.HTTPError as e:
-            return JSONResponse({"error": str(e)}, status_code=502)
-        raw["_fetchedAtISO"] = datetime.now(UTC).isoformat()
-        return JSONResponse(to_payload(raw))
-
     async def preview_map_json(request: Request) -> JSONResponse:
         server_arg = request.query_params.get("server")
         try:
@@ -427,144 +417,6 @@ def create_app(route_registry: DualRouteRegistry | None = None) -> Starlette:
         except httpx.HTTPError as e:
             return JSONResponse({"error": str(e)}, status_code=502)
         return JSONResponse(build_map_payload(bundle))
-
-    async def preview_currency_json(request: Request) -> JSONResponse:
-        """`/preview/currency.json` — the SPA's `/trade` route data plane.
-
-        Dispatches `get_eco_currency` and returns its JSON block. A dedicated
-        route (rather than the generic `/preview/<tool>.json`) so the SPA can
-        hit the short, stable `/preview/currency.json` path the epic asked for,
-        and so `?server=` / `?currency=` pass straight through as tool args.
-        """
-        args = {k: v for k, v in request.query_params.items() if k in ("server", "currency")}
-        req = mt.CallToolRequest(
-            method="tools/call",
-            params=mt.CallToolRequestParams(name="get_eco_currency", arguments=args),
-        )
-        try:
-            result = await call_tool_handler(req)
-        except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
-        payload = _extract_json_block(cast(mt.CallToolResult, result.root))
-        if payload is None:
-            return JSONResponse({"error": "no JSON block from get_eco_currency"}, status_code=502)
-        return JSONResponse(_sanitize_nonfinite(payload))
-
-    async def preview_market_json(request: Request) -> JSONResponse:
-        """`/preview/market.json` — the SPA's `/trade` price-intelligence plane.
-
-        Dispatches `get_eco_market` and returns its JSON block. A dedicated
-        route (rather than the generic `/preview/<tool>.json`) so the SPA hits
-        the short, stable path the epic asked for, and so `?server=` / `?item=`
-        / `?currency=` pass straight through as tool args.
-        """
-        args = {
-            k: v for k, v in request.query_params.items() if k in ("server", "item", "currency")
-        }
-        req = mt.CallToolRequest(
-            method="tools/call",
-            params=mt.CallToolRequestParams(name="get_eco_market", arguments=args),
-        )
-        try:
-            result = await call_tool_handler(req)
-        except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
-        payload = _extract_json_block(cast(mt.CallToolResult, result.root))
-        if payload is None:
-            return JSONResponse({"error": "no JSON block from get_eco_market"}, status_code=502)
-        return JSONResponse(payload)
-
-    async def preview_stores_json(request: Request) -> JSONResponse:
-        """`/preview/stores.json` — the SPA's store/trader directory data plane.
-
-        Dispatches `get_eco_stores` and returns its JSON block. A dedicated
-        route (rather than the generic `/preview/<tool>.json`) so the SPA can
-        hit the short, stable `/preview/stores.json` path the epic asked for,
-        with `?server=` passing straight through as the tool arg (eco-app#50).
-        """
-        args = {k: v for k, v in request.query_params.items() if k in ("server",)}
-        req = mt.CallToolRequest(
-            method="tools/call",
-            params=mt.CallToolRequestParams(name="get_eco_stores", arguments=args),
-        )
-        try:
-            result = await call_tool_handler(req)
-        except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
-        payload = _extract_json_block(cast(mt.CallToolResult, result.root))
-        if payload is None:
-            return JSONResponse({"error": "no JSON block from get_eco_stores"}, status_code=502)
-        return JSONResponse(payload)
-
-    async def preview_logistics_json(request: Request) -> JSONResponse:
-        """`/preview/logistics.json` — the SPA's trade-logistics data plane.
-
-        Dispatches `find_eco_trade` and returns its JSON block. A dedicated route
-        (rather than the generic `/preview/<tool>.json`) so the SPA hits the
-        short, stable path the epic asked for, with `?server=` / `?item=` /
-        `?currency=` passing straight through as tool args (eco-app#51).
-        """
-        args = {
-            k: v for k, v in request.query_params.items() if k in ("server", "item", "currency")
-        }
-        req = mt.CallToolRequest(
-            method="tools/call",
-            params=mt.CallToolRequestParams(name="find_eco_trade", arguments=args),
-        )
-        try:
-            result = await call_tool_handler(req)
-        except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
-        payload = _extract_json_block(cast(mt.CallToolResult, result.root))
-        if payload is None:
-            return JSONResponse({"error": "no JSON block from find_eco_trade"}, status_code=502)
-        return JSONResponse(payload)
-
-    async def preview_civics_json(request: Request) -> JSONResponse:
-        """`/preview/civics.json` — the SPA's `/civics` route data plane.
-
-        Dispatches `get_eco_civics` and returns its JSON block. A dedicated
-        route (rather than the generic `/preview/<tool>.json`) so the SPA hits
-        the short, stable `/preview/civics.json` path the epic asked for, with
-        `?server=` passing straight through as the tool arg (eco-app#61).
-        """
-        args = {k: v for k, v in request.query_params.items() if k in ("server",)}
-        req = mt.CallToolRequest(
-            method="tools/call",
-            params=mt.CallToolRequestParams(name="get_eco_civics", arguments=args),
-        )
-        try:
-            result = await call_tool_handler(req)
-        except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
-        payload = _extract_json_block(cast(mt.CallToolResult, result.root))
-        if payload is None:
-            return JSONResponse({"error": "no JSON block from get_eco_civics"}, status_code=502)
-        return JSONResponse(payload)
-
-    async def preview_progression_json(request: Request) -> JSONResponse:
-        """`/preview/progression.json` — the SPA's skills-history data plane.
-
-        Dispatches `get_eco_progression` and returns its JSON block. A dedicated
-        route (rather than the generic `/preview/<tool>.json`) so the SPA can hit
-        the short, stable `/preview/progression.json` path the issue asked for,
-        with `?server=` passing straight through as the tool arg (eco-app#64).
-        """
-        args = {k: v for k, v in request.query_params.items() if k in ("server",)}
-        req = mt.CallToolRequest(
-            method="tools/call",
-            params=mt.CallToolRequestParams(name="get_eco_progression", arguments=args),
-        )
-        try:
-            result = await call_tool_handler(req)
-        except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
-        payload = _extract_json_block(cast(mt.CallToolResult, result.root))
-        if payload is None:
-            return JSONResponse(
-                {"error": "no JSON block from get_eco_progression"}, status_code=502
-            )
-        return JSONResponse(payload)
 
     async def preview_social_json(request: Request) -> JSONResponse:
         """`/preview/social.json` — the SPA's `/social` route data plane.
@@ -589,28 +441,6 @@ def create_app(route_registry: DualRouteRegistry | None = None) -> Starlette:
         payload = _extract_json_block(cast(mt.CallToolResult, result.root))
         if payload is None:
             return JSONResponse({"error": "no JSON block from get_eco_social"}, status_code=502)
-        return JSONResponse(payload)
-
-    async def preview_world_json(request: Request) -> JSONResponse:
-        """`/preview/world.json` — the SPA's World map (`/map`) data plane.
-
-        Dispatches `get_eco_world` and returns its JSON block. A dedicated route
-        (rather than the generic `/preview/<tool>.json`) so the SPA hits the
-        short, stable path the issue asked for, with `?server=` passing straight
-        through as the tool arg (eco-app#62).
-        """
-        args = {k: v for k, v in request.query_params.items() if k in ("server",)}
-        req = mt.CallToolRequest(
-            method="tools/call",
-            params=mt.CallToolRequestParams(name="get_eco_world", arguments=args),
-        )
-        try:
-            result = await call_tool_handler(req)
-        except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
-        payload = _extract_json_block(cast(mt.CallToolResult, result.root))
-        if payload is None:
-            return JSONResponse({"error": "no JSON block from get_eco_world"}, status_code=502)
         return JSONResponse(payload)
 
     async def preview_watchers_json(request: Request) -> JSONResponse:
@@ -818,16 +648,8 @@ def create_app(route_registry: DualRouteRegistry | None = None) -> Starlette:
         Route("/page-auth", page_auth_status, methods=["GET"]),
         Route("/page-auth", page_auth_verify, methods=["POST"]),
         *dual_routes.starlette_routes(),
-        Route("/preview.json", preview_json, methods=["GET"]),
         Route("/preview-map.json", preview_map_json, methods=["GET"]),
-        Route("/preview/currency.json", preview_currency_json, methods=["GET"]),
-        Route("/preview/market.json", preview_market_json, methods=["GET"]),
-        Route("/preview/stores.json", preview_stores_json, methods=["GET"]),
-        Route("/preview/logistics.json", preview_logistics_json, methods=["GET"]),
-        Route("/preview/civics.json", preview_civics_json, methods=["GET"]),
-        Route("/preview/progression.json", preview_progression_json, methods=["GET"]),
         Route("/preview/social.json", preview_social_json, methods=["GET"]),
-        Route("/preview/world.json", preview_world_json, methods=["GET"]),
         Route("/preview/watchers.json", preview_watchers_json, methods=["GET"]),
         Route("/preview/user.json", preview_user_json, methods=["GET"]),
         Route("/preview/items.json", preview_items_json, methods=["GET"]),

@@ -21,7 +21,6 @@ from mcp.types import (
     Icon,
     TextContent,
     Tool,
-    ToolAnnotations,
 )
 
 from . import climate as climate_mod
@@ -30,6 +29,7 @@ from . import ecoregion as ecoregion_mod
 from . import fair_price as fair_price_mod
 from . import market as market_mod
 from . import species as species_mod
+from . import wave1_routes
 from .civics import civics_markdown, fetch_civics
 from .crafting import atlas_markdown, fetch_atlas
 from .dual_routes import DualRouteRegistry
@@ -50,6 +50,8 @@ from .watchers import (
     watchers_list_markdown,
 )
 from .world import fetch_world, world_markdown
+
+PUBLIC_SERVERS_OUTPUT_SCHEMA = wave1_routes.PUBLIC_SERVERS_OUTPUT_SCHEMA
 
 DEFAULT_ECO_INFO_URL = os.environ.get("ECO_INFO_URL", "http://eco.coilysiren.me:3001/info")
 DEFAULT_ECO_PORT = int(os.environ.get("ECO_INFO_PORT", "3001"))
@@ -120,36 +122,6 @@ KNOWN_PUBLIC_SERVERS: list[dict[str, str]] = [
         "notes": "No markup in the title; meteor already passed.",
     },
 ]
-
-# This directory is static data bundled with the MCP server.  Advertise its
-# safety properties explicitly so hosts do not infer write, destructive, or
-# open-world behavior from the protocol defaults.
-PUBLIC_SERVERS_ANNOTATIONS = ToolAnnotations(
-    readOnlyHint=True,
-    destructiveHint=False,
-    idempotentHint=True,
-    openWorldHint=False,
-)
-PUBLIC_SERVERS_OUTPUT_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "servers": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "label": {"type": "string"},
-                    "host": {"type": "string"},
-                    "notes": {"type": "string"},
-                },
-                "required": ["label", "host", "notes"],
-                "additionalProperties": False,
-            },
-        },
-    },
-    "required": ["servers"],
-    "additionalProperties": False,
-}
 
 
 def normalize_server_url(server: str | None) -> str:
@@ -1413,33 +1385,6 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
     async def list_tools() -> list[Tool]:
         tools = [
             Tool(
-                name="get_eco_server_status",
-                title="Eco — server status",
-                description=(
-                    "Show the current state of any public Eco game server inline: "
-                    "online players, meteor countdown, world stats, economy, version. "
-                    "Defaults to the server configured via ECO_INFO_URL; pass `server` "
-                    "(host, host:port, or full URL — IPs are fine, most public Eco "
-                    "servers advertise as bare IPs) to target a different one. "
-                    "Returns a plain-text summary plus structured JSON."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "server": {
-                            "type": "string",
-                            "description": (
-                                "Eco server to query. Accepts a bare host or IP "
-                                "(`eco.example.com`, `192.168.1.5`), host:port "
-                                "(`10.0.0.5:4001`), or a full `/info` URL. Omit to use "
-                                "the server configured via ECO_INFO_URL."
-                            ),
-                        },
-                    },
-                    "additionalProperties": False,
-                },
-            ),
-            Tool(
                 name="get_eco_economy",
                 title="Eco — economic health dashboard",
                 description=(
@@ -1618,43 +1563,6 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 },
             ),
             Tool(
-                name="get_eco_world",
-                title="Eco — world / industry activity",
-                description=(
-                    "Reconstruct the physical story of what players are doing to "
-                    "the world from an Eco server's action-log exporter: "
-                    "construction and deconstruction, terraforming, roads tamped, "
-                    "world objects placed and moved, explosions, garbage, and "
-                    "air-pollution events. Returns a world-mutation activity "
-                    "timeline (events per in-game day, by category), a "
-                    "top-world-shapers leaderboard by citizen, the most-touched "
-                    "objects, and coarse-binned activity hotspots (where the "
-                    "bulldozers are). Folds ConstructOrDeconstruct, "
-                    "PlaceOrPickUpObject, MoveWorldObject, TampRoad, "
-                    "DropOrPickupGarbage, ObjectExplosion, PolluteAir, and the "
-                    "extraction actions (DigOrMine, ChopTree) re-framed as "
-                    "terraforming. No new mod and no restart — reuses the "
-                    "crafting atlas's streamed-CSV plumbing, so it stays bounded "
-                    "on late-cycle logs. Requires an admin API key configured "
-                    "server-side (ECO_ADMIN_API_KEY, populated from SSM in the "
-                    "homelab deploy). Returns a markdown summary plus structured JSON."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "server": {
-                            "type": "string",
-                            "description": (
-                                "Eco admin base URL (`host`, `host:port`, or "
-                                "full URL). Omit to use the configured "
-                                "default (`eco.coilysiren.me:3001`)."
-                            ),
-                        },
-                    },
-                    "additionalProperties": False,
-                },
-            ),
-            Tool(
                 name="get_eco_trades",
                 title="Eco — trades ledger",
                 description=(
@@ -1673,77 +1581,6 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                     "CSV so it stays bounded on late-cycle logs. Returns a "
                     "markdown summary plus structured JSON data (no MCP-app "
                     "widget)."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "server": {
-                            "type": "string",
-                            "description": (
-                                "Eco admin base URL (`host`, `host:port`, or "
-                                "full URL). Omit to use the configured "
-                                "default (`eco.coilysiren.me:3001`)."
-                            ),
-                        },
-                    },
-                    "additionalProperties": False,
-                },
-            ),
-            Tool(
-                name="get_eco_stores",
-                title="Eco — store & trader directory",
-                description=(
-                    "Build store and trader directories from an Eco server's "
-                    "trade history (the CurrencyTrade / BarterTrade action log). "
-                    "Store profiles are keyed by shop owner + location and carry "
-                    "items traded, buy-vs-sell mix, price points, total volume "
-                    "and value, unique counterparties, and last-trade recency — "
-                    "and crucially surface the **store owner**, which "
-                    "DiscordLink's `Trades` lookup omits. Trader profiles give "
-                    "each citizen's buys, sells, top items, volume, and the "
-                    "stores they operate — the history-derived answer to "
-                    "`Trades <player>`. Owner / party ids resolve to names via "
-                    "the jobs mod's citizens surface, falling back to "
-                    "`Citizen #<id>`. Requires an admin API key configured "
-                    "server-side. History only — the current shelf snapshot is "
-                    "the reset-gated stores exporter (sibling issue). Returns a "
-                    "markdown summary plus structured JSON data (no MCP-app widget)."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "server": {
-                            "type": "string",
-                            "description": (
-                                "Eco admin base URL (`host`, `host:port`, or "
-                                "full URL). Omit to use the configured "
-                                "default (`eco.coilysiren.me:3001`)."
-                            ),
-                        },
-                    },
-                    "additionalProperties": False,
-                },
-            ),
-            Tool(
-                name="get_eco_progression",
-                title="Eco — progression / skills history",
-                description=(
-                    "Reconstruct skill *trajectories* from an Eco server's "
-                    "progression action-log exporters: when each citizen gained "
-                    "professions and specialties, their level-up cadence, classes "
-                    "completed, and enrollments — the history behind the current "
-                    "skills the jobs surface shows. Folds GainProfession, "
-                    "GainSpecialty, LoseSpecialty, SpecialtyLevelUp, "
-                    "CharacterLevelUp, CompleteClass, and EnrollAction into "
-                    "per-citizen timelines, server-wide per-day trends, and "
-                    "most-gained-specialty / busiest-leveler leaderboards. Numeric "
-                    "citizen ids are joined to names via the jobs mod's citizens "
-                    "surface, falling back to `Citizen #<id>`. Requires an admin "
-                    "API key configured server-side (ECO_ADMIN_API_KEY, populated "
-                    "from SSM in the homelab deploy). Stream-parses the CSVs so it "
-                    "stays bounded on late-cycle logs, and degrades gracefully when "
-                    "a server is early-cycle or an exporter is disabled. Returns a "
-                    "markdown summary plus structured JSON data (no MCP-app widget)."
                 ),
                 inputSchema={
                     "type": "object",
@@ -1845,102 +1682,6 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 },
             ),
             Tool(
-                name="get_eco_market",
-                title="Eco — market price intelligence",
-                description=(
-                    "Per-item market price intelligence built from the trades "
-                    "ledger: for each item and currency, a daily price series "
-                    "(median / min / max / units traded per in-game day) plus a "
-                    "short-vs-long-window trend verdict (rising / falling / flat, "
-                    "or 'insufficient' when data is too thin). Exceeds "
-                    "DiscordLink's single asking price with history, volume, and "
-                    "trend. Pass `item` to focus one item (e.g. 'IronIngot', "
-                    "'Iron'), `currency` to isolate a currency. Requires an admin "
-                    "API key server-side (same exporter as get_eco_trades). "
-                    "Defaults to ECO_INFO_URL; pass `server` for another."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "server": {
-                            "type": "string",
-                            "description": (
-                                "Eco admin base URL (`host`, `host:port`, or full "
-                                "URL). Omit to use the configured default."
-                            ),
-                        },
-                        "item": {
-                            "type": "string",
-                            "description": (
-                                "Optional item filter. Case-insensitive, matches "
-                                "on the normalized id so 'Iron' finds "
-                                "'IronIngotItem'. Omit for every traded item."
-                            ),
-                        },
-                        "currency": {
-                            "type": "string",
-                            "description": (
-                                "Optional currency filter (e.g. 'Credit'). "
-                                "Case-insensitive exact match. Omit for all "
-                                "currencies."
-                            ),
-                        },
-                    },
-                    "additionalProperties": False,
-                },
-            ),
-            Tool(
-                name="find_eco_trade",
-                title="Eco — trade & store logistics",
-                description=(
-                    "Trade logistics engine: turns the trade ledger and live "
-                    "store shelves into buy/sell/haul decisions. Three boards — "
-                    "**best resale** (rank "
-                    "stores buying it, for a player holding stock), **arbitrage "
-                    "spreads** (items a store sells below another store buys, by "
-                    "more than a threshold, ranked by spread x volume), and "
-                    "**supply gaps** (items with buy-order demand but thin or no "
-                    "supply, or priced well above their in-game median - what a "
-                    "new store should stock). Uses the reset-gated live shelf "
-                    "(mods/stores) when present and degrades to a recent-median "
-                    "history reconstruction otherwise, marking each price live vs "
-                    "history-derived. Empty / single-store markets report 'not "
-                    "enough market depth' rather than a fake spread. Requires an "
-                    "admin API key server-side (same exporter as get_eco_trades). "
-                    "Pass `item` to focus one item, `currency` to isolate a "
-                    "currency. Defaults to ECO_INFO_URL; pass `server` for another."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "server": {
-                            "type": "string",
-                            "description": (
-                                "Eco admin base URL (`host`, `host:port`, or full "
-                                "URL). Omit to use the configured default."
-                            ),
-                        },
-                        "item": {
-                            "type": "string",
-                            "description": (
-                                "Optional item filter. Case-insensitive, matches "
-                                "on the normalized id so 'Iron' finds "
-                                "'IronIngotItem'. Omit for every traded item."
-                            ),
-                        },
-                        "currency": {
-                            "type": "string",
-                            "description": (
-                                "Optional currency filter (e.g. 'Credit'). "
-                                "Case-insensitive exact match. Omit for all "
-                                "currencies."
-                            ),
-                        },
-                    },
-                    "additionalProperties": False,
-                },
-            ),
-            Tool(
                 name="get_eco_ecoregion",
                 title="Eco — biodiversity & ecoregion match",
                 description=(
@@ -1997,50 +1738,6 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 },
             ),
             Tool(
-                name="get_eco_currency",
-                title="Eco — currency & money supply",
-                description=(
-                    "Surface the currency market of an Eco server: the roster of "
-                    "live currencies split into minted/backed vs personal/credit, "
-                    "each with its issuance and trade activity, plus money-supply "
-                    "totals (player wealth + government holdings) and rolling trade "
-                    "value. Meets DiscordLink's `Currencies` command. Pass "
-                    "`currency` (a currency name) for the per-currency report "
-                    "matching `Currency <name>` — trade count, minted issuance, "
-                    "type, and the live top account holders (per-account balances "
-                    "from the stores/economy exporter mod, joined to citizen names; "
-                    "flagged unavailable rather than faked when the mod is not "
-                    "deployed). Pulls "
-                    "/datasets/get + the action exporter (admin key); degrades to "
-                    "the public /info headline when the key is absent. Defaults to "
-                    "ECO_INFO_URL; pass `server` to target a different one."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "server": {
-                            "type": "string",
-                            "description": (
-                                "Eco server to query. Accepts a bare host or IP, "
-                                "host:port, or a full `/info` URL. Omit to use the "
-                                "configured default."
-                            ),
-                        },
-                        "currency": {
-                            "type": "string",
-                            "description": (
-                                "Optional currency name for the per-currency "
-                                "report (e.g. a minted currency or a player's "
-                                "personal currency). Case-insensitive, matches on "
-                                "exact name then substring. Omit for the full "
-                                "roster."
-                            ),
-                        },
-                    },
-                    "additionalProperties": False,
-                },
-            ),
-            Tool(
                 name="get_eco_government",
                 title="Eco — government org-chart",
                 description=(
@@ -2061,45 +1758,6 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                                 "Eco server to query. Accepts a bare host, "
                                 "host:port, or full URL. Omit to use "
                                 "ECO_INFO_URL."
-                            ),
-                        },
-                    },
-                    "additionalProperties": False,
-                },
-            ),
-            Tool(
-                name="get_eco_civics",
-                title="Eco — civics & governance",
-                description=(
-                    "Civics and governance history + trend from an Eco server's "
-                    "action-log exporter and daily civic series: elections "
-                    "started and their outcomes, voter turnout (Vote vs "
-                    "DidntVote, with a participation rate and most-active-voter "
-                    "leaderboard), demographic movement (citizens gained / lost, "
-                    "residency moves) and settlements founded / homesteads "
-                    "started — each with the acting citizen resolved to a name "
-                    "via the jobs mod's citizens surface (`Citizen #<id>` "
-                    "fallback). The website-and-MCP answer to DiscordLink's "
-                    "elections / votes / demographics displays, exceeding them "
-                    "with turnout and demographic trend over time. Complements "
-                    "get_eco_government, which carries the current-state title / "
-                    "law snapshot (laws-in-effect are not derivable from the "
-                    "action stream). Requires an admin API key server-side "
-                    "(ECO_ADMIN_API_KEY, populated from SSM in the homelab "
-                    "deploy). Stream-parses the CSV so it stays bounded on "
-                    "late-cycle logs; thin / zero-data servers degrade to an "
-                    "empty report. Returns a markdown summary plus structured "
-                    "JSON data (no MCP-app widget)."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "server": {
-                            "type": "string",
-                            "description": (
-                                "Eco admin base URL (`host`, `host:port`, or "
-                                "full URL). Omit to use the configured "
-                                "default (`eco.coilysiren.me:3001`)."
                             ),
                         },
                     },
@@ -2191,23 +1849,6 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                     "required": ["action"],
                     "additionalProperties": False,
                 },
-            ),
-            Tool(
-                name="list_public_eco_servers",
-                title="Eco — list public servers",
-                description=(
-                    "List the curated set of public Eco game servers known to this "
-                    "MCP. Returns label, host:port, and free-form notes for each. "
-                    "Feed any `host` back into `get_eco_server_status` as the "
-                    "`server` argument to fetch its live status."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {},
-                    "additionalProperties": False,
-                },
-                outputSchema=PUBLIC_SERVERS_OUTPUT_SCHEMA,
-                annotations=PUBLIC_SERVERS_ANNOTATIONS,
             ),
         ]
         registered_tools = dual_routes.mcp_tools()
@@ -2856,6 +2497,8 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 TextContent(type="text", text=json.dumps(payload)),
             ],
         )
+
+    wave1_routes.register_wave1_routes(dual_routes, _dispatch_call_tool)
 
     @server.call_tool()
     async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:

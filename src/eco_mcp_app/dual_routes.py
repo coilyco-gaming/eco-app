@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Literal, TypeVar, cast
@@ -17,6 +18,8 @@ InputModel = TypeVar("InputModel", bound=BaseModel)
 OutputModel = TypeVar("OutputModel", bound=BaseModel)
 RestMethod = Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class DualRouteResult[PayloadModel: BaseModel]:
@@ -24,6 +27,8 @@ class DualRouteResult[PayloadModel: BaseModel]:
 
     text: str
     payload: PayloadModel
+    is_error: bool = False
+    rest_status: int = 200
 
 
 DualRouteHandler = Callable[[InputModel], Awaitable[DualRouteResult[OutputModel]]]
@@ -122,9 +127,13 @@ class DualRouteRegistry:
         except ValidationError as error:
             return self._mcp_validation_error(error)
 
-        result = await route.handler(request_model)
-        payload_model = route.output_model.model_validate(result.payload)
-        payload = payload_model.model_dump(mode="json", by_alias=True)
+        try:
+            result = await route.handler(request_model)
+            payload_model = route.output_model.model_validate(result.payload)
+            payload = payload_model.model_dump(mode="json", by_alias=True)
+        except Exception:
+            logger.exception("Dual MCP route %s failed", route.name)
+            return self._mcp_internal_error()
         encoded = json.dumps(payload, separators=(",", ":"))
         return CallToolResult(
             content=[
@@ -132,6 +141,7 @@ class DualRouteRegistry:
                 TextContent(type="text", text=encoded),
             ],
             structuredContent=payload,
+            isError=result.is_error,
         )
 
     def starlette_routes(self) -> list[Route]:
@@ -169,9 +179,22 @@ class DualRouteRegistry:
                     status_code=422,
                 )
 
-            result = await route.handler(request_model)
-            payload_model = route.output_model.model_validate(result.payload)
-            return JSONResponse(payload_model.model_dump(mode="json", by_alias=True))
+            try:
+                result = await route.handler(request_model)
+                payload_model = route.output_model.model_validate(result.payload)
+            except Exception:
+                logger.exception("Dual REST route %s failed", route.name)
+                return JSONResponse(
+                    {
+                        "error": "operation_failed",
+                        "message": "The operation could not be completed.",
+                    },
+                    status_code=500,
+                )
+            return JSONResponse(
+                payload_model.model_dump(mode="json", by_alias=True),
+                status_code=result.rest_status,
+            )
 
         return endpoint
 
@@ -197,6 +220,20 @@ class DualRouteRegistry:
             content=[
                 TextContent(type="text", text="Invalid arguments for this tool."),
                 TextContent(type="text", text=encoded),
+            ],
+            isError=True,
+        )
+
+    @staticmethod
+    def _mcp_internal_error() -> CallToolResult:
+        payload = {
+            "error": "operation_failed",
+            "message": "The operation could not be completed.",
+        }
+        return CallToolResult(
+            content=[
+                TextContent(type="text", text=payload["message"]),
+                TextContent(type="text", text=json.dumps(payload)),
             ],
             isError=True,
         )

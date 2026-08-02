@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import mcp.types as mt
 import pytest
@@ -13,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from eco_mcp_app.dual_routes import DualRouteRegistry, DualRouteResult
 from eco_mcp_app.http_app import create_app
 from eco_mcp_app.server import build_server
+from eco_mcp_app.wave1_routes import WAVE1_TOOL_NAMES, register_wave1_routes
 
 
 class EchoRequest(BaseModel):
@@ -157,3 +159,160 @@ def test_registration_rejects_duplicate_surface_keys() -> None:
             input_model=EchoRequest,
             output_model=EchoResponse,
         )
+
+
+WAVE1_PATHS = {
+    "list_public_eco_servers": "/preview/list_public_eco_servers.json",
+    "get_eco_server_status": "/preview.json",
+    "get_eco_currency": "/preview/currency.json",
+    "get_eco_market": "/preview/market.json",
+    "get_eco_stores": "/preview/stores.json",
+    "find_eco_trade": "/preview/logistics.json",
+    "get_eco_civics": "/preview/civics.json",
+    "get_eco_progression": "/preview/progression.json",
+    "get_eco_world": "/preview/world.json",
+}
+
+
+def _wave1_registry(
+    invoke: Callable[[str, dict[str, Any]], Awaitable[mt.CallToolResult]],
+) -> DualRouteRegistry:
+    registry = DualRouteRegistry()
+    register_wave1_routes(registry, invoke)
+    return registry
+
+
+@pytest.mark.parametrize(("name", "path"), sorted(WAVE1_PATHS.items()))
+@pytest.mark.asyncio
+async def test_wave1_routes_share_success_payloads(name: str, path: str) -> None:
+    async def invoke(tool_name: str, arguments: dict[str, Any]) -> mt.CallToolResult:
+        if tool_name == "list_public_eco_servers":
+            payload: dict[str, Any] = {
+                "servers": [{"label": "Test", "host": "eco.test:3001", "notes": "Fixture"}]
+            }
+        else:
+            payload = {"tool": tool_name, "arguments": arguments}
+        return mt.CallToolResult(
+            content=[
+                mt.TextContent(type="text", text=f"Called {tool_name}."),
+                mt.TextContent(type="text", text=json.dumps(payload)),
+            ],
+            structuredContent=payload,
+        )
+
+    registry = _wave1_registry(invoke)
+    arguments = {} if name == "list_public_eco_servers" else {"server": "eco.test:3001"}
+    expected = (
+        {"servers": [{"label": "Test", "host": "eco.test:3001", "notes": "Fixture"}]}
+        if name == "list_public_eco_servers"
+        else {"tool": name, "arguments": arguments}
+    )
+
+    rest = TestClient(create_app(registry)).get(path, params=arguments)
+    assert rest.status_code == 200
+    assert rest.json() == expected
+
+    mcp = build_server(registry)
+    call_handler = mcp.request_handlers[mt.CallToolRequest]
+    called = await call_handler(
+        mt.CallToolRequest(
+            method="tools/call",
+            params=mt.CallToolRequestParams(name=name, arguments=arguments),
+        )
+    )
+    assert called.root.isError is False
+    assert called.root.structuredContent == expected
+
+
+@pytest.mark.asyncio
+async def test_wave1_validation_failure_has_transport_parity() -> None:
+    calls: list[str] = []
+
+    async def invoke(name: str, arguments: dict[str, Any]) -> mt.CallToolResult:
+        calls.append(name)
+        return mt.CallToolResult(content=[])
+
+    registry = _wave1_registry(invoke)
+    rest = TestClient(create_app(registry)).get("/preview.json", params={"unknown": "value"})
+    assert rest.status_code == 422
+    assert rest.json()["error"] == "invalid_arguments"
+
+    mcp = build_server(registry)
+    call_handler = mcp.request_handlers[mt.CallToolRequest]
+    called = await call_handler(
+        mt.CallToolRequest(
+            method="tools/call",
+            params=mt.CallToolRequestParams(
+                name="get_eco_server_status",
+                arguments={"unknown": "value"},
+            ),
+        )
+    )
+    assert called.root.isError is True
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_wave1_downstream_failure_has_transport_parity() -> None:
+    error_payload = {
+        "view": "error",
+        "message": "Eco server was unavailable.",
+        "error": "Eco server was unavailable.",
+    }
+
+    async def invoke(name: str, arguments: dict[str, Any]) -> mt.CallToolResult:
+        return mt.CallToolResult(
+            content=[
+                mt.TextContent(type="text", text="Eco server was unavailable."),
+                mt.TextContent(type="text", text=json.dumps(error_payload)),
+            ],
+            isError=True,
+        )
+
+    registry = _wave1_registry(invoke)
+    rest = TestClient(create_app(registry)).get("/preview.json")
+    assert rest.status_code == 502
+    assert rest.json() == error_payload
+
+    mcp = build_server(registry)
+    call_handler = mcp.request_handlers[mt.CallToolRequest]
+    called = await call_handler(
+        mt.CallToolRequest(
+            method="tools/call",
+            params=mt.CallToolRequestParams(name="get_eco_server_status", arguments={}),
+        )
+    )
+    assert called.root.isError is True
+    assert called.root.structuredContent == error_payload
+
+
+@pytest.mark.asyncio
+async def test_wave1_unexpected_failure_stays_public_safe() -> None:
+    async def invoke(name: str, arguments: dict[str, Any]) -> mt.CallToolResult:
+        raise RuntimeError("private downstream detail")
+
+    registry = _wave1_registry(invoke)
+    expected = {
+        "error": "operation_failed",
+        "message": "The operation could not be completed.",
+    }
+
+    rest = TestClient(create_app(registry)).get("/preview.json")
+    assert rest.status_code == 500
+    assert rest.json() == expected
+
+    mcp = build_server(registry)
+    call_handler = mcp.request_handlers[mt.CallToolRequest]
+    called = await call_handler(
+        mt.CallToolRequest(
+            method="tools/call",
+            params=mt.CallToolRequestParams(name="get_eco_server_status", arguments={}),
+        )
+    )
+    assert called.root.isError is True
+    assert isinstance(called.root.content[1], mt.TextContent)
+    assert json.loads(called.root.content[1].text) == expected
+
+
+def test_wave1_inventory_matches_registered_names() -> None:
+    assert set(WAVE1_PATHS) == WAVE1_TOOL_NAMES
