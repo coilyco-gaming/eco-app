@@ -5,6 +5,7 @@ adoption by the shared [`DualRouteRegistry`](../src/eco_mcp_app/dual_routes.py).
 It records the baseline and migration state as production routes move into the
 registry. The tracking issue is [eco-app#205](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/205),
 with Wave 1 implemented in [eco-app#207](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/207).
+Wave 2 is implemented in [eco-app#209](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/209).
 
 ## Scope
 
@@ -40,13 +41,13 @@ separate transport adapter.
 ## Current registry state
 
 `create_app()` and `build_server()` accept the same registry. The production
-registry automatically registers the nine Wave 1 read-only operations listed
-below, including typed input and output schemas, shared success and error
-payloads, and canonical REST methods and paths. The existing
-`GET /preview/{tool}` adapter still invokes the remaining public MCP tools and
-extracts a JSON text block. It remains a transition route without
-per-operation schemas, safe HTTP method selection, typed outputs, or
-transport-specific disclosure controls.
+registry automatically registers the twenty Wave 1 and Wave 2 read-only
+operations listed below, including typed input and output schemas, shared
+success and error payloads, and canonical REST methods and paths. The existing
+`GET /preview/{tool}` adapter remains a compatibility route for the two public
+MCP tools with transport-specific semantics. It has no per-operation schemas,
+safe HTTP method selection, typed outputs, or transport-specific disclosure
+controls.
 
 ## Public MCP operations
 
@@ -54,23 +55,23 @@ The public server currently exposes 22 tools. Twenty are read-only operations
 whose HTTP and MCP forms can converge on one shared registration.
 
 * `get_server_status` - **Registered in Wave 1** - Canonical REST path `GET /preview.json`.
-* `get_economy` - **Dual-register** - Canonical REST path `GET /preview/get_economy.json`. The generic preview path is its only current REST adapter.
-* `get_map` - **Dual-register** - Canonical exact REST path `GET /preview/get_map.json`. The richer `GET /preview-map.json` projection stays separate because it adds biome rasters that the MCP result omits.
-* `get_milestones` - **Dual-register** - Canonical REST path `GET /preview/get_milestones.json`.
-* `get_species` - **Dual-register** - Canonical REST path `GET /preview/get_species.json`, with required `name` input.
-* `explain_item` - **Dual-register** - Canonical REST path `GET /preview/explain_item.json`, with required `name` and optional constrained `category`.
-* `get_crafting_atlas` - **Dual-register** - Canonical REST path `GET /preview/get_crafting_atlas.json`.
+* `get_economy` - **Registered in Wave 2** - Canonical REST path `GET /preview/get_economy.json`.
+* `get_map` - **Registered in Wave 2** - Canonical exact REST path `GET /preview/get_map.json`. The richer `GET /preview-map.json` projection stays separate because it adds biome rasters that the MCP result omits.
+* `get_milestones` - **Registered in Wave 2** - Canonical REST path `GET /preview/get_milestones.json`.
+* `get_species` - **Registered in Wave 2** - Canonical REST path `GET /preview/get_species.json`, with required `name` input.
+* `explain_item` - **Registered in Wave 2** - Canonical REST path `GET /preview/explain_item.json`, with required `name` and optional constrained `category`.
+* `get_crafting_atlas` - **Registered in Wave 2** - Canonical REST path `GET /preview/get_crafting_atlas.json`.
 * `get_world` - **Registered in Wave 1** - Canonical REST path `GET /preview/world.json`.
-* `get_trades` - **Dual-register** - Canonical REST path `GET /preview/get_trades.json`.
+* `get_trades` - **Registered in Wave 2** - Canonical REST path `GET /preview/get_trades.json`.
 * `get_stores` - **Registered in Wave 1** - Canonical REST path `GET /preview/stores.json`.
 * `get_progression` - **Registered in Wave 1** - Canonical REST path `GET /preview/progression.json`.
-* `fair_price` - **Dual-register** - Canonical REST path `GET /preview/fair_price.json`, with required `item` and optional `cycle_id` and `server`.
+* `fair_price` - **Registered in Wave 2** - Canonical REST path `GET /preview/fair_price.json`, with required `item` and optional `cycle_id` and `server`.
 * `get_market` - **Registered in Wave 1** - Canonical REST path `GET /preview/market.json`.
 * `find_trade` - **Registered in Wave 1** - Canonical REST path `GET /preview/logistics.json`.
-* `get_region` - **Dual-register** - Canonical REST path `GET /preview/get_region.json`.
-* `get_climate` - **Dual-register** - Canonical REST path `GET /preview/get_climate.json`.
+* `get_region` - **Registered in Wave 2** - Canonical REST path `GET /preview/get_region.json`.
+* `get_climate` - **Registered in Wave 2** - Canonical REST path `GET /preview/get_climate.json`.
 * `get_currency` - **Registered in Wave 1** - Canonical REST path `GET /preview/currency.json`.
-* `get_government` - **Dual-register** - Canonical REST path `GET /preview/get_government.json`.
+* `get_government` - **Registered in Wave 2** - Canonical REST path `GET /preview/get_government.json`.
 * `get_civics` - **Registered in Wave 1** - Canonical REST path `GET /preview/civics.json`.
 * `list_public_servers` - **Registered in Wave 1** - Canonical REST path `GET /preview/list_public_eco_servers.json`.
 * `get_social` - **Dual-register after prerequisite** - The dedicated `GET /preview/social.json` path always suppresses `reveal_names`, while MCP may accept it behind `ECO_SOCIAL_ALLOW_NAMES`. Add a REST input projection or split the operator disclosure capability before registration. Do not expose `reveal_names` through the public REST schema.
@@ -78,13 +79,24 @@ whose HTTP and MCP forms can converge on one shared registration.
 
 ## Top-level HTTP routes
 
-The public app now materializes 24 method-path pairs before its mounts and
-optional debug/static routes. Nine come from the Wave 1 registry and the rest
+The public app now materializes 35 method-path pairs before its mounts and
+optional debug/static routes. Twenty come from the shared registry and the rest
 remain explicit Starlette declarations. The preview routes below are the
 domain-facing subset.
 
 * `GET /preview.json` - **Registered in Wave 1** - Shared with `get_server_status`.
+* `GET /preview/get_economy.json` - **Registered in Wave 2** - Shared with `get_economy`.
+* `GET /preview/get_map.json` - **Registered in Wave 2** - Shared with `get_map`.
 * `GET /preview-map.json` - **Single-surface REST projection** - Includes browser-only biome raster detail. It may reuse map domain logic, but it must not replace the smaller shared operation.
+* `GET /preview/get_milestones.json` - **Registered in Wave 2** - Shared with `get_milestones`.
+* `GET /preview/get_species.json` - **Registered in Wave 2** - Shared with `get_species`.
+* `GET /preview/explain_item.json` - **Registered in Wave 2** - Shared with `explain_item`.
+* `GET /preview/get_crafting_atlas.json` - **Registered in Wave 2** - Shared with `get_crafting_atlas`.
+* `GET /preview/get_trades.json` - **Registered in Wave 2** - Shared with `get_trades`.
+* `GET /preview/fair_price.json` - **Registered in Wave 2** - Shared with `fair_price`.
+* `GET /preview/get_region.json` - **Registered in Wave 2** - Shared with `get_region`.
+* `GET /preview/get_climate.json` - **Registered in Wave 2** - Shared with `get_climate`.
+* `GET /preview/get_government.json` - **Registered in Wave 2** - Shared with `get_government`.
 * `GET /preview/currency.json` - **Registered in Wave 1** - Shared with `get_currency`.
 * `GET /preview/market.json` - **Registered in Wave 1** - Shared with `get_market`.
 * `GET /preview/stores.json` - **Registered in Wave 1** - Shared with `get_stores`.
@@ -169,7 +181,7 @@ Starlette fallback.
 ## Migration order
 
 * **Wave 1, prove the path (complete)** - `list_public_servers`, `get_server_status`, currency, market, stores, logistics, civics, progression, and world now use typed shared registrations.
-* **Wave 2, replace generic dispatch** - Register the remaining read-only public tools on explicit paths. Keep `GET /preview/{tool}` as a compatibility fallback until tests and frontend clients show that no caller depends on dynamic dispatch.
+* **Wave 2, replace generic dispatch (complete)** - The remaining eleven straightforward read-only public tools now use typed shared registrations and explicit paths. `GET /preview/{tool}` remains a compatibility fallback for the two Wave 4 semantic exceptions.
 * **Wave 3, add bounded model operations** - Introduce typed operations for food, price history, item activity, item search, recipes, professions, and specialties only after their stated bounds and disclosure prerequisites exist.
 * **Wave 4, resolve semantic splits** - Add a transport-safe social input projection and split watcher reads from watcher mutations. Remove the dynamic preview adapter only after these exceptional tools have explicit safe behavior.
 
