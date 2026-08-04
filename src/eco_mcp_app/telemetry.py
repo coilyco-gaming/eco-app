@@ -20,9 +20,12 @@ from opentelemetry.context import Context
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
-from opentelemetry.metrics import Counter
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.metrics import Counter as ApiCounter
+from opentelemetry.sdk.metrics import Counter, Histogram, MeterProvider
+from opentelemetry.sdk.metrics.export import (
+    AggregationTemporality,
+    PeriodicExportingMetricReader,
+)
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -33,9 +36,13 @@ _initialized = False
 _enabled = False
 _trace_provider: TracerProvider | None = None
 _meter_provider: MeterProvider | None = None
-_mcp_tool_calls: Counter | None = None
+_mcp_tool_calls: ApiCounter | None = None
 _HEALTHCHECK_PATH = "/healthz"
 _MCP_HANDLER_MARKER = "_eco_app_mcp_traced"
+_ACTIVITY_METRIC_TEMPORALITY: dict[type, AggregationTemporality] = {
+    Counter: AggregationTemporality.DELTA,
+    Histogram: AggregationTemporality.DELTA,
+}
 
 
 class _HealthcheckAccessFilter(logging.Filter):
@@ -94,7 +101,10 @@ def init_telemetry() -> bool:
         _trace_provider = trace_provider
 
     try:
-        metric_exporter = OTLPMetricExporter(endpoint=f"{endpoint.rstrip('/')}/v1/metrics")
+        metric_exporter = OTLPMetricExporter(
+            endpoint=f"{endpoint.rstrip('/')}/v1/metrics",
+            preferred_temporality=_ACTIVITY_METRIC_TEMPORALITY,
+        )
         metric_reader = PeriodicExportingMetricReader(metric_exporter)
         meter_provider = MeterProvider(metric_readers=[metric_reader], resource=resource)
         metrics.set_meter_provider(meter_provider)

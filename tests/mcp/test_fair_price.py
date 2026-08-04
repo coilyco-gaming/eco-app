@@ -7,12 +7,14 @@ caching, and the full `fetch_fair_price` narrative for daily + monthly.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from pathlib import Path
 
 import httpx
 import pytest
 import respx
+from fastapi.testclient import TestClient
 
 from eco_mcp_app import fair_price as fp
 
@@ -367,16 +369,26 @@ async def test_tool_registered_and_calls_through(monkeypatch: pytest.MonkeyPatch
 
 
 @pytest.mark.asyncio
-async def test_tool_unknown_item_flags_error() -> None:
+@pytest.mark.parametrize("item", ["Sandstone", "Sand", "Mortar"])
+async def test_unknown_items_are_successful_empty_states_across_transports(item: str) -> None:
     import mcp.types as mt
 
+    from eco_mcp_app.http_app import create_app
     from eco_mcp_app.server import build_server
 
     mcp = build_server()
     call_handler = mcp.request_handlers[mt.CallToolRequest]
     req = mt.CallToolRequest(
         method="tools/call",
-        params=mt.CallToolRequestParams(name="fair_price", arguments={"item": "Gold"}),
+        params=mt.CallToolRequestParams(name="fair_price", arguments={"item": item}),
     )
     result = await call_handler(req)
-    assert result.root.isError is True
+    assert result.root.isError is False
+    assert isinstance(result.root.content[1], mt.TextContent)
+    mcp_payload = json.loads(result.root.content[1].text)
+    assert mcp_payload["error"] == "unknown_item"
+
+    with TestClient(create_app()) as client:
+        response = client.get("/preview/fair_price.json", params={"item": item})
+    assert response.status_code == 200
+    assert response.json()["error"] == "unknown_item"

@@ -7,8 +7,9 @@ import logging
 import pytest
 from mcp import types as mt
 from mcp.server.lowlevel import Server
+from opentelemetry.sdk.metrics import Counter as SdkCounter
 from opentelemetry.sdk.metrics import MeterProvider as SdkMeterProvider
-from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+from opentelemetry.sdk.metrics.export import AggregationTemporality, InMemoryMetricReader
 from opentelemetry.sdk.trace import TracerProvider as SdkTracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -49,7 +50,7 @@ def test_configured_endpoint_builds_http_exporter(monkeypatch):
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://ser8:30418")
     monkeypatch.setenv("OTEL_SERVICE_NAME", "eco-app-test")
     trace_exporters: list[str] = []
-    metric_exporters: list[str] = []
+    metric_exporters: list[tuple[str, dict[type, AggregationTemporality]]] = []
 
     class FakeTraceExporter:
         def __init__(self, *, endpoint: str):
@@ -63,8 +64,13 @@ def test_configured_endpoint_builds_http_exporter(monkeypatch):
             return None
 
     class FakeMetricExporter:
-        def __init__(self, *, endpoint: str):
-            metric_exporters.append(endpoint)
+        def __init__(
+            self,
+            *,
+            endpoint: str,
+            preferred_temporality: dict[type, AggregationTemporality],
+        ):
+            metric_exporters.append((endpoint, preferred_temporality))
 
     class FakeMetricReader:
         def __init__(self, exporter):
@@ -99,10 +105,31 @@ def test_configured_endpoint_builds_http_exporter(monkeypatch):
 
     assert telemetry.init_telemetry() is True
     assert trace_exporters == ["http://ser8:30418/v1/traces"]
-    assert metric_exporters == ["http://ser8:30418/v1/metrics"]
+    assert metric_exporters == [
+        (
+            "http://ser8:30418/v1/metrics",
+            telemetry._ACTIVITY_METRIC_TEMPORALITY,
+        )
+    ]
     assert telemetry._trace_provider is not None
     assert telemetry._meter_provider is not None
     assert telemetry._mcp_tool_calls is not None
+
+
+def test_delta_counter_exports_the_first_event() -> None:
+    metric_reader = InMemoryMetricReader(
+        preferred_temporality={SdkCounter: AggregationTemporality.DELTA}
+    )
+    meter_provider = SdkMeterProvider(metric_readers=[metric_reader])
+    counter = meter_provider.get_meter("eco-app-test").create_counter("first.event")
+
+    counter.add(1, {"kind": "first"})
+
+    metrics_data = metric_reader.get_metrics_data()
+    assert metrics_data is not None
+    metric = metrics_data.resource_metrics[0].scope_metrics[0].metrics[0]
+    assert metric.data.aggregation_temporality is AggregationTemporality.DELTA
+    assert [point.value for point in metric.data.data_points] == [1]
 
 
 def test_instrument_asgi_adds_middleware_when_enabled(monkeypatch):

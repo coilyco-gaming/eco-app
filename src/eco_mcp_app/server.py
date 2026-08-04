@@ -2054,13 +2054,15 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 in_game_trend=ref.trend if ref else None,
             )
             payload = fair_price_mod.to_payload(result)
-            is_error = result.error is not None
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=result.narrative),
                     TextContent(type="text", text=json.dumps(payload)),
                 ],
-                isError=is_error,
+                # Fair-price failures are handled empty states carried in the
+                # typed payload. They must remain successful at the transport
+                # layer so both REST pages and MCP clients can render them.
+                isError=False,
             )
 
         if name == "get_market":
