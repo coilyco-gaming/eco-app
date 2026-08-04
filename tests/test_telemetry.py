@@ -7,6 +7,8 @@ import logging
 import pytest
 from mcp import types as mt
 from mcp.server.lowlevel import Server
+from opentelemetry.sdk.metrics import MeterProvider as SdkMeterProvider
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace import TracerProvider as SdkTracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -24,9 +26,15 @@ def _reset_init_flag():
     original_filters = list(access_logger.filters)
     telemetry._initialized = False
     telemetry._enabled = False
+    telemetry._trace_provider = None
+    telemetry._meter_provider = None
+    telemetry._mcp_tool_calls = None
     yield
     telemetry._initialized = False
     telemetry._enabled = False
+    telemetry._trace_provider = None
+    telemetry._meter_provider = None
+    telemetry._mcp_tool_calls = None
     access_logger.filters[:] = original_filters
 
 
@@ -40,26 +48,61 @@ def test_unset_endpoint_disables_export(monkeypatch):
 def test_configured_endpoint_builds_http_exporter(monkeypatch):
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://ser8:30418")
     monkeypatch.setenv("OTEL_SERVICE_NAME", "eco-app-test")
-    exporters: list[str] = []
+    trace_exporters: list[str] = []
+    metric_exporters: list[str] = []
 
-    class FakeExporter:
+    class FakeTraceExporter:
         def __init__(self, *, endpoint: str):
-            exporters.append(endpoint)
+            trace_exporters.append(endpoint)
 
-    class FakeProvider:
+    class FakeTraceProvider:
         def __init__(self, *, resource):
             self.resource = resource
 
         def add_span_processor(self, _processor):
             return None
 
-    monkeypatch.setattr(telemetry, "OTLPSpanExporter", FakeExporter)
-    monkeypatch.setattr(telemetry, "TracerProvider", FakeProvider)
+    class FakeMetricExporter:
+        def __init__(self, *, endpoint: str):
+            metric_exporters.append(endpoint)
+
+    class FakeMetricReader:
+        def __init__(self, exporter):
+            self.exporter = exporter
+
+    class FakeCounter:
+        def add(self, _value, _attributes):
+            return None
+
+    class FakeMeter:
+        def create_counter(self, _name, *, unit, description):
+            assert unit == "{call}"
+            assert description
+            return FakeCounter()
+
+    class FakeMeterProvider:
+        def __init__(self, *, metric_readers, resource):
+            self.metric_readers = metric_readers
+            self.resource = resource
+
+        def get_meter(self, _name):
+            return FakeMeter()
+
+    monkeypatch.setattr(telemetry, "OTLPSpanExporter", FakeTraceExporter)
+    monkeypatch.setattr(telemetry, "TracerProvider", FakeTraceProvider)
     monkeypatch.setattr(telemetry, "BatchSpanProcessor", lambda exporter: exporter)
     monkeypatch.setattr(telemetry.trace, "set_tracer_provider", lambda _provider: None)
+    monkeypatch.setattr(telemetry, "OTLPMetricExporter", FakeMetricExporter)
+    monkeypatch.setattr(telemetry, "PeriodicExportingMetricReader", FakeMetricReader)
+    monkeypatch.setattr(telemetry, "MeterProvider", FakeMeterProvider)
+    monkeypatch.setattr(telemetry.metrics, "set_meter_provider", lambda _provider: None)
 
     assert telemetry.init_telemetry() is True
-    assert exporters == ["http://ser8:30418/v1/traces"]
+    assert trace_exporters == ["http://ser8:30418/v1/traces"]
+    assert metric_exporters == ["http://ser8:30418/v1/metrics"]
+    assert telemetry._trace_provider is not None
+    assert telemetry._meter_provider is not None
+    assert telemetry._mcp_tool_calls is not None
 
 
 def test_instrument_asgi_adds_middleware_when_enabled(monkeypatch):
@@ -80,6 +123,8 @@ def test_instrument_asgi_adds_middleware_when_enabled(monkeypatch):
             {
                 "excluded_urls": r"/healthz$",
                 "exclude_spans": ["receive", "send"],
+                "tracer_provider": None,
+                "meter_provider": None,
             },
         )
     ]
@@ -110,16 +155,13 @@ def test_asgi_instrumentation_exports_api_span_but_not_health(monkeypatch) -> No
         return JSONResponse({"ok": True})
 
     exporter = InMemorySpanExporter()
-    provider = SdkTracerProvider()
-    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    trace_provider = SdkTracerProvider()
+    trace_provider.add_span_processor(SimpleSpanProcessor(exporter))
+    metric_reader = InMemoryMetricReader()
+    meter_provider = SdkMeterProvider(metric_readers=[metric_reader])
+    telemetry._trace_provider = trace_provider
+    telemetry._meter_provider = meter_provider
     monkeypatch.setattr(telemetry, "init_telemetry", lambda: True)
-    monkeypatch.setattr(
-        telemetry.trace,
-        "get_tracer",
-        lambda name, version=None, tracer_provider=None, schema_url=None: provider.get_tracer(
-            name, version, schema_url
-        ),
-    )
     app = Starlette(
         routes=[
             Route("/healthz", ok),
@@ -134,6 +176,29 @@ def test_asgi_instrumentation_exports_api_span_but_not_health(monkeypatch) -> No
 
     spans = exporter.get_finished_spans()
     assert [span.name for span in spans] == ["GET /api/example"]
+    metrics_data = metric_reader.get_metrics_data()
+    assert metrics_data is not None
+    request_points = [
+        point
+        for resource_metrics in metrics_data.resource_metrics
+        for scope_metrics in resource_metrics.scope_metrics
+        for metric in scope_metrics.metrics
+        if metric.name in {"http.server.request.duration", "http.server.duration"}
+        for point in metric.data.data_points
+    ]
+    request_count = 0
+    for point in request_points:
+        request_count += int(point.count)
+    assert request_count == 1
+    assert {
+        point.attributes.get("http.request.method") or point.attributes.get("http.method")
+        for point in request_points
+    } == {"GET"}
+    assert {
+        point.attributes.get("http.response.status_code")
+        or point.attributes.get("http.status_code")
+        for point in request_points
+    } == {200}
 
 
 @pytest.mark.asyncio
@@ -148,6 +213,13 @@ async def test_mcp_tool_instrumentation_uses_semantic_server_span(monkeypatch) -
 
     server = Server("test-telemetry")
     server.request_handlers[mt.CallToolRequest] = handler
+    metric_calls = []
+
+    class FakeCounter:
+        def add(self, value, attributes):
+            metric_calls.append((value, attributes))
+
+    monkeypatch.setattr(telemetry, "_mcp_tool_calls", FakeCounter())
     monkeypatch.setattr(telemetry, "init_telemetry", lambda: True)
     monkeypatch.setattr(
         telemetry.trace,
@@ -179,6 +251,15 @@ async def test_mcp_tool_instrumentation_uses_semantic_server_span(monkeypatch) -
     assert span.parent is None
     assert [link.context.span_id for link in span.links] == [transport_context.span_id]
     assert span.status.status_code is telemetry.StatusCode.UNSET
+    assert metric_calls == [
+        (
+            1,
+            {
+                "gen_ai.tool.name": "get_server_status",
+                "mcp.tool.outcome": "success",
+            },
+        )
+    ]
 
 
 @pytest.mark.asyncio
@@ -192,6 +273,13 @@ async def test_mcp_tool_error_marks_span(monkeypatch) -> None:
 
     server = Server("test-telemetry")
     server.request_handlers[mt.CallToolRequest] = handler
+    metric_calls = []
+
+    class FakeCounter:
+        def add(self, value, attributes):
+            metric_calls.append((value, attributes))
+
+    monkeypatch.setattr(telemetry, "_mcp_tool_calls", FakeCounter())
     monkeypatch.setattr(telemetry, "init_telemetry", lambda: True)
     monkeypatch.setattr(
         telemetry.trace,
@@ -210,6 +298,60 @@ async def test_mcp_tool_error_marks_span(monkeypatch) -> None:
     assert span.attributes is not None
     assert span.attributes["error.type"] == "tool_error"
     assert span.status.status_code is telemetry.StatusCode.ERROR
+    assert metric_calls == [
+        (
+            1,
+            {
+                "gen_ai.tool.name": "get_server_status",
+                "mcp.tool.outcome": "tool_error",
+            },
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_mcp_exception_records_exception_metric(monkeypatch) -> None:
+    exporter = InMemorySpanExporter()
+    provider = SdkTracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    metric_calls = []
+
+    async def handler(_request):
+        raise RuntimeError("boom")
+
+    class FakeCounter:
+        def add(self, value, attributes):
+            metric_calls.append((value, attributes))
+
+    server = Server("test-telemetry")
+    server.request_handlers[mt.CallToolRequest] = handler
+    monkeypatch.setattr(telemetry, "_mcp_tool_calls", FakeCounter())
+    monkeypatch.setattr(telemetry, "init_telemetry", lambda: True)
+    monkeypatch.setattr(
+        telemetry.trace,
+        "get_tracer",
+        lambda name, *_args, **_kwargs: provider.get_tracer(name),
+    )
+    telemetry.instrument_mcp_server(server)
+    request = mt.CallToolRequest(
+        method="tools/call",
+        params=mt.CallToolRequestParams(name="get_server_status", arguments={}),
+    )
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await server.request_handlers[mt.CallToolRequest](request)
+
+    (span,) = exporter.get_finished_spans()
+    assert span.status.status_code is telemetry.StatusCode.ERROR
+    assert metric_calls == [
+        (
+            1,
+            {
+                "gen_ai.tool.name": "get_server_status",
+                "mcp.tool.outcome": "exception",
+            },
+        )
+    ]
 
 
 def test_record_exception_creates_error_span(monkeypatch):

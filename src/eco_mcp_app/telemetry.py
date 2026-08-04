@@ -15,10 +15,14 @@ from typing import Any, cast
 
 from mcp import types as mt
 from mcp.server.lowlevel import Server
-from opentelemetry import propagate, trace
+from opentelemetry import metrics, propagate, trace
 from opentelemetry.context import Context
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
+from opentelemetry.metrics import Counter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -27,6 +31,9 @@ from opentelemetry.trace import Link, SpanKind, Status, StatusCode
 _log = logging.getLogger(__name__)
 _initialized = False
 _enabled = False
+_trace_provider: TracerProvider | None = None
+_meter_provider: MeterProvider | None = None
+_mcp_tool_calls: Counter | None = None
 _HEALTHCHECK_PATH = "/healthz"
 _MCP_HANDLER_MARKER = "_eco_app_mcp_traced"
 
@@ -50,8 +57,8 @@ def configure_healthcheck_logging() -> None:
 
 
 def init_telemetry() -> bool:
-    """Configure OTLP tracing once and report whether export is enabled."""
-    global _enabled, _initialized
+    """Configure OTLP tracing and metrics once and report whether either is enabled."""
+    global _enabled, _initialized, _mcp_tool_calls, _meter_provider, _trace_provider
     if _initialized:
         return _enabled
 
@@ -62,25 +69,55 @@ def init_telemetry() -> bool:
         return False
 
     try:
-        provider = TracerProvider(
-            resource=Resource.create(
-                {
-                    "service.name": service_name,
-                    "deployment.environment": os.getenv("OTEL_DEPLOYMENT_ENVIRONMENT", "homelab"),
-                }
-            )
+        resource = Resource.create(
+            {
+                "service.name": service_name,
+                "deployment.environment": os.getenv("OTEL_DEPLOYMENT_ENVIRONMENT", "homelab"),
+            }
         )
-        exporter = OTLPSpanExporter(endpoint=f"{endpoint.rstrip('/')}/v1/traces")
-        provider.add_span_processor(BatchSpanProcessor(exporter))
-        trace.set_tracer_provider(provider)
+    except Exception:
+        _log.warning("OpenTelemetry resource initialization failed; continuing", exc_info=True)
+        _initialized = True
+        return False
+
+    try:
+        trace_provider = TracerProvider(resource=resource)
+        trace_exporter = OTLPSpanExporter(endpoint=f"{endpoint.rstrip('/')}/v1/traces")
+        trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
+        trace.set_tracer_provider(trace_provider)
     except Exception:
         _log.warning(
-            "OpenTelemetry initialization failed; continuing without trace export",
+            "OpenTelemetry trace initialization failed; continuing without trace export",
             exc_info=True,
         )
     else:
-        _enabled = True
+        _trace_provider = trace_provider
 
+    try:
+        metric_exporter = OTLPMetricExporter(endpoint=f"{endpoint.rstrip('/')}/v1/metrics")
+        metric_reader = PeriodicExportingMetricReader(metric_exporter)
+        meter_provider = MeterProvider(metric_readers=[metric_reader], resource=resource)
+        metrics.set_meter_provider(meter_provider)
+    except Exception:
+        _log.warning(
+            "OpenTelemetry metric initialization failed; continuing without metric export",
+            exc_info=True,
+        )
+    else:
+        _meter_provider = meter_provider
+        try:
+            _mcp_tool_calls = meter_provider.get_meter("eco-app").create_counter(
+                "eco_app.mcp.tool.calls",
+                unit="{call}",
+                description="Number of MCP tool calls handled by eco-app.",
+            )
+        except Exception:
+            _log.warning(
+                "OpenTelemetry MCP counter initialization failed; continuing with HTTP metrics",
+                exc_info=True,
+            )
+
+    _enabled = _trace_provider is not None or _meter_provider is not None
     _initialized = True
     return _enabled
 
@@ -93,8 +130,26 @@ def instrument_asgi(app: Any) -> Any:
             OpenTelemetryMiddleware,
             excluded_urls=rf"{_HEALTHCHECK_PATH}$",
             exclude_spans=["receive", "send"],
+            tracer_provider=_trace_provider,
+            meter_provider=_meter_provider,
         )
     return app
+
+
+def _record_mcp_tool_call(tool_name: str, outcome: str) -> None:
+    """Record one bounded MCP call without letting telemetry break the tool."""
+    if _mcp_tool_calls is None:
+        return
+    try:
+        _mcp_tool_calls.add(
+            1,
+            {
+                "gen_ai.tool.name": tool_name,
+                "mcp.tool.outcome": outcome,
+            },
+        )
+    except Exception:
+        _log.warning("OpenTelemetry MCP call metric failed", exc_info=True)
 
 
 def instrument_mcp_server(server: Server) -> Server:
@@ -146,10 +201,14 @@ def instrument_mcp_server(server: Server) -> Server:
                 error_type = f"{type(exc).__module__}.{type(exc).__qualname__}"
                 span.set_attribute("error.type", error_type)
                 span.set_status(Status(StatusCode.ERROR))
+                _record_mcp_tool_call(tool_name, "exception")
                 raise
             if isinstance(result.root, mt.CallToolResult) and result.root.isError:
                 span.set_attribute("error.type", "tool_error")
                 span.set_status(Status(StatusCode.ERROR))
+                _record_mcp_tool_call(tool_name, "tool_error")
+            else:
+                _record_mcp_tool_call(tool_name, "success")
             return result
 
     setattr(traced_call_tool, _MCP_HANDLER_MARKER, True)
