@@ -38,6 +38,7 @@ from .map import build_map_payload, fetch_map_bundle
 from .progression import fetch_history, history_markdown
 from .social import fetch_social, social_markdown
 from .stores import directory_markdown, fetch_directory
+from .telemetry import instrument_mcp_server
 from .trades import fetch_ledger, ledger_markdown
 from .watchers import (
     WatcherError,
@@ -2169,7 +2170,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
         result = await _dispatch_call_tool(name, arguments)
         return result
 
-    return server
+    return instrument_mcp_server(server)
 
 
 def build_initialization_options(server: Server) -> InitializationOptions:

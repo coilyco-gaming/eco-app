@@ -9,6 +9,7 @@ from typing import Any
 from mcp.server.lowlevel import Server
 from mcp.types import CallToolResult, TextContent, Tool
 
+from ..telemetry import instrument_mcp_server
 from .rcon import PUBLIC_DENY, EcoRconClient, RconError, RconQuery, coerce_query
 from .redaction import (
     DEFAULT_LEVEL,
@@ -439,7 +440,7 @@ def build_admin_server(
             return _ok("Eco RCON query", payload)
         return _error(f"unknown tool {name!r}")
 
-    return server
+    return instrument_mcp_server(server)
 
 
 __all__ = ["DEFAULT_LEVEL", "build_admin_server"]
