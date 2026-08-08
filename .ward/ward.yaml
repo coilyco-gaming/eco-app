@@ -99,6 +99,9 @@ commands:
     run: dotnet run --project mods/stores/shell/EcoStoreExporter.Shell.csproj
     description: Run the stores C# shell harness on :5101 (same API shape as the real Eco mod).
 
+agent:
+  workflow: merge-remote-main
+
 catalog:
   kind: Component
   type: service
