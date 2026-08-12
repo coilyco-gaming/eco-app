@@ -59,6 +59,15 @@ Name the actor in action sentences. Route every command through the gate, never 
 
 **Product UX is the SPA (`frontend/`).** Server HTML is only the MCP `_meta.ui` card - never build browser UI as an iframe/Jinja card.
 
+## Checkout residency
+
+This repo is not in Agent Compose's `repository-plan.yaml`, so it has no
+resident checkout under `~/projects/<owner>/`. That is intentional. Work it
+from a task-scoped temporary clone, and remove that clone once the work lands.
+
+A temporary root can be purged at any time, so commit and push before pausing,
+switching tasks, or ending a session. The remote is the only durable artifact.
+
 ## See also
 
 - [README.md](README.md) - human-facing intro.
