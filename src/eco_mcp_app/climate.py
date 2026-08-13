@@ -86,6 +86,18 @@ CO2_FROM_POLLUTION_CANDIDATES: tuple[str, ...] = ("LifetimeCO2FromPollution",)
 CO2_FROM_ANIMALS_CANDIDATES: tuple[str, ...] = ("LifetimeCO2FromAnimals",)
 CO2_FROM_PLANTS_CANDIDATES: tuple[str, ...] = ("LifetimeCO2FromPlants",)
 
+# Columns the pollution rows might name their actor / source with. Named
+# constants so the "we tried these and none matched" warning stays truthful
+# without a second list to keep in sync (#226).
+_POLLUTER_CITIZEN_KEYS: tuple[str, ...] = ("Citizen", "Player", "User", "Owner")
+_POLLUTER_STATION_KEYS: tuple[str, ...] = (
+    "WorldObjectItem",
+    "Station",
+    "Source",
+    "Object",
+    "ToolUsed",
+)
+
 # Action names for polluter attribution. `PolluteAir` is the canonical
 # event-stat on Eco 0.13.0.3 ("Air pollution was released (triggered every
 # 30 sec of operation)"). Older candidate names are kept for backward
@@ -197,9 +209,14 @@ class ClimateSnapshot:
     co2_plants_series: list[tuple[float, float]] = field(default_factory=list)
     # Worldlayers fallback for ground-pollution headline (e.g. "4%").
     pollution_layer_summary: str | None = None
-    # Polluter attribution. Sorted descending by emission count.
+    # Polluter attribution. Values are summed *emissions*, not event counts —
+    # a fractional value under a `count` key read as a broken counter (#226).
     top_polluter_citizens: list[tuple[str, float]] = field(default_factory=list)
     top_polluter_stations: list[tuple[str, float]] = field(default_factory=list)
+    # Rows whose actor / station column was absent, so nothing could be
+    # attributed. Reported rather than bucketed under a fake "(unknown)" name.
+    unattributed_polluter_rows: int = 0
+    unattributed_station_rows: int = 0
     pollution_actions_total: int = 0
     pollution_action_types_seen: list[str] = field(default_factory=list)
     # Climate-related dataset names exposed by /datasets/flatlist on this
@@ -578,6 +595,7 @@ async def _aggregate_pollution_action(
     headers: dict[str, str],
     by_citizen: dict[str, float],
     by_station: dict[str, float],
+    unattributed: dict[str, int],
 ) -> tuple[int, str | None]:
     """Stream one action CSV and fold pollution emissions into the totals.
 
@@ -602,15 +620,19 @@ async def _aggregate_pollution_action(
                 count = float(count_s) if count_s is not None else 1.0
             except ValueError:
                 count = 1.0
-            citizen = _pick(row, col, "Citizen", "Player", "User") or ""
-            station = (
-                _pick(row, col, "WorldObjectItem", "Station", "Source", "Object", "ToolUsed")
-                or "(unknown)"
-            )
+            citizen = _pick(row, col, *_POLLUTER_CITIZEN_KEYS) or ""
+            station = _pick(row, col, *_POLLUTER_STATION_KEYS) or ""
             if citizen:
                 by_citizen[citizen] = by_citizen.get(citizen, 0.0) + count
+            else:
+                unattributed["citizen"] += 1
             if station:
                 by_station[station] = by_station.get(station, 0.0) + count
+            else:
+                # Bucketing these under "(unknown)" produced a single row that
+                # looked like a station and carried the whole server's
+                # emissions (#226). Count them; do not name them.
+                unattributed["station"] += 1
             rows_consumed += 1
         return rows_consumed, None
     except httpx.HTTPStatusError as e:
@@ -802,10 +824,11 @@ async def fetch_climate(
             # to avoid spiking memory by N parallel streams.
             by_citizen: dict[str, float] = {}
             by_station: dict[str, float] = {}
+            unattributed: dict[str, int] = {"citizen": 0, "station": 0}
             actions_seen: list[str] = []
             for action in POLLUTION_ACTION_TYPES:
                 rows, warn = await _aggregate_pollution_action(
-                    client, base, action, headers, by_citizen, by_station
+                    client, base, action, headers, by_citizen, by_station, unattributed
                 )
                 if rows:
                     actions_seen.append(action)
@@ -821,6 +844,22 @@ async def fetch_climate(
             snapshot.top_polluter_stations = sorted(
                 by_station.items(), key=lambda kv: kv[1], reverse=True
             )[:10]
+            snapshot.unattributed_polluter_rows = unattributed["citizen"]
+            snapshot.unattributed_station_rows = unattributed["station"]
+            # Say what was tried and why it gave up, the way get_social does
+            # for its unrecognised giver column (#226).
+            if unattributed["citizen"] and not by_citizen:
+                snapshot.warnings.append(
+                    f"{unattributed['citizen']} pollution row(s) carry no recognised actor "
+                    f"column (tried {', '.join(_POLLUTER_CITIZEN_KEYS)}), so no polluter can "
+                    "be attributed."
+                )
+            if unattributed["station"] and not by_station:
+                snapshot.warnings.append(
+                    f"{unattributed['station']} pollution row(s) carry no recognised station "
+                    f"column (tried {', '.join(_POLLUTER_STATION_KEYS)}), so no source can be "
+                    "attributed."
+                )
 
         snapshot.pollution_layer_summary = await layer_task
 
@@ -1388,12 +1427,21 @@ def compute_climate_payload(snapshot: ClimateSnapshot) -> dict[str, Any]:
             "has_data": has_attribution,
             "actions_total": snapshot.pollution_actions_total,
             "action_types_seen": list(snapshot.pollution_action_types_seen),
+            # `emissions`, not `count`: these are summed pollution amounts, so
+            # a fractional value is expected. Under a `count` key the single
+            # "(unknown)" station reading 6858.75 looked like a broken counter
+            # rather than a whole server's emissions in one unnamed bucket
+            # (#226).
             "top_citizens": [
-                {"name": n, "count": c} for n, c in snapshot.top_polluter_citizens[:5]
+                {"name": n, "emissions": c} for n, c in snapshot.top_polluter_citizens[:5]
             ],
             "top_stations": [
-                {"name": n, "count": c} for n, c in snapshot.top_polluter_stations[:5]
+                {"name": n, "emissions": c} for n, c in snapshot.top_polluter_stations[:5]
             ],
+            "unattributed_rows": {
+                "citizen": snapshot.unattributed_polluter_rows,
+                "station": snapshot.unattributed_station_rows,
+            },
         },
         "warnings": list(snapshot.warnings),
         "available_climate_datasets": list(snapshot.available_climate_datasets),

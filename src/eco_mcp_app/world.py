@@ -130,6 +130,8 @@ class WorldAccumulator:
     # Pollution-category events per citizen — the headline for the /climate
     # cross-link (who is filling the air), split out from the overall shaper board.
     by_polluter: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    # Pollution rows whose actor column was absent or non-numeric (#226).
+    pollution_rows_without_actor: int = 0
     # "Most-touched objects" is a count of *events* touching each object — how
     # many times a block/object was placed, moved, dug, or chopped — NOT the
     # summed `Count` column. `Count` is per-event quantity (blocks in a stack,
@@ -233,6 +235,11 @@ def aggregate_world_rows(
             acc.by_citizen[citizen] += 1
             if category == "pollution":
                 acc.by_polluter[citizen] += 1
+        elif category == "pollution":
+            # 838 PolluteAir events, none attributed: the rows carry no
+            # recognised actor column. Count them so the emptiness explains
+            # itself rather than reading as "nobody pollutes" (#226).
+            acc.pollution_rows_without_actor += 1
         if day is not None:
             acc.timeline.setdefault(day, defaultdict(int))[category] += 1
         if cell is not None:
@@ -371,6 +378,12 @@ def finalize(
         key=lambda t: t[2],
         reverse=True,
     )[:top_hotspots]
+    warnings = list(acc.warnings)
+    if acc.pollution_rows_without_actor and not by_polluter:
+        warnings.append(
+            f"{acc.pollution_rows_without_actor} pollution event(s) carry no recognised actor "
+            "column, so byPolluter is empty rather than incomplete (eco-app#226)."
+        )
     return WorldActivity(
         fetched_at_iso=fetched_at_iso,
         source_base_url=source_base_url,
@@ -382,7 +395,7 @@ def finalize(
         by_polluter=list(by_polluter),
         by_object=list(by_object),
         hotspots=hotspots,
-        warnings=list(acc.warnings),
+        warnings=warnings,
     )
 
 

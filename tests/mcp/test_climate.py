@@ -1077,3 +1077,45 @@ async def test_map_bundle_omits_pollution_overlay_when_404() -> None:
     assert bundle["pollution_gif"] is None
     payload = eco_map.build_map_payload(bundle)
     assert payload["pollutionDataUri"] is None
+
+
+# ---------------------------------------------------------------------------
+# Pollution attribution (eco-app#226)
+# ---------------------------------------------------------------------------
+
+
+def test_unattributed_pollution_rows_are_not_named_a_station() -> None:
+    """`top_stations: [{"(unknown)": 6858.75}]` was one fake bucket (#226).
+
+    Falling back to a literal "(unknown)" station name put the whole server's
+    emissions into a single row that reads as a real station, and the value —
+    summed emissions — sat under a `count` key, so a fractional "count" of
+    6,858.75 against 816 actions looked like a broken counter.
+    """
+    snap = _snap(co2_series=[(0.0, 400.0), (1.0, 400.0)])
+    snap.pollution_actions_total = 816
+    snap.pollution_action_types_seen = ["PolluteAir"]
+    snap.unattributed_polluter_rows = 816
+    snap.unattributed_station_rows = 816
+    snap.warnings.append("816 pollution row(s) carry no recognised actor column (tried Citizen)")
+
+    attribution = compute_climate_payload(snap)["attribution"]
+    assert attribution["top_citizens"] == []
+    assert attribution["top_stations"] == []
+    # has_data no longer claims attribution exists when nothing resolved.
+    assert attribution["has_data"] is False
+    assert attribution["unattributed_rows"] == {"citizen": 816, "station": 816}
+
+
+def test_attributed_pollution_reports_emissions_not_counts() -> None:
+    snap = _snap(co2_series=[(0.0, 400.0), (1.0, 400.0)])
+    snap.pollution_actions_total = 2
+    snap.top_polluter_citizens = [("coilysiren", 12.5)]
+    snap.top_polluter_stations = [("BlastFurnaceItem", 6858.75)]
+
+    attribution = compute_climate_payload(snap)["attribution"]
+    assert attribution["has_data"] is True
+    # A fractional value is expected under `emissions`; it was not under `count`.
+    assert attribution["top_stations"][0] == {"name": "BlastFurnaceItem", "emissions": 6858.75}
+    assert attribution["top_citizens"][0] == {"name": "coilysiren", "emissions": 12.5}
+    assert "count" not in attribution["top_stations"][0]
