@@ -2066,3 +2066,36 @@ a.dir-card:hover {
 .recipe-sublink:hover {
   color: var(--leaf);
 }
+
+/* Refresh-contract caption (eco-app#201). Every fetching page shows one, so a
+   reader can always tell whether what they see is still being updated. */
+.freshness-note {
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+  margin: 0.2rem 0 0.6rem;
+}
+
+.freshness-note-stale {
+  color: var(--meteor-deep);
+  font-weight: 600;
+}
+
+.freshness-refresh {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--leaf);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.freshness-refresh:disabled {
+  color: var(--ink-faint);
+  cursor: default;
+  text-decoration: none;
+}
+
+.freshness-error {
+  color: var(--meteor-deep);
+}

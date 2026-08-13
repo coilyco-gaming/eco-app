@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import EcoRichText from "../components/EcoRichText"
+import FreshnessNote from "../components/FreshnessNote"
 import Layout from "../components/Layout"
 import Loading from "../components/Loading"
 import { type ClimateSnapshot, fetchClimate } from "../lib/climateApi"
+import { useFreshData } from "../lib/useFreshData"
 import {
   type DriftRow,
   type EcoregionSnapshot,
@@ -536,28 +538,22 @@ function WorldMap({
 }
 
 export default function MapPage() {
-  const [snap, setSnap] = useState<EcoregionSnapshot | null>(null)
-  const [map, setMap] = useState<MapPayload | null>(null)
-  const [climate, setClimate] = useState<ClimateSnapshot | null>(null)
-  const [loading, setLoading] = useState(true)
   const [hoveredBiome, setHoveredBiome] = useState<string | null>(null)
   const [pageLoadedAt] = useState(() => new Date())
 
-  useEffect(() => {
-    const controller = new AbortController()
-    const guard = (fn: () => void) => {
-      if (!controller.signal.aborted) fn()
-    }
-    // Three independent planes; a failure in any one degrades that section
-    // rather than the page. Climate joined the set when it folded into the world
-    // page (eco-app#90). The shared loading state clears once all settle.
-    Promise.allSettled([
-      fetchEcoregion(controller.signal).then((d) => guard(() => setSnap(d))),
-      fetchMap(controller.signal).then((d) => guard(() => setMap(d))),
-      fetchClimate(controller.signal).then((d) => guard(() => setClimate(d))),
-    ]).finally(() => guard(() => setLoading(false)))
-    return () => controller.abort()
-  }, [])
+  // Three independent planes with three different refresh contracts
+  // (eco-app#201). Climate advances with the simulation and polls; deed
+  // polygons change on a land transfer and do not; species populations are
+  // sampled slowly and refresh on demand. A failure in one degrades that
+  // section rather than the page.
+  const region = useFreshData("region", fetchEcoregion)
+  const mapPlane = useFreshData("map", fetchMap)
+  const climatePlane = useFreshData("climate", fetchClimate)
+
+  const snap = region.data
+  const map = mapPlane.data
+  const climate = climatePlane.data
+  const loading = region.loading && mapPlane.loading && climatePlane.loading
 
   // Which biomes can actually highlight on the map (have a fetched raster).
   const highlightable = useMemo(
@@ -584,7 +580,22 @@ export default function MapPage() {
             world snapshot unavailable right now
           </p>
         )}
-      </section>
+            <FreshnessNote
+          plane="climate"
+          loadedAt={climatePlane.loadedAt}
+          refreshing={climatePlane.refreshing}
+          refreshError={climatePlane.refreshError}
+          onRefresh={climatePlane.refresh}
+          observedAtISO={climate?.fetched_at_iso ?? null}
+        />
+        <FreshnessNote
+          plane="region"
+          loadedAt={region.loadedAt}
+          refreshing={region.refreshing}
+          refreshError={region.refreshError}
+          onRefresh={region.refresh}
+        />
+        </section>
 
       {loading && <Loading label="Reading the world map, biomes, climate, and biodiversity…" />}
 
