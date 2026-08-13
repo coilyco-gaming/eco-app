@@ -816,3 +816,56 @@ def test_the_selected_currency_keeps_its_own_holders_note() -> None:
     snap = _snapshot_with(_many_records())
     one = compute_currency_payload(snap, currency="Spectres")
     assert one["selected"]["holders"]["note"] == HOLDERS_UNAVAILABLE_NOTE
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_a_server_that_refused_every_action_is_not_called_empty() -> None:
+    """401 on everything meant the roster was never read. The narrative said
+    "no currencies have been created or traded yet" beside a payload carrying
+    40 active currencies. See #266."""
+    _route_datasets({})
+    _route_flatlist([])
+    _route_action(CREATE_CURRENCY_ACTION, "", status=401)
+    _route_action(MINT_CURRENCY_ACTION, "", status=401)
+    _route_action(CURRENCY_TRADE_ACTION, "", status=401)
+    _route_holdings(status=401)
+
+    snap = await fetch_currency(
+        None,
+        info=_info(),
+        days_elapsed=4,
+        admin_token="test-token",
+        default_admin_base=_DEFAULT_BASE,
+    )
+
+    assert snap.admin_reads_refused is True
+    assert snap.currencies == {}
+    payload = compute_currency_payload(snap)
+    narrative = payload["narrative"]
+    assert "refused" in narrative.lower(), narrative
+    assert "no currencies" not in narrative.lower(), narrative
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_a_genuinely_empty_server_still_reads_as_early_cycle() -> None:
+    """The distinction that must survive: refused is not the same as empty."""
+    _route_datasets({})
+    _route_flatlist([])
+    _route_action(CREATE_CURRENCY_ACTION, "")
+    _route_action(MINT_CURRENCY_ACTION, "")
+    _route_action(CURRENCY_TRADE_ACTION, "")
+    _route_holdings(status=404)
+
+    snap = await fetch_currency(
+        None,
+        info=_info(),
+        days_elapsed=4,
+        admin_token="test-token",
+        default_admin_base=_DEFAULT_BASE,
+    )
+
+    assert snap.admin_reads_refused is False
+    narrative = compute_currency_payload(snap)["narrative"]
+    assert "refused" not in narrative.lower(), narrative
