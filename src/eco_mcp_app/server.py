@@ -29,7 +29,7 @@ from . import ecoregion as ecoregion_mod
 from . import fair_price as fair_price_mod
 from . import market as market_mod
 from . import species as species_mod
-from . import wave1_routes, wave2_routes
+from . import wave1_routes, wave2_routes, wave3_routes
 from .civics import civics_markdown, fetch_civics
 from .crafting import atlas_markdown, fetch_atlas
 from .dual_routes import DualRouteRegistry
@@ -990,6 +990,68 @@ def _unreachable_result(subject: str, exc: Exception) -> CallToolResult:
         ],
         isError=True,
     )
+
+
+def _is_truthy_arg(value: Any) -> bool:
+    """Query-param truthiness, matching the SPA's `?cost=1` convention."""
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _recipe_warn(payload: dict[str, Any], message: str) -> None:
+    """Append a warning to a recipe payload, creating the list if absent."""
+    warnings: list[str] = list(payload.get("warnings") or [])
+    warnings.append(message)
+    payload["warnings"] = warnings
+
+
+def _resolve_recipe_admin_key() -> str | None:
+    """Admin key for the recipe cost engine's market read."""
+    return os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
+
+
+def _format_recipes_markdown(payload: dict[str, Any], tool: str) -> str:
+    """Compact markdown for the recipe / cost tools."""
+    recipes = payload.get("recipes") or []
+    source = payload.get("source") or "unknown source"
+    server_specific = payload.get("serverSpecific")
+    provenance = "server-specific" if server_specific else "vanilla fallback"
+    matched = payload.get("recipesMatched", len(recipes))
+    lines = [
+        f"**Eco recipes** — {len(recipes)} of {matched:,} shown ({provenance}: {source})",
+        "",
+    ]
+    if not recipes:
+        lines.append("_No recipe matched that filter._")
+    for recipe in recipes[:10]:
+        product = (recipe.get("product") or {}).get("displayName") or recipe.get("name", "?")
+        skill = (recipe.get("skill") or {}).get("name") or "no skill"
+        station = recipe.get("craftStation") or recipe.get("station") or "no station"
+        line = f"- **{product}** — {skill} at {station}"
+        cost = recipe.get("cost") or {}
+        if tool == "price_recipe" and cost:
+            per_unit = cost.get("perUnit")
+            if per_unit is not None:
+                line += f" · ~{per_unit:,.2f}/unit"
+            margin = cost.get("marginPct")
+            if margin is not None:
+                line += f" · margin {margin:+.0f}%"
+        lines.append(line)
+    for warning in payload.get("warnings") or []:
+        lines.append(f"- ⚠ {warning}")
+    return "\n".join(lines)
+
+
+def _format_skills_markdown(payload: dict[str, Any]) -> str:
+    skills = payload.get("skills") or []
+    lines = [f"**Eco skills** — {len(skills)} skills gating recipes", ""]
+    for skill in skills[:20]:
+        lines.append(
+            f"- **{skill.get('display') or skill.get('name')}** — "
+            f"{skill.get('recipeCount', 0)} recipe(s)"
+        )
+    for warning in payload.get("warnings") or []:
+        lines.append(f"- ⚠ {warning}")
+    return "\n".join(lines)
 
 
 _UNREPORTED = "not reported"
@@ -2029,6 +2091,84 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 ],
             )
 
+        if name in ("get_recipes", "price_recipe", "get_skills"):
+            from .cost import CostParams, annotate_payload
+            from .recipes import filter_index, load_recipe_index
+            from .wave3_routes import skills_payload
+
+            args = arguments or {}
+            index = load_recipe_index()
+
+            if name == "get_skills":
+                recipe_payload: dict[str, Any] = skills_payload(index)
+                return CallToolResult(
+                    content=[
+                        TextContent(type="text", text=_format_skills_markdown(recipe_payload)),
+                        TextContent(type="text", text=json.dumps(recipe_payload)),
+                    ],
+                )
+
+            product = args.get("product")
+            recipe_payload = filter_index(
+                index,
+                product=product,
+                skill=args.get("skill"),
+                station=args.get("station"),
+            )
+
+            # `/preview/recipes.json?cost=1` is the SPA's established contract,
+            # so get_recipes runs the same engine price_recipe does when asked.
+            wants_cost = name == "price_recipe" or _is_truthy_arg(args.get("cost"))
+            if wants_cost:
+                try:
+                    prices = await market_mod.fetch_price_map(
+                        base_url=args.get("server"), api_key=_resolve_recipe_admin_key()
+                    )
+                except (httpx.HTTPError, OSError):
+                    # Market unreachable: still ship the roll-up, every leaf
+                    # just reads "unpriced".
+                    prices = {}
+                    _recipe_warn(
+                        recipe_payload,
+                        "cost: market unreachable, ingredient prices unavailable",
+                    )
+                annotate_payload(
+                    recipe_payload,
+                    index,
+                    prices,
+                    CostParams(
+                        calorie_cost=float(
+                            args.get("calorie_price") or args.get("caloriePrice") or 0.0
+                        ),
+                        minute_cost=float(
+                            args.get("minute_price") or args.get("minutePrice") or 0.0
+                        ),
+                    ),
+                )
+            if name != "price_recipe":
+                # Summary-first: the full graph is ~1,450 recipes and blows the
+                # response cap, so bound it unless the caller opts out (#242,
+                # and the #240 family-3 lesson).
+                limit = int(args.get("limit", 25) or 0)
+                matched: list[Any] = list(recipe_payload.get("recipes") or [])
+                total = len(matched)
+                if limit and total > limit:
+                    recipe_payload["recipes"] = matched[:limit]
+                    _recipe_warn(
+                        recipe_payload,
+                        f"showing {limit} of {total:,} matching recipes; filter by product, "
+                        "skill or station, or raise `limit`",
+                    )
+                recipe_payload["recipesMatched"] = total
+                recipe_payload["recipesReturned"] = len(list(recipe_payload.get("recipes") or []))
+
+            return CallToolResult(
+                content=[
+                    TextContent(type="text", text=_format_recipes_markdown(recipe_payload, name)),
+                    TextContent(type="text", text=json.dumps(recipe_payload, default=str)),
+                ],
+            )
+
         if name == "get_social":
             server_arg = arguments.get("server") if arguments else None
             reveal_names = bool(arguments.get("reveal_names")) if arguments else False
@@ -2317,6 +2457,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
 
     wave1_routes.register_wave1_routes(dual_routes, _dispatch_call_tool)
     wave2_routes.register_wave2_routes(dual_routes, _dispatch_call_tool)
+    wave3_routes.register_wave3_routes(dual_routes, _dispatch_call_tool)
 
     @server.call_tool()
     async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:

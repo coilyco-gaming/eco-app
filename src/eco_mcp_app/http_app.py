@@ -44,15 +44,13 @@ from starlette.staticfiles import StaticFiles
 from . import page_auth
 from . import users as users_mod
 from .admin import build_admin_server
-from .cost import CostParams, annotate_payload
+from .cost import CostParams
 from .dual_routes import DualRouteRegistry
 from .food import fetch_food_report
 from .items import fetch_item_index, fetch_item_pivot
 from .livereload import DEBUG, livereload_route
 from .map import build_map_payload, fetch_map_bundle
-from .market import fetch_price_map
 from .price_history import fetch_item_price_history
-from .recipes import filter_index, load_recipe_index
 from .server import (
     ADMIN_API_KEY_ENV,
     DEFAULT_ECO_INFO_URL,
@@ -584,47 +582,6 @@ def create_app(route_registry: DualRouteRegistry | None = None) -> Starlette:
         )
         return JSONResponse(payload)
 
-    async def preview_recipes_json(request: Request) -> JSONResponse:
-        """`/preview/recipes.json` — the SPA's recipe bill-of-materials plane.
-
-        Serves the vendored Eco Gnome recipe graph (`recipes.py`) as the
-        `RecipeIndex` DTO the recipes page (eco-app#98 B) / cost engine (C) read.
-        The graph itself is static bundled vanilla data (eco-app#100), so by
-        default this has no live fetch. Optional `?product=` / `?skill=` /
-        `?station=` narrow the returned `recipes` list; the lookup maps stay
-        whole so facet pickers still work.
-
-        `?cost=1` turns on the roll-up engine (eco-app#98 C): each recipe row
-        gains a `cost` breakdown (ingredient + labor + time → per-unit cost /
-        margin), resolving leaf prices from the live market median. `?server=`
-        targets which server's market to price against; `?caloriePrice=` /
-        `?minutePrice=` monetize the labor / time axes (both default 0 — the raw
-        calorie/minute totals ride the payload regardless). An unreachable
-        market degrades to all-unpriced rather than failing the whole page.
-        """
-        params = request.query_params
-        index = load_recipe_index()
-        payload = filter_index(
-            index,
-            product=params.get("product"),
-            skill=params.get("skill"),
-            station=params.get("station"),
-        )
-        if _is_truthy(params.get("cost")):
-            try:
-                prices = await fetch_price_map(
-                    base_url=params.get("server"), api_key=_resolve_admin_key()
-                )
-            except (httpx.HTTPError, OSError):
-                # Market unreachable: still ship the roll-up, every leaf just
-                # reads "unpriced" and the page shows a partial-cost note.
-                prices = {}
-                payload.setdefault("warnings", []).append(
-                    "cost: market unreachable, ingredient prices unavailable"
-                )
-            annotate_payload(payload, index, prices, _cost_params(params))
-        return JSONResponse(payload)
-
     def _extract_json_block(call_result: mt.CallToolResult) -> Any:
         # Each tool emits markdown + JSON TextContent blocks. Find the JSON
         # block by trying to parse each text block; first that parses wins.
@@ -705,7 +662,6 @@ def create_app(route_registry: DualRouteRegistry | None = None) -> Starlette:
         Route("/preview/food.json", preview_food_json, methods=["GET"]),
         Route("/preview/item.json", preview_item_json, methods=["GET"]),
         Route("/preview/price-history.json", preview_price_history_json, methods=["GET"]),
-        Route("/preview/recipes.json", preview_recipes_json, methods=["GET"]),
         Route("/preview/{tool}", preview_tool, methods=["GET"]),
         Mount("/mcp", app=handle_mcp),
         Mount("/jobs/api", app=jobs_app),

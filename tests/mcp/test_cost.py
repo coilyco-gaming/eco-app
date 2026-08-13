@@ -287,7 +287,9 @@ def test_preview_recipes_cost_on_with_mocked_market(monkeypatch: pytest.MonkeyPa
     async def _fake_price_map(*args: object, **kwargs: object) -> dict[str, float]:
         return {}
 
-    monkeypatch.setattr("eco_mcp_app.http_app.fetch_price_map", _fake_price_map)
+    # The cost engine moved behind the price_recipe tool (eco-app#242), so the
+    # market read now happens in the market module the tool reaches through.
+    monkeypatch.setattr("eco_mcp_app.market.fetch_price_map", _fake_price_map)
     client = _make_client()
     r = client.get("/preview/recipes.json", params={"cost": "1"})
     assert r.status_code == 200
@@ -305,7 +307,7 @@ def test_preview_recipes_cost_degrades_when_market_unreachable(
     async def _boom(*args: object, **kwargs: object) -> dict[str, float]:
         raise httpx.ConnectError("no route to exporter")
 
-    monkeypatch.setattr("eco_mcp_app.http_app.fetch_price_map", _boom)
+    monkeypatch.setattr("eco_mcp_app.market.fetch_price_map", _boom)
     client = _make_client()
     r = client.get("/preview/recipes.json", params={"cost": "1"})
     assert r.status_code == 200

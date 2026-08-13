@@ -39,6 +39,11 @@ async def test_list_tools_advertises_all_tools() -> None:
         "get_climate",
         "get_currency",
         "trade_watchers",
+        # The Eco Gnome recipe/cost plane, which had no MCP surface at all
+        # until eco-app#242.
+        "get_recipes",
+        "price_recipe",
+        "get_skills",
     }
 
 
