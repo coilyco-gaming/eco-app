@@ -30,6 +30,10 @@ export interface EcoWorld {
   animals: number | null
   laws: number | null
   totalCulture: number | null
+  // "milestones" when /info reported 0 culture but the milestone list showed
+  // real progress, so the number is a floor rather than the server's counter
+  // (eco-app#237).
+  totalCultureSource: "info" | "milestones"
 }
 
 export interface EcoCycle {

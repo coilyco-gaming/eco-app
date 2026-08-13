@@ -22,7 +22,14 @@ export const SAMPLE_STATUS: EcoStatus = {
     activeAndOnline: 4,
     peakActive: 38,
   },
-  world: { size: "0.52km²", plants: 64342, animals: 0, laws: 10, totalCulture: 2254.76 },
+  world: {
+    size: "0.52km²",
+    plants: 64342,
+    animals: 0,
+    laws: 10,
+    totalCulture: 2254.76,
+    totalCultureSource: "info",
+  },
   cycle: {
     daysRunning: 56,
     daysUntilMeteor: 3,

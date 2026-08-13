@@ -89,6 +89,9 @@ def test_markdown_still_renders_real_numbers() -> None:
         Laws=1,
         TotalCulture=171.0,
         DaysRunning=40,
+        # The countdown is only reported when a meteor is actually coming
+        # (eco-app#237).
+        HasMeteor=True,
         DaysUntilMeteor=20,
     )
     markdown = _format_markdown(to_payload(info))

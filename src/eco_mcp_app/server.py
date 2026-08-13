@@ -489,6 +489,11 @@ def to_payload(info: dict[str, Any]) -> dict[str, Any]:
     (#214).
     """
     per_day = info.get("ExhaustionHoursGainPerWeekday") or {}
+    total_culture, culture_source = resolve_total_culture(info)
+    # A countdown to a meteor that is not coming is not a measurement.
+    # GreenLeaf Prime returns daysUntilMeteor: -17 with hasMeteor: false (#237).
+    has_meteor = bool(info.get("HasMeteor"))
+    days_until_meteor = _opt_int(info, "DaysUntilMeteor") if has_meteor else None
     return {
         "view": "eco_status",
         "fetchedAtISO": info.get("_fetchedAtISO"),
@@ -518,17 +523,18 @@ def to_payload(info: dict[str, Any]) -> dict[str, Any]:
             "plants": _opt_int(info, "Plants"),
             "animals": _opt_int(info, "Animals"),
             "laws": _opt_int(info, "Laws"),
-            "totalCulture": _opt_float(info, "TotalCulture"),
+            "totalCulture": total_culture,
+            "totalCultureSource": culture_source,
         },
         "cycle": {
             "daysRunning": _opt_int(info, "DaysRunning"),
-            "daysUntilMeteor": _opt_int(info, "DaysUntilMeteor"),
+            "daysUntilMeteor": days_until_meteor,
             # Raw world clock in seconds since cycle start (1 in-game day = 3600s).
             # The SPA folds this into a day+hour caption via formatDayHour (eco-app#97).
             # Eco 0.13's /info does not send TimeSinceStart at all, so this is
             # routinely null — see #214.
             "timeSinceStartS": _opt_float(info, "TimeSinceStart"),
-            "hasMeteor": bool(info.get("HasMeteor")),
+            "hasMeteor": has_meteor,
             "collaboration": info.get("CollaborationLevel"),
             "gameSpeed": info.get("GameSpeed"),
             "simulationLevel": info.get("SimulationLevel"),
@@ -606,6 +612,50 @@ def parse_achievement(name: str, raw: str) -> dict[str, Any]:
     }
 
 
+def _culture_floor_from_milestones(info: dict[str, Any]) -> float | None:
+    """Largest culture figure visible in ``ServerAchievementsDict``, if any.
+
+    Every milestone row is culture-denominated progress, so the largest
+    ``current`` is a floor on the server's real total culture.
+    """
+    raw = info.get("ServerAchievementsDict") or {}
+    values = [
+        row["current"]
+        for row in (parse_achievement(name, value) for name, value in raw.items())
+        if row["current"] is not None and row["current"] > 0
+    ]
+    return max(values, default=None)
+
+
+def resolve_total_culture(info: dict[str, Any]) -> tuple[float | None, str]:
+    """Reconcile ``/info``'s TotalCulture against visible milestone progress.
+
+    Sirens reports ``TotalCulture: 0`` while its own milestone list shows 910
+    culture from 26 works by 18 artists; GreenLeaf Prime returns a real number
+    through the same code path, so the field is unreliable per server rather
+    than always broken (#237). Publishing the zero as an economic KPI told a
+    reader the server had no cultural output at all, with no way to know the
+    field was untrustworthy.
+
+    Returns ``(value, source)`` where source is ``"info"`` or ``"milestones"``.
+    """
+    reported = _opt_float(info, "TotalCulture")
+    if reported is not None and reported > 0:
+        return reported, "info"
+    floor = _culture_floor_from_milestones(info)
+    if floor is not None:
+        return floor, "milestones"
+    return reported, "info"
+
+
+# Shown wherever a milestone-derived culture figure is published, so a reader
+# knows the number did not come from the server's own counter.
+CULTURE_FROM_MILESTONES_NOTE = (
+    "The server reported 0 total culture, which contradicts its own milestone "
+    "progress. Showing the largest milestone figure as a floor instead."
+)
+
+
 def build_milestones_payload(info: dict[str, Any]) -> dict[str, Any]:
     """Shape the payload consumed by the milestone card template.
 
@@ -615,18 +665,27 @@ def build_milestones_payload(info: dict[str, Any]) -> dict[str, Any]:
     raw_dict = info.get("ServerAchievementsDict") or {}
     rows = [parse_achievement(name, value) for name, value in raw_dict.items()]
     rows.sort(key=lambda r: r["pct"], reverse=True)
+    total_culture, culture_source = resolve_total_culture(info)
     return {
         "view": "eco_milestones",
         "fetchedAtISO": info.get("_fetchedAtISO"),
         "sourceUrl": info.get("_sourceUrl"),
-        "totalCulture": float(info.get("TotalCulture") or 0.0),
+        "totalCulture": total_culture,
+        "totalCultureSource": culture_source,
+        "totalCultureNote": (
+            CULTURE_FROM_MILESTONES_NOTE if culture_source == "milestones" else None
+        ),
         "milestones": rows,
     }
 
 
 def _format_milestones_markdown(payload: dict[str, Any]) -> str:
+    total = payload["totalCulture"]
+    headline = _UNREPORTED if total is None else f"{total:.1f}"
+    if payload.get("totalCultureSource") == "milestones":
+        headline = f"{headline}+ (from milestones — the server reported 0)"
     lines = [
-        f"**Eco milestones** — TotalCulture: **{payload['totalCulture']:.1f}**",
+        f"**Eco milestones** — TotalCulture: **{headline}**",
         "",
     ]
     if not payload["milestones"]:
@@ -1221,7 +1280,7 @@ def compute_economy_payload(raw: dict[str, Any]) -> dict[str, Any]:
         for name, _sd, pts in candidates[:4]
     ]
 
-    total_culture = float(info.get("TotalCulture") or 0.0)
+    total_culture, culture_source = resolve_total_culture(info)
 
     return {
         "server": {
@@ -1249,6 +1308,7 @@ def compute_economy_payload(raw: dict[str, Any]) -> dict[str, Any]:
             "govt_funds": govt_funds,
             "net_tax_flow": net_tax_flow,
             "total_culture": total_culture,
+            "total_culture_source": culture_source,
             "trades_wow_pct": trades_wow_pct,
         },
         "sparks": sparks,
@@ -1379,7 +1439,8 @@ def _format_economy_markdown(payload: dict[str, Any]) -> str:
         f"- Wages paid: **{k['wages_total']:,.0f}**",
         f"- Net tax flow: **{k['net_tax_flow']:+,.0f}**"
         f" (taxes in {k['taxes_paid']:,.0f} · govt out {k['govt_funds']:,.0f})",
-        f"- Total culture: {k['total_culture']:.1f}",
+        f"- Total culture: {_fmt_num(k['total_culture'], '.1f')}"
+        + ("+ (from milestones)" if k.get("total_culture_source") == "milestones" else ""),
     ]
     if not payload.get("admin_ok"):
         lines.extend(["", "_Admin token unavailable — series data is empty._"])
