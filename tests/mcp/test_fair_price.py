@@ -392,3 +392,101 @@ async def test_unknown_items_are_successful_empty_states_across_transports(item:
         response = client.get("/preview/fair_price.json", params={"item": item})
     assert response.status_code == 200
     assert response.json()["error"] == "unknown_item"
+
+
+# ---------------------------------------------------------------------------
+# Substitution + in-game status honesty (eco-app#234)
+# ---------------------------------------------------------------------------
+
+
+def test_a_substituted_benchmark_is_declared_not_silent() -> None:
+    """`fair_price(item="IronIngot")` benchmarks against iron *ore* (#234).
+
+    The payload echoed `item: "Iron"` and the narrative said "in-cycle fair
+    price for IronIngot", so one response named two different goods as its
+    subject with nothing to say a substitution had happened. Ore and ingot sit
+    at different points in the production chain.
+    """
+    result = fp.FairPriceResult(
+        requested="IronIngot",
+        item="Iron",
+        series_id="PIORECRUSDM",
+        display_name="iron ore",
+        display_unit="USD / metric ton",
+        frequency="Monthly",
+        latest_value=103.79,
+        latest_date="2026-07-01",
+        changes={"1m": -7.02},
+        changes_label="monthly",
+        narrative="…",
+        cached=False,
+    )
+    assert result.substituted is True
+    payload = fp.to_payload(result)
+    assert payload["requested"] == "IronIngot"
+    assert payload["benchmarkedAs"] == "iron ore"
+    assert payload["substituted"] is True
+    assert "different good" in payload["substitutionReason"]
+
+
+def test_an_exact_item_reports_no_substitution() -> None:
+    result = fp.FairPriceResult(
+        requested="Copper",
+        item="Copper",
+        series_id="PCOPPUSDM",
+        display_name="copper",
+        display_unit="USD / metric ton",
+        frequency="Monthly",
+        latest_value=1.0,
+        latest_date="2026-07-01",
+        changes={},
+        changes_label="monthly",
+        narrative="…",
+        cached=False,
+    )
+    assert result.substituted is False
+    payload = fp.to_payload(result)
+    assert payload["substituted"] is False
+    assert payload["substitutionReason"] is None
+
+
+def test_missing_in_game_evidence_names_its_reason() -> None:
+    """Four silent nulls read as a complete answer (#234)."""
+    result = fp.FairPriceResult(
+        requested="Copper",
+        item="Copper",
+        series_id="PCOPPUSDM",
+        display_name="copper",
+        display_unit="USD / metric ton",
+        frequency="Monthly",
+        latest_value=1.0,
+        latest_date="2026-07-01",
+        changes={},
+        changes_label="monthly",
+        narrative="…",
+        cached=False,
+        in_game_status="no_admin_key",
+    )
+    payload = fp.to_payload(result)
+    assert payload["inGameMedian"] is None
+    assert payload["inGameStatus"] == "no_admin_key"
+
+
+def test_present_in_game_evidence_reports_ok() -> None:
+    result = fp.FairPriceResult(
+        requested="Copper",
+        item="Copper",
+        series_id="PCOPPUSDM",
+        display_name="copper",
+        display_unit="USD / metric ton",
+        frequency="Monthly",
+        latest_value=1.0,
+        latest_date="2026-07-01",
+        changes={},
+        changes_label="monthly",
+        narrative="…",
+        cached=False,
+        in_game_median=0.6,
+        in_game_currency="Spectres",
+    )
+    assert fp.to_payload(result)["inGameStatus"] == "ok"

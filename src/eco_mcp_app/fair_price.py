@@ -318,6 +318,22 @@ class FairPriceResult:
     in_game_currency: str | None = None
     in_game_trend: str | None = None
     in_game_verdict: str | None = None
+    # What the caller actually asked for, and why the answer may be about
+    # something else. `fair_price(item="IronIngot")` benchmarks against iron
+    # *ore* — a different good at a different point in the chain — and used to
+    # echo only the resolved name, so one response named two items without
+    # saying so (#234).
+    requested: str | None = None
+    # Why the in-game half is empty, when it is. Four silent nulls made a
+    # degraded answer indistinguishable from a complete one (#234).
+    in_game_status: str | None = None
+
+    @property
+    def substituted(self) -> bool:
+        """True when the benchmark is not the good the caller named."""
+        if not self.requested or not self.item:
+            return False
+        return self.requested.strip().lower() != self.item.strip().lower()
 
 
 def _parse_obs_value(raw: str) -> float | None:
@@ -574,6 +590,8 @@ def _build_narrative(
     eco_item: str,
     calibrated_price: float | None,
     in_game_sentence: str | None = None,
+    substitution_note: str | None = None,
+    in_game_status_note: str | None = None,
 ) -> str:
     if latest_value is None:
         return (
@@ -620,6 +638,13 @@ def _build_narrative(
         )
     if in_game_sentence:
         advisory = f"{advisory} {in_game_sentence}"
+    elif in_game_status_note:
+        advisory = f"{advisory} {in_game_status_note}"
+    # Name the substitution in the prose too. The advisory says "fair price for
+    # IronIngot" while the headline quotes iron *ore*, so without this one
+    # response asserts two different subjects (#234).
+    if substitution_note:
+        advisory = f"{advisory} {substitution_note}"
     return f"{headline} {trend_line} {advisory}"
 
 
@@ -635,6 +660,7 @@ async def fetch_fair_price(
     in_game_median: float | None = None,
     in_game_currency: str | None = None,
     in_game_trend: str | None = None,
+    in_game_status: str | None = None,
 ) -> FairPriceResult:
     """Top-level: resolve item, fetch metadata + observations, build narrative.
 
@@ -652,6 +678,8 @@ async def fetch_fair_price(
     if resolved is None:
         known = ", ".join(sorted(ITEM_MAP.keys()))
         return FairPriceResult(
+            requested=item,
+            in_game_status=in_game_status,
             item=item,
             series_id=None,
             display_name=None,
@@ -670,6 +698,8 @@ async def fetch_fair_price(
     api_key = get_fred_api_key()
     if not api_key:
         return FairPriceResult(
+            requested=item,
+            in_game_status=in_game_status,
             item=resolved,
             series_id=series_id,
             display_name=meta["display_name"],
@@ -696,6 +726,8 @@ async def fetch_fair_price(
         raw_obs = await fetch_observations(series_id, api_key)
     except httpx.HTTPError as e:
         return FairPriceResult(
+            requested=item,
+            in_game_status=in_game_status,
             item=resolved,
             series_id=series_id,
             display_name=meta["display_name"],
@@ -713,6 +745,8 @@ async def fetch_fair_price(
     cleaned = _clean_observations(raw_obs)
     if not cleaned:
         return FairPriceResult(
+            requested=item,
+            in_game_status=in_game_status,
             item=resolved,
             series_id=series_id,
             display_name=meta["display_name"],
@@ -748,7 +782,21 @@ async def fetch_fair_price(
             calibrated_price=calibrated_price,
             eco_item=meta["eco_item"],
         )
+    substituted = item is not None and item.strip().lower() != resolved.strip().lower()
+    substitution_note = (
+        f"You asked about {item}; there is no real-world series for it, so this is "
+        f"benchmarked against {meta['display_name']} — a different good in the same chain."
+        if substituted
+        else None
+    )
+    in_game_status_note = (
+        None
+        if in_game_median is not None
+        else "No in-game market evidence was available for the comparison."
+    )
     narrative = _build_narrative(
+        substitution_note=substitution_note,
+        in_game_status_note=in_game_status_note,
         display_name=meta["display_name"],
         display_unit=meta["display_unit"],
         latest_value=latest_value,
@@ -760,6 +808,8 @@ async def fetch_fair_price(
         in_game_sentence=in_game_sentence,
     )
     return FairPriceResult(
+        requested=item,
+        in_game_status=in_game_status,
         item=resolved,
         series_id=series_id,
         display_name=meta["display_name"],
@@ -784,6 +834,20 @@ def to_payload(result: FairPriceResult) -> dict[str, Any]:
         "view": "fair_price",
         "fetchedAtISO": datetime.now(UTC).isoformat(),
         "item": result.item,
+        # The item as asked for, and whether the benchmark is a stand-in.
+        # `IronIngot` benchmarks against iron ore (#234).
+        "requested": result.requested,
+        "benchmarkedAs": result.display_name or result.item,
+        "substituted": result.substituted,
+        "substitutionReason": (
+            (
+                f"No real-world series tracks {result.requested!r} directly; "
+                f"benchmarked against {result.display_name or result.item!r}, which is a "
+                "different good at a different point in the production chain."
+            )
+            if result.substituted
+            else None
+        ),
         "seriesId": result.series_id,
         "displayName": result.display_name,
         "displayUnit": result.display_unit,
@@ -799,4 +863,8 @@ def to_payload(result: FairPriceResult) -> dict[str, Any]:
         "inGameCurrency": result.in_game_currency,
         "inGameTrend": result.in_game_trend,
         "inGameVerdict": result.in_game_verdict,
+        # Why the four fields above are empty, when they are. Silent nulls made
+        # a half-answer look like a complete one (#234).
+        "inGameStatus": result.in_game_status
+        or ("ok" if result.in_game_median is not None else "unavailable"),
     }

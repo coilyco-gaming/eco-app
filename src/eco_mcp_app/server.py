@@ -779,25 +779,32 @@ def _format_species_markdown(payload: dict[str, Any]) -> str:
 
 async def _in_game_reference_for(
     item: str | None, server_arg: str | None
-) -> market_mod.InGameReference | None:
+) -> tuple[market_mod.InGameReference | None, str]:
     """Best-effort in-game price read for the fair-price cross-reference.
 
     Gated on an admin key (the trades exporter needs one) so a keyless host —
     and the FRED-only unit tests — never touch the exporter. Any failure
-    (unreachable server, no matching in-game market) returns None and the
-    advisor falls back to the pure FRED narrative.
+    (unreachable server, no matching in-game market) falls back to the pure
+    FRED narrative.
+
+    Returns the reference and a status string. Four silent nulls made a
+    degraded answer indistinguishable from a complete one, so every failure
+    path names itself (#234).
     """
     api_key = os.environ.get(ADMIN_API_KEY_ENV) or _get_admin_token()
     if not api_key:
-        return None
+        return None, "no_admin_key"
     eco_item = fair_price_mod.eco_item_for(item)
     if not eco_item:
-        return None
+        return None, "item_not_mapped_to_an_in_game_item"
     try:
         intel = await market_mod.fetch_market(base_url=server_arg, api_key=api_key)
     except Exception:  # the FRED path must survive any exporter fault
-        return None
-    return market_mod.in_game_reference(intel, eco_item)
+        return None, "exporter_unreachable"
+    ref = market_mod.in_game_reference(intel, eco_item)
+    if ref is None:
+        return None, f"no_in_game_market_for_{eco_item}"
+    return ref, "ok"
 
 
 def _format_ecoregion_markdown(payload: dict[str, Any]) -> str:
@@ -2150,13 +2157,14 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
             item = arguments.get("item") if arguments else None
             cycle_id = arguments.get("cycle_id") if arguments else None
             server_arg = arguments.get("server") if arguments else None
-            ref = await _in_game_reference_for(item, server_arg)
+            ref, in_game_status = await _in_game_reference_for(item, server_arg)
             result = await fair_price_mod.fetch_fair_price(
                 item,
                 cycle_id=cycle_id,
                 in_game_median=ref.median if ref else None,
                 in_game_currency=ref.currency if ref else None,
                 in_game_trend=ref.trend if ref else None,
+                in_game_status=in_game_status,
             )
             payload = fair_price_mod.to_payload(result)
             return CallToolResult(
