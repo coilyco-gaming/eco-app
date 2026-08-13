@@ -425,8 +425,41 @@ def _format_government_markdown(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _opt_int(info: dict[str, Any], key: str) -> int | None:
+    """Return ``info[key]`` as an int, or ``None`` when upstream did not send it.
+
+    Absent and zero are different states (#214). Defaulting a missing field to
+    ``0`` publishes a confident measurement for something the server never
+    reported — `timeSinceStartS: 0` reads as "the server just restarted", which
+    cost real triage time. Callers render ``None`` as unknown.
+    """
+    raw = info.get(key)
+    if raw is None or raw == "":
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _opt_float(info: dict[str, Any], key: str) -> float | None:
+    """Float counterpart to :func:`_opt_int`. See #214."""
+    raw = info.get(key)
+    if raw is None or raw == "":
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 def to_payload(info: dict[str, Any]) -> dict[str, Any]:
-    """Shape the public status payload from a bounded subset of ``/info``."""
+    """Shape the public status payload from a bounded subset of ``/info``.
+
+    Every numeric field is optional: `/info` varies by server version and by
+    mod set, and a field it omits comes back as ``None`` rather than ``0``
+    (#214).
+    """
     per_day = info.get("ExhaustionHoursGainPerWeekday") or {}
     return {
         "view": "eco_status",
@@ -444,27 +477,29 @@ def to_payload(info: dict[str, Any]) -> dict[str, Any]:
             "adminOnline": bool(info.get("AdminOnline")),
         },
         "players": {
-            "online": int(info.get("OnlinePlayers") or 0),
+            "online": _opt_int(info, "OnlinePlayers"),
             "onlineNames": [
                 str(name) for name in (info.get("OnlinePlayersNames") or []) if str(name).strip()
             ],
-            "total": int(info.get("TotalPlayers") or 0),
-            "activeAndOnline": int(info.get("ActiveAndOnlinePlayers") or 0),
-            "peakActive": int(info.get("PeakActivePlayers") or 0),
+            "total": _opt_int(info, "TotalPlayers"),
+            "activeAndOnline": _opt_int(info, "ActiveAndOnlinePlayers"),
+            "peakActive": _opt_int(info, "PeakActivePlayers"),
         },
         "world": {
             "size": info.get("WorldSize"),
-            "plants": int(info.get("Plants") or 0),
-            "animals": int(info.get("Animals") or 0),
-            "laws": int(info.get("Laws") or 0),
-            "totalCulture": float(info.get("TotalCulture") or 0.0),
+            "plants": _opt_int(info, "Plants"),
+            "animals": _opt_int(info, "Animals"),
+            "laws": _opt_int(info, "Laws"),
+            "totalCulture": _opt_float(info, "TotalCulture"),
         },
         "cycle": {
-            "daysRunning": int(info.get("DaysRunning") or 0),
-            "daysUntilMeteor": int(info.get("DaysUntilMeteor") or 0),
+            "daysRunning": _opt_int(info, "DaysRunning"),
+            "daysUntilMeteor": _opt_int(info, "DaysUntilMeteor"),
             # Raw world clock in seconds since cycle start (1 in-game day = 3600s).
             # The SPA folds this into a day+hour caption via formatDayHour (eco-app#97).
-            "timeSinceStartS": float(info.get("TimeSinceStart") or 0.0),
+            # Eco 0.13's /info does not send TimeSinceStart at all, so this is
+            # routinely null — see #214.
+            "timeSinceStartS": _opt_float(info, "TimeSinceStart"),
             "hasMeteor": bool(info.get("HasMeteor")),
             "collaboration": info.get("CollaborationLevel"),
             "gameSpeed": info.get("GameSpeed"),
@@ -475,8 +510,8 @@ def to_payload(info: dict[str, Any]) -> dict[str, Any]:
         },
         "exhaustion": {
             "active": bool(info.get("ExhaustionActive")),
-            "afterHours": float(info.get("ExhaustionAfterHours") or 0.0),
-            "hoursPerWeekday": {str(k): float(v) for k, v in per_day.items()},
+            "afterHours": _opt_float(info, "ExhaustionAfterHours"),
+            "hoursPerWeekday": {str(k): _opt_float(per_day, str(k)) for k in per_day},
         },
         "playtimesPattern": info.get("Playtimes", ""),
         "achievements": [
@@ -751,21 +786,38 @@ def _get_admin_token() -> str | None:
     return _ECO_ADMIN_TOKEN
 
 
+_UNREPORTED = "not reported"
+
+
+def _fmt_num(value: float | int | None, spec: str = ",") -> str:
+    """Render an optional `/info` number, naming the absent case (#214).
+
+    A missing upstream field reads as "not reported" rather than borrowing a
+    zero that a reader would take for a measurement.
+    """
+    if value is None:
+        return _UNREPORTED
+    return format(value, spec)
+
+
 def _format_markdown(payload: dict[str, Any]) -> str:
     p = payload["players"]
     w = payload["world"]
     c = payload["cycle"]
     s = payload["server"]
     title = s.get("description") or s.get("category") or "Eco server"
+    laws = w["laws"]
     lines = [
-        f"**{title}** — {s.get('category', 'Server')} · cycle day {c['daysRunning']}",
+        f"**{title}** — {s.get('category', 'Server')} · cycle day {_fmt_num(c['daysRunning'])}",
         "",
-        f"- Online: **{p['online']} / {p['total']}** players"
-        f" (peak {p['peakActive']}, active {p['activeAndOnline']})",
-        f"- Days until meteor: **{c['daysUntilMeteor']}**" + (" ☄" if c["hasMeteor"] else ""),
-        f"- World: {w['size']} · {w['plants']:,} plants · {w['animals']:,} animals"
-        f" · {w['laws']} law{'s' if w['laws'] != 1 else ''}"
-        f" · culture {w['totalCulture']:.1f}",
+        f"- Online: **{_fmt_num(p['online'])} / {_fmt_num(p['total'])}** players"
+        f" (peak {_fmt_num(p['peakActive'])}, active {_fmt_num(p['activeAndOnline'])})",
+        f"- Days until meteor: **{_fmt_num(c['daysUntilMeteor'])}**"
+        + (" ☄" if c["hasMeteor"] else ""),
+        f"- World: {w['size']} · {_fmt_num(w['plants'])} plants"
+        f" · {_fmt_num(w['animals'])} animals"
+        f" · {_fmt_num(laws)} law{'' if laws == 1 else 's'}"
+        f" · culture {_fmt_num(w['totalCulture'], '.1f')}",
         f"- Version: `{s.get('version', '?')}` · {c['collaboration']}"
         f" · game speed: {c['gameSpeed']}",
     ]

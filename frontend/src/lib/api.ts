@@ -13,27 +13,31 @@ export interface EcoServerInfo {
   adminOnline: boolean
 }
 
+// Every /info-sourced number is nullable: the game server omits fields by
+// version and mod set, and eco-app passes an omission through as null rather
+// than defaulting it to 0 (eco-app#214). Render null as unknown, never as zero.
 export interface EcoPlayers {
-  online: number
+  online: number | null
   onlineNames: string[]
-  total: number
-  activeAndOnline: number
-  peakActive: number
+  total: number | null
+  activeAndOnline: number | null
+  peakActive: number | null
 }
 
 export interface EcoWorld {
   size: string
-  plants: number
-  animals: number
-  laws: number
-  totalCulture: number
+  plants: number | null
+  animals: number | null
+  laws: number | null
+  totalCulture: number | null
 }
 
 export interface EcoCycle {
-  daysRunning: number
-  daysUntilMeteor: number
+  daysRunning: number | null
+  daysUntilMeteor: number | null
   // Real seconds since cycle start (the /info world clock); 1 in-game day = 3600s.
-  timeSinceStartS: number
+  // Eco 0.13 does not send it at all, so null is the common case.
+  timeSinceStartS: number | null
   hasMeteor: boolean
   collaboration: string
   gameSpeed: string

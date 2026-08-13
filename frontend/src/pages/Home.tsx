@@ -48,7 +48,7 @@ export default function Home() {
           <p>Meteor countdown, players, world stats, and the economy at a glance.</p>
           {status && (
             <p className="dir-badges" data-testid="info-badges">
-              {status.cycle.hasMeteor && (
+              {status.cycle.hasMeteor && status.cycle.daysUntilMeteor !== null && (
                 <span className="mini-pill">☄ {status.cycle.daysUntilMeteor}d to meteor</span>
               )}
               <span className="mini-pill">{formatCount(status.players.online)} online</span>

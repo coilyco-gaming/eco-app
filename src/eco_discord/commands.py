@@ -18,6 +18,16 @@ def _mapping(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _reported(value: Any) -> str:
+    """Render an optional status number, naming the absent case.
+
+    `/info` omits fields per server version, and eco-app now passes that
+    through as null rather than zero (eco-app#214). An embed that printed
+    "Day 0" for an unreported day would be confidently wrong.
+    """
+    return "unknown" if value is None else str(value)
+
+
 @dataclass(frozen=True)
 class CommandService:
     client: EcoAppClient
@@ -87,11 +97,13 @@ class CommandService:
             fields=[
                 EmbedField(
                     "Players online",
-                    f"{players.get('online', 0)} / {players.get('total', 0)}",
+                    f"{_reported(players.get('online'))} / {_reported(players.get('total'))}",
                     True,
                 ),
-                EmbedField("World age", f"Day {cycle.get('daysRunning', 0)}", True),
-                EmbedField("Meteor", f"{cycle.get('daysUntilMeteor', 0)} days remaining", True),
+                EmbedField("World age", f"Day {_reported(cycle.get('daysRunning'))}", True),
+                EmbedField(
+                    "Meteor", f"{_reported(cycle.get('daysUntilMeteor'))} days remaining", True
+                ),
                 EmbedField("Version", str(server.get("version") or "Unavailable"), True),
             ],
         )

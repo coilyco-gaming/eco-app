@@ -13,7 +13,12 @@ export function stripEcoMarkup(text: string): string {
   return stripEcoMarkupInline(text).replace(/[ \t]+\n/g, "\n").trim()
 }
 
-export function formatCount(n: number): string {
+// An unreported upstream field arrives as null (eco-app#214). It renders as a
+// dash so a reader can tell "the server did not say" from a real zero.
+export const UNREPORTED = "—"
+
+export function formatCount(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return UNREPORTED
   return new Intl.NumberFormat("en-US").format(Math.round(n))
 }
 
@@ -168,8 +173,13 @@ export function safeHttpUrl(url: string | null | undefined): string | undefined 
 }
 
 // Cycle progress toward the meteor, as a 0-100 integer. The payload gives
-// days elapsed and days remaining, so the total is their sum.
-export function meteorProgressPercent(daysRunning: number, daysUntilMeteor: number): number {
+// days elapsed and days remaining, so the total is their sum. Either side may
+// be unreported (eco-app#214), in which case there is no progress to draw.
+export function meteorProgressPercent(
+  daysRunning: number | null,
+  daysUntilMeteor: number | null,
+): number {
+  if (daysRunning === null || daysUntilMeteor === null) return 0
   const total = daysRunning + daysUntilMeteor
   if (total <= 0) return 0
   return Math.min(100, Math.max(0, Math.round((daysRunning / total) * 100)))
