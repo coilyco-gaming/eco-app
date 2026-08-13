@@ -87,7 +87,9 @@ _INGREDIENT_RE = re.compile(
 _PRODUCT_RE = re.compile(
     r"new\s+CraftingElement<(?P<item>\w+)>\(\s*(?:typeof\(\w+\)\s*,\s*)?(?P<qty>[0-9.]*)f?\s*\)"
 )
-_GARBAGE_RE = re.compile(r"new\s+GarbageOutput\(\s*typeof\((?P<item>\w+)\)\s*,\s*(?P<qty>[0-9.]+)f?")
+_GARBAGE_RE = re.compile(
+    r"new\s+GarbageOutput\(\s*typeof\((?P<item>\w+)\)\s*,\s*(?P<qty>[0-9.]+)f?"
+)
 
 _LABOR_RE = re.compile(r"CreateLaborInCaloriesValue\(\s*(?P<value>[0-9.]+)f?")
 # Inside a CreateCraftTimeValue call, the 0.13 named form is `start: 6`. The other

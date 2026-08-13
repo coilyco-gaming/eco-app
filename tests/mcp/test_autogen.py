@@ -54,7 +54,8 @@ namespace Eco.Mods.TechTree
                 });
             this.Recipes = new List<Recipe> { recipe };
             this.LaborInCalories = CreateLaborInCaloriesValue(60,typeof(SmeltingSkill));
-            this.CraftMinutes = CreateCraftTimeValue(beneficiary: typeof(SmeltCopperRecipe), start: 6, skillType: typeof(SmeltingSkill));
+            this.CraftMinutes = CreateCraftTimeValue(
+                beneficiary: typeof(SmeltCopperRecipe), start: 6, skillType: typeof(SmeltingSkill));
             CraftingComponent.AddRecipe(tableType: typeof(BloomeryObject), recipeFamily: this);
         }
     }
@@ -119,7 +120,8 @@ namespace Eco.Mods.TechTree
                     new CraftingElement<BoardItem>(1)
                 });
             this.LaborInCalories = CreateLaborInCaloriesValue(15);
-            this.CraftMinutes = CreateCraftTimeValue(typeof(LegacyRecipe), this.UILink(), 2.5f, typeof(LoggingSkill));
+            this.CraftMinutes = CreateCraftTimeValue(
+                typeof(LegacyRecipe), this.UILink(), 2.5f, typeof(LoggingSkill));
             CraftingComponent.AddRecipe(typeof(SawmillObject), this);
         }
     }
@@ -149,7 +151,10 @@ namespace Eco.Mods.TechTree
                     new CraftingElement<BoardItem>(3)
                 });
             this.LaborInCalories = CreateLaborInCaloriesValue(40,typeof(CarpentrySkill));
-            this.CraftMinutes = CreateCraftTimeValue(beneficiary: typeof(SawBoardsRecipe), start: 1.5f, skillType: typeof(CarpentrySkill));
+            this.CraftMinutes = CreateCraftTimeValue(
+                beneficiary: typeof(SawBoardsRecipe),
+                start: 1.5f,
+                skillType: typeof(CarpentrySkill));
             CraftingComponent.AddRecipe(tableType: typeof(SawmillObject), recipeFamily: this);
         }
     }
@@ -194,7 +199,8 @@ namespace Eco.Mods.TechTree
                 {
                     new CraftingElement<BoardItem>(3)
                 });
-            CraftingComponent.AddTagProduct(typeof(SawmillObject), typeof(AbsentFamilyRecipe), this);
+            CraftingComponent.AddTagProduct(
+                typeof(SawmillObject), typeof(AbsentFamilyRecipe), this);
         }
     }
 }

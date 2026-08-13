@@ -456,7 +456,9 @@ def load_recipe_index() -> RecipeIndex:
 
     index = build_recipe_index(raw)
     for failure in _AUTOGEN_LOAD_FAILURE:
-        index.warnings.append(f"fell back to the Eco Gnome seed: {_AUTOGEN_DATA_FILENAME} {failure}")
+        index.warnings.append(
+            f"fell back to the Eco Gnome seed: {_AUTOGEN_DATA_FILENAME} {failure}"
+        )
     _INDEX_CACHE[key] = index
     return index
 
