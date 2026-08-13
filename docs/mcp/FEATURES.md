@@ -10,12 +10,16 @@ MCP server exposing live data from Eco game servers. Production: `https://eco-mc
 
 Defined in [src/eco_mcp_app/server.py](../../src/eco_mcp_app/server.py) and the Wave 1 dual-route registry. Names are scoped to this MCP server and therefore omit a redundant Eco product prefix. Most accept an optional `server` argument, with each advertised input schema remaining authoritative. All return data-only results.
 
+**Response-size contract.** Tools with an unbounded detail array bound it by default so a no-argument call stays inside an MCP client's response cap, and say what they dropped rather than truncating silently. `get_trades`, `get_stores`, `get_currency`, `get_crafting_atlas` and `get_civics` take a `limit` (default 50); `get_species` thins its population curve to 120 evenly-spaced samples with the endpoints kept; `get_map` makes SVG geometry opt-in via `include_geometry`. `limit=0` returns everything and is what the SPA passes. Summary and aggregate fields always describe every row regardless ([#256](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/256), [#264](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/264)).
+
+**Measured zero vs unmeasured.** A KPI reads `null` when the dataset behind it could not be read and `0` only when the server reported no activity. `get_economy` names the gap in `datasets_unavailable`; `get_civics` carries `adminAvailable` + `unavailableActions`. Neither derives a health verdict or a rate from a zero denominator ([#259](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/259), [#261](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/261)).
+
 - **get_server_status** - Meteor countdown, players, world dims, cycle progress, version, economy summary.
-- **get_economy** - Trades/day, contract completion, loan defaults, wages, tax flow, volatility sparklines. Admin `/datasets/get`.
-- **get_map** - World map with property deeds. Translucent polygons, owner colors, Deck.gl WebGL.
+- **get_economy** - Trades/day, contract completion, loan defaults, wages, tax flow, government holdings (the same dataset `get_currency` reports), volatility sparklines. Admin `/datasets/get` ([#258](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/258)).
+- **get_map** - World map with property deeds. Each deed carries owner, centroid, bounding box and approximate area in world blocks; SVG polygon geometry and the per-owner colour map are opt-in via `include_geometry` and drive the browser overlay ([#264](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/264)).
 - **get_milestones** - Culture achievement tracker. Per-goal bars, server-wide culture.
-- **get_species** - Species card. iNaturalist/Wikipedia taxonomy + in-game population chart.
-- **explain_item** - Wikidata + Wikipedia lookup. Images, category facts. 7-day cache.
+- **get_species** - Species card. iNaturalist/Wikipedia taxonomy + in-game population chart, thinned to evenly-spaced samples for MCP callers ([#256](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/256)).
+- **explain_item** - Wikidata + Wikipedia lookup. Images, category facts resolved to labels rather than raw entity ids, and canonical Eco item ids (`SteelAxeItem`) accepted alongside common names. 7-day cache ([#262](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/262)).
 - **get_crafting_atlas** - Live crafting from action-log exporter. Top items, station util, leaderboard.
 - **get_trades** - Detailed trade ledger with parties, items, stores, currencies, and price history.
 - **get_stores** - Store and trader directories derived from trade history.
@@ -31,6 +35,9 @@ Defined in [src/eco_mcp_app/server.py](../../src/eco_mcp_app/server.py) and the 
 - **get_climate** - CO2 ppm, sea-level + drift, ground pollution, avg temperature, NOAA Mauna Loa anchor, top polluters. Plus a pollution-machine-style explainer: CO2 sources & sinks breakdown (pollution/animals/plants, lifetime + per-day), the CO2-effects mechanic (warming + sea-level thresholds), and a plain-language "what to expect" narration. Tolerant to dataset-name drift.
 - **get_currency** - Currency & money-supply surface, meets DiscordLink `Currencies` / `Currency <name>`. Roster split minted/backed vs personal/credit (each with issuance + trade activity), money-supply totals (player wealth + gov holdings) and 7d trade value. Optional `currency` arg gives the per-currency report, including the live top account holders (per-account balances from the `mods/stores` `/api/v1/currency-holdings` exporter, joined to citizen names; flagged unavailable rather than faked when that mod is not deployed - [#58](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/58)). Roster + issuance from the `CreateCurrency` / `MintCurrency` / `CurrencyTrade` action exporters, supply from `/datasets/get`; degrades to the public `/info` headline without an admin key. Probe: [docs/datasets/currency.md](../datasets/currency.md).
 - **trade_watchers** - Persistent create, list, remove, and evaluate operations for item, store, trader, and price predicates.
+- **get_recipes** - Recipe graph slice. Filters accept ids or display names on product / skill / station, and a value matching no known key warns with near misses instead of returning a silent empty result. A filtered or truncated payload restricts its lookup maps to the recipes it returns ([#254](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/254), [#255](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/255)).
+- **price_recipe** - Cost one product against live market prices. Returns costed recipes only, not the recipe-graph index ([#254](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/254)).
+- **get_skills** - The profession axis with per-skill recipe coverage. States when the graph is not the running server's, and an optional `server` cross-checks which specialties in use the graph omits ([#263](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/263)).
 - **list_public_servers** - 6 known public servers with labels + notes.
 
 ## Runtime surfaces
