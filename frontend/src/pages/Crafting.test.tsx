@@ -20,6 +20,10 @@ const ATLAS = {
     ["GreenhouseItem", 1003],
   ],
   byCitizen: [
+    ["coilysiren", 3204],
+    ["Citizen #129569", 1877],
+  ],
+  byCitizenIterations: [
     ["coilysiren", 8421],
     ["Citizen #129569", 5102],
   ],

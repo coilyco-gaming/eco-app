@@ -207,12 +207,18 @@ class CraftingAtlas:
     # See eco-app#70.
     by_gathered: list[tuple[str, int]] = field(default_factory=list)
     by_station: list[tuple[str, int]] = field(default_factory=list)
-    # Ranked by production *events* (craft iterations + gather events), not
-    # gather magnitudes, so a plant harvester's biomass can't dominate the
-    # leaderboard (eco-app#70). Craft rows contribute their Count: on rollup
-    # rows that is the merged event total keyed by this citizen, so unlike the
-    # item boards this one stays correct across all history (eco-app#131).
+    # Production *events* per citizen — one per exporter row, the same unit
+    # `get_world.byCitizen` uses. The two tools share the field name, so they
+    # have to share the unit: this used to carry craft iterations, which made
+    # one citizen's value 15x the server's whole `totalEvents` under an
+    # event-shaped name (eco-app#222).
     by_citizen: list[tuple[str, int]] = field(default_factory=list)
+    # Craft iterations per citizen — the Count-weighted board. On a rollup row
+    # Count is the merged event total keyed by that citizen, so unlike the item
+    # boards this one stays correct across all history (eco-app#131). Gathers
+    # stay event-weighted here too, so a plant harvester's biomass cannot
+    # dominate the ranking (eco-app#70).
+    by_citizen_iterations: list[tuple[str, int]] = field(default_factory=list)
     # Sankey edges: (source_station, target_item, event_count). Event-weighted
     # for the same reason — a single 200k-biomass chop would otherwise swamp the
     # diagram. See eco-app#70.
@@ -236,6 +242,7 @@ class CraftingAtlas:
             "byGathered": [[n, c] for n, c in self.by_gathered],
             "byStation": [[n, c] for n, c in self.by_station],
             "byCitizen": [[n, c] for n, c in self.by_citizen],
+            "byCitizenIterations": [[n, c] for n, c in self.by_citizen_iterations],
             "flows": [[s, t, c] for s, t, c in self.flows],
             "perActionCounts": dict(self.per_action_counts),
             "rollupEvents": self.rollup_events,
@@ -289,6 +296,7 @@ def _cache_get(base_url: str, api_key: str | None, ttl_s: float) -> CraftingAtla
         by_gathered=[(n, int(c)) for n, c in data.get("byGathered", [])],
         by_station=[(n, int(c)) for n, c in data.get("byStation", [])],
         by_citizen=[(n, int(c)) for n, c in data.get("byCitizen", [])],
+        by_citizen_iterations=[(n, int(c)) for n, c in data.get("byCitizenIterations", [])],
         flows=[(s, t, float(c)) for s, t, c in data.get("flows", [])],
         per_action_counts=dict(data.get("perActionCounts", {})),
         rollup_events=int(data.get("rollupEvents", 0)),
@@ -419,9 +427,10 @@ def aggregate_rows(
     by_crafted: dict[str, float] = dict(atlas.by_crafted)
     by_gathered: dict[str, int] = dict(atlas.by_gathered)
     by_station: dict[str, int] = dict(atlas.by_station)
-    # by_citizen holds raw numeric ids here; fetch_atlas resolves them to names
-    # once, after every action has folded. See eco-app#5.
+    # Both citizen boards hold raw numeric ids here; fetch_atlas resolves them
+    # to names once, after every action has folded. See eco-app#5.
     by_citizen: dict[str, int] = dict(atlas.by_citizen)
+    by_citizen_iterations: dict[str, int] = dict(atlas.by_citizen_iterations)
     flows: dict[tuple[str, str], float] = {(s, t): c for s, t, c in atlas.flows}
 
     # Only crafts contribute a meaningful unit Count; everything else is
@@ -490,10 +499,13 @@ def aggregate_rows(
         if station and item:
             flows[(station, item)] = flows.get((station, item), 0.0) + 1.0
         if citizen and _INT_RE.match(citizen):
-            # Crafts weigh by iterations (Count, valid on rollups too); gathers
-            # stay event-weighted so biomass can't dominate (eco-app#70).
+            # One row, one event — the unit `get_world.byCitizen` reports.
+            by_citizen[citizen] = by_citizen.get(citizen, 0) + 1
+            # The iteration board weighs crafts by Count (valid on rollups
+            # too); gathers stay event-weighted so biomass can't dominate
+            # (eco-app#70).
             weight = int(max(count, 1.0)) if is_crafted else 1
-            by_citizen[citizen] = by_citizen.get(citizen, 0) + weight
+            by_citizen_iterations[citizen] = by_citizen_iterations.get(citizen, 0) + weight
         consumed += 1
 
     atlas.total_events += consumed
@@ -502,6 +514,9 @@ def aggregate_rows(
     atlas.by_gathered = sorted(by_gathered.items(), key=lambda kv: kv[1], reverse=True)
     atlas.by_station = sorted(by_station.items(), key=lambda kv: kv[1], reverse=True)
     atlas.by_citizen = sorted(by_citizen.items(), key=lambda kv: kv[1], reverse=True)
+    atlas.by_citizen_iterations = sorted(
+        by_citizen_iterations.items(), key=lambda kv: kv[1], reverse=True
+    )
     atlas.flows = sorted(
         ((s, t, c) for (s, t), c in flows.items()),
         key=lambda edge: edge[2],
@@ -557,25 +572,30 @@ async def fetch_citizen_name_map(
 
 
 def _apply_citizen_names(atlas: CraftingAtlas, name_map: dict[str, str]) -> None:
-    """Rewrite by_citizen id keys to display names, in place.
+    """Rewrite both citizen boards' id keys to display names, in place.
 
     Unmapped ids render as ``Citizen #<id>`` so a player the join misses still
     shows up ranked rather than vanishing. When nothing resolved we flag it so
     the card reads as "ids, not names" instead of silently wrong.
     """
-    if not atlas.by_citizen:
+    if not atlas.by_citizen and not atlas.by_citizen_iterations:
         return
-    resolved: dict[str, int] = {}
-    matched = 0
-    for cid, count in atlas.by_citizen:
-        name = name_map.get(cid)
-        if name is None:
-            label = f"Citizen #{cid}"
-        else:
-            label = name
-            matched += 1
-        resolved[label] = resolved.get(label, 0) + count
-    atlas.by_citizen = sorted(resolved.items(), key=lambda kv: kv[1], reverse=True)
+
+    def relabel(board: list[tuple[str, int]]) -> tuple[list[tuple[str, int]], int]:
+        resolved: dict[str, int] = {}
+        matched = 0
+        for cid, count in board:
+            name = name_map.get(cid)
+            if name is None:
+                label = f"Citizen #{cid}"
+            else:
+                label = name
+                matched += 1
+            resolved[label] = resolved.get(label, 0) + count
+        return sorted(resolved.items(), key=lambda kv: kv[1], reverse=True), matched
+
+    atlas.by_citizen, matched = relabel(atlas.by_citizen)
+    atlas.by_citizen_iterations, _ = relabel(atlas.by_citizen_iterations)
     if matched == 0 and CITIZEN_NAMES_UNAVAILABLE_WARNING not in atlas.warnings:
         atlas.warnings.append(CITIZEN_NAMES_UNAVAILABLE_WARNING)
 
@@ -648,7 +668,7 @@ async def fetch_atlas(
 
         # Join the accumulated numeric Citizen ids to display names once every
         # action has folded. Skipped when no citizen rows survived. See eco-app#5.
-        if atlas.by_citizen:
+        if atlas.by_citizen or atlas.by_citizen_iterations:
             name_map = await _fetch_citizen_names(http, normalized, headers, atlas)
             _apply_citizen_names(atlas, name_map)
     finally:
@@ -708,9 +728,12 @@ def atlas_markdown(atlas: CraftingAtlas) -> str:
         lines.extend(["", "**Station utilization:**"])
         for index, (name, count) in enumerate(atlas.by_station[:10], 1):
             lines.append(f"{index}. {prettify_eco_name(name)} — {count:,} events")
-    if atlas.by_citizen:
-        lines.extend(["", "**Top crafters:**"])
-        for index, (name, count) in enumerate(atlas.by_citizen[:10], 1):
+    if atlas.by_citizen_iterations:
+        # Name the unit. This board weighs crafts by iteration count, so its
+        # values legitimately exceed totalEvents — unlabelled, that read as a
+        # broken event count (eco-app#222).
+        lines.extend(["", "**Top crafters** (craft iterations + gather events):"])
+        for index, (name, count) in enumerate(atlas.by_citizen_iterations[:10], 1):
             lines.append(f"{index}. {name} — {count:,.0f}")
     lines.extend(f"- ⚠ {warning}" for warning in atlas.warnings)
     return "\n".join(lines)
@@ -727,7 +750,8 @@ def atlas_template_context(
     crafted = atlas.by_crafted[:top_items]
     gathered = atlas.by_gathered[:top_items]
     stations = atlas.by_station[:top_stations]
-    citizens = atlas.by_citizen[:top_citizens]
+    # The card's crafter board is the iteration-weighted one; see eco-app#222.
+    citizens = atlas.by_citizen_iterations[:top_citizens]
     flows = atlas.flows[:top_flows]
 
     max_crafted = max((c for _, c in crafted), default=0.0) or 1.0

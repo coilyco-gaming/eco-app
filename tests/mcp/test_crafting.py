@@ -133,15 +133,25 @@ def test_aggregate_rows_folds_craft_csv() -> None:
     assert by_station["CampfireItem"] == 2
     assert by_station["WorkbenchItem"] == 2
     assert by_station["ResearchTableItem"] == 1
-    # aggregate_rows keys by_citizen by the raw numeric id; name resolution
-    # happens later in fetch_atlas (eco-app#5). Crafts weigh by Count, which is
-    # 1 on per-event rows and the true merged-iteration total on rollups
-    # (eco-app#131), so citizen credit survives server-side aggregation.
+    # aggregate_rows keys both citizen boards by the raw numeric id; name
+    # resolution happens later in fetch_atlas (eco-app#5).
+    #
+    # by_citizen counts rows — the unit get_world.byCitizen uses (eco-app#222).
     by_citizen = dict(atlas.by_citizen)
     assert by_citizen["129312"] == 1
     assert by_citizen["129580"] == 1
-    assert by_citizen["4478"] == 189
-    assert by_citizen["129558"] == 13
+    assert by_citizen["4478"] == 1
+    assert by_citizen["129558"] == 1
+    # Nothing under an event-shaped name may exceed the atlas event total.
+    assert max(by_citizen.values()) <= atlas.total_events
+    # by_citizen_iterations weighs crafts by Count, which is 1 on per-event
+    # rows and the true merged-iteration total on rollups (eco-app#131), so
+    # citizen credit survives server-side aggregation.
+    by_iterations = dict(atlas.by_citizen_iterations)
+    assert by_iterations["129312"] == 1
+    assert by_iterations["129580"] == 1
+    assert by_iterations["4478"] == 189
+    assert by_iterations["129558"] == 13
     # Flow edges carry one confirmed iteration per row, rollups included.
     flow_keys = {(s, t) for s, t, _ in atlas.flows}
     assert ("CampfireItem", "CharredMushroomsItem") in flow_keys
@@ -287,15 +297,23 @@ async def test_fetch_atlas_merges_multiple_actions() -> None:
         "ChopTree": 2,
         "DigOrMine": 0,
     }
-    # Citizen ids resolved to names via the /api/v1/citizens join. coilysiren
-    # (129312) has 1 craft iteration + 1 harvest + 1 chop = 3; hammerhand
-    # (4478) gets full credit for the 189-iteration rollup (eco-app#131).
+    # Citizen ids resolved to names via the /api/v1/citizens join — both boards
+    # get relabelled (eco-app#5, eco-app#222). coilysiren (129312) has 1 craft
+    # + 1 harvest + 1 chop = 3 events, and the same 3 iterations.
     by_citizen = dict(atlas.by_citizen)
     assert by_citizen["coilysiren"] == 3
-    assert by_citizen["hammerhand"] == 189
-    assert by_citizen["salt"] == 13
+    # hammerhand's rollup is one row: one event, 189 iterations.
+    assert by_citizen["hammerhand"] == 1
+    assert by_citizen["salt"] == 1
     # An id with no mapping falls back to a "Citizen #<id>" label, not dropped.
     assert by_citizen["Citizen #129569"] == 1
+
+    by_iterations = dict(atlas.by_citizen_iterations)
+    assert by_iterations["coilysiren"] == 3
+    # Full credit for the 189-iteration rollup (eco-app#131).
+    assert by_iterations["hammerhand"] == 189
+    assert by_iterations["salt"] == 13
+    assert by_iterations["Citizen #129569"] == 1
     # The only warning is the rollup floor note.
     assert len(atlas.warnings) == 1
     assert "rollups" in atlas.warnings[0]
@@ -451,3 +469,26 @@ async def test_list_tools_now_includes_crafting_atlas() -> None:
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {tool.name for tool in result.root.tools}
     assert "get_crafting_atlas" in names
+
+
+def test_by_citizen_never_exceeds_total_events() -> None:
+    """`byCitizen` means the same thing here as in `get_world` (eco-app#222).
+
+    It used to sum craft iterations under an event-shaped name, so Kirdec came
+    back at 281,506 against a server `totalEvents` of 18,092 — 15x the whole
+    event count. Two tools, one field name, two units, neither labelled.
+    """
+    atlas = CraftingAtlas(fetched_at_iso="t", source_base_url=BASE)
+    csv_text = (
+        "ActionLocation,WorldObjectItem,Citizen,ItemUsed,Count,Time\n"
+        # One 500-iteration hourly rollup plus one per-event row.
+        '"1,2,3","WorkbenchItem",4478,"AdobeItem",500.0,1000\n'
+        '"1,2,3","WorkbenchItem",4478,"AdobeItem",1.0,2000\n'
+    )
+    aggregate_rows("ItemCraftedAction", _rows(csv_text), atlas)
+
+    assert atlas.total_events == 2
+    assert dict(atlas.by_citizen)["4478"] == 2
+    assert dict(atlas.by_citizen_iterations)["4478"] == 501
+    # The invariant the sweep's cross-check would have caught.
+    assert all(count <= atlas.total_events for _, count in atlas.by_citizen)

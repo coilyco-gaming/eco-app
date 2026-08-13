@@ -10,8 +10,13 @@
 // The server rolls craft events older than its detail window into per-citizen
 // hourly aggregates whose item/station labels are unreliable, so those rows
 // are excluded from the item and station boards and surfaced via
-// rollupEvents / rollupIterations instead. byCitizen keeps them - the citizen
-// is the rollup's grouping key, so that board spans all history (eco-app#131).
+// rollupEvents / rollupIterations instead. The citizen boards keep them - the
+// citizen is the rollup's grouping key, so they span all history (eco-app#131).
+//
+// Two citizen boards, because they carry two different units (eco-app#222):
+// byCitizen counts events, matching get_world.byCitizen, while
+// byCitizenIterations weighs crafts by Count. The iteration board legitimately
+// exceeds totalEvents, so it has to be labelled wherever it is shown.
 
 export interface CraftingAtlas {
   fetchedAtISO: string
@@ -21,6 +26,7 @@ export interface CraftingAtlas {
   byGathered: Array<[string, number]>
   byStation: Array<[string, number]>
   byCitizen: Array<[string, number]>
+  byCitizenIterations: Array<[string, number]>
   flows: Array<[string, string, number]>
   perActionCounts: Record<string, number>
   rollupEvents: number

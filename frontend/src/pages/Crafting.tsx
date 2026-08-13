@@ -184,7 +184,8 @@ export default function Crafting() {
 
           <section>
             <h2 className="section-title">Top crafters</h2>
-            <CrafterList rows={atlas.byCitizen} />
+            <p className="empty-note">Craft iterations plus gather events, per citizen.</p>
+            <CrafterList rows={atlas.byCitizenIterations} />
           </section>
 
           <section className="dir-cards">
