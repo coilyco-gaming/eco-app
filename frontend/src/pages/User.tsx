@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
 import { useParams } from "react-router-dom"
 import ItemLink from "../components/ItemLink"
+import FreshnessNote from "../components/FreshnessNote"
 import Layout from "../components/Layout"
 import {
   formatCount,
@@ -16,6 +17,7 @@ import {
   type ShelfOffer,
 } from "../lib/logisticsApi"
 import { fetchStores, type StoreDirectory } from "../lib/storesApi"
+import { useFreshData } from "../lib/useFreshData"
 import {
   decodeUserHex,
   fetchUserDossier,
@@ -56,10 +58,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 // carry, and render each surface as its own panel that degrades on its own.
 export default function User() {
   const { hex = "" } = useParams()
-  const [dossier, setDossier] = useState<UserDossier | null>(null)
-  const [logistics, setLogistics] = useState<LogisticsBoard | null>(null)
-  const [stores, setStores] = useState<StoreDirectory | null>(null)
-  const [error, setError] = useState<string | null>(null)
 
   // Decode the base16 path segment to the username before any fetch. A
   // malformed segment is a bad link, surfaced distinctly from a fetch failure.
@@ -71,24 +69,31 @@ export default function User() {
     }
   }, [hex])
 
-  useEffect(() => {
-    if (decoded.badHex) return
-    const controller = new AbortController()
-    const s = controller.signal
-    fetchUserDossier(decoded.username, s)
-      .then(setDossier)
-      .catch((err) => {
-        if (!s.aborted) setError(err instanceof Error ? err.message : String(err))
-      })
-    // The actionable summary reads the same market spine the /trade page and the
-    // item pages use (logistics = live shelf offers + supply gaps, stores = the
-    // per-trader footprint). Both are best-effort and independent of the dossier:
-    // a missing shelf/stores exporter just thins the summary, it never sinks the
-    // page, so each resolves to null on a miss like the /trade planes do.
-    fetchLogistics(s).then(setLogistics, () => setLogistics(null))
-    fetchStores(s).then(setStores, () => setStores(null))
-    return () => controller.abort()
-  }, [decoded])
+  // Refresh contract lives in freshness.ts, not here (eco-app#201). `hex` is
+  // in the deps, so the dossier always belongs to the user in the URL.
+  //
+  // The actionable summary reads the same market spine the /trade page and the
+  // item pages use (logistics = live shelf offers + supply gaps, stores = the
+  // per-trader footprint). Both are best-effort and independent of the dossier:
+  // a missing shelf/stores exporter just thins the summary, it never sinks the
+  // page, so each resolves to null on a miss like the /trade planes do.
+  const userPlane = useFreshData(
+    "user",
+    async (signal) => {
+      if (decoded.badHex) return null
+      const [dossier, logistics, stores] = await Promise.all([
+        fetchUserDossier(decoded.username, signal),
+        fetchLogistics(signal).catch(() => null),
+        fetchStores(signal).catch(() => null),
+      ])
+      return { dossier, logistics, stores }
+    },
+    [hex],
+  )
+  const dossier: UserDossier | null = userPlane.data?.dossier ?? null
+  const logistics: LogisticsBoard | null = userPlane.data?.logistics ?? null
+  const stores: StoreDirectory | null = userPlane.data?.stores ?? null
+  const error = userPlane.error
 
   const username = decoded.username
 
@@ -198,6 +203,13 @@ export default function User() {
           Every field the server exports about one player, pivoted into one place. Hidden by design
           — no nav link, no password.
         </p>
+        <FreshnessNote
+          plane="user"
+          loadedAt={userPlane.loadedAt}
+          refreshing={userPlane.refreshing}
+          refreshError={userPlane.refreshError}
+          onRefresh={userPlane.refresh}
+        />
       </section>
 
       {dossier && !dossier.found && (

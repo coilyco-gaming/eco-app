@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import EcoRichText from "../components/EcoRichText"
+import FreshnessNote from "../components/FreshnessNote"
 import Layout from "../components/Layout"
 import { fetchItemPivot, type ItemFeedRow, type ItemPivot } from "../lib/itemsApi"
 import { formatCount, formatDuration, formatRelative, prettifyEcoName } from "../lib/format"
+import { useFreshData } from "../lib/useFreshData"
 
 // Maps the raw production action id to a past-tense verb for the feed lines.
 const ACTION_VERBS: Record<string, string> = {
@@ -74,19 +75,16 @@ export default function Item() {
   const type = (params.get("type") ?? "all") as EventType
   const page = Math.max(1, Number.parseInt(params.get("page") ?? "1", 10) || 1)
 
-  const [fetched, setFetched] = useState<ItemPivot | null>(null)
-  const [erroredItem, setErroredItem] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!item) return
-    const controller = new AbortController()
-    fetchItemPivot(item, controller.signal)
-      .then(setFetched)
-      .catch(() => {
-        if (!controller.signal.aborted) setErroredItem(item)
-      })
-    return () => controller.abort()
-  }, [item])
+  // Refresh contract lives in freshness.ts, not here (eco-app#201). `item` is
+  // in the deps, so a pivot always belongs to the item currently in the URL —
+  // and so does an error.
+  const itemPlane = useFreshData(
+    "items",
+    (signal) => (item ? fetchItemPivot(item, signal) : Promise.resolve(null)),
+    [item],
+  )
+  const fetched: ItemPivot | null = itemPlane.data
+  const erroredItem = itemPlane.error ? item : null
 
   // Gate on the item the state belongs to, so switching items shows a clean
   // loading gap rather than the previous item's data.
@@ -183,6 +181,7 @@ export default function Item() {
             </Link>
           </p>
         )}
+        <FreshnessNote plane="items" loadedAt={itemPlane.loadedAt} />
       </section>
 
       {!item && (
