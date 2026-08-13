@@ -29,6 +29,7 @@ import pytest
 import respx
 
 from eco_mcp_app import fair_price as fp
+from eco_mcp_app import market as market_mod
 from eco_mcp_app import trades as trades_mod
 from eco_mcp_app.market import (
     MarketIntelligence,
@@ -527,3 +528,60 @@ async def test_fair_price_tool_merges_in_game(
     assert payload["inGameMedian"] is not None
     assert payload["inGameVerdict"] is not None
     fp._reset_api_key_cache()
+
+
+# ---------------------------------------------------------------------------
+# Empty-market diagnostics (eco-app#218)
+# ---------------------------------------------------------------------------
+
+
+def _ledger_row(**kw: object) -> dict[str, object]:
+    row: dict[str, object] = {
+        "item": "CementItem",
+        "currency": "Spectres",
+        "unitPrice": 0.6,
+        "quantity": 3.0,
+        "day": 40.0,
+    }
+    row.update(kw)
+    return row
+
+
+def test_currencyless_rows_build_no_market_and_say_why() -> None:
+    """`markets: []` for every query, filtered or not (eco-app#218).
+
+    A price series needs an item, a currency and a unit price. The currency-id
+    join failure (eco-app#217) blanked every row's currency, so every row was
+    skipped — while the same payload reported totalTrades: 22891, which made
+    the tool look like it was reaching data and finding nothing in it.
+    """
+    rows = [_ledger_row(currency=""), _ledger_row(currency="")]
+    assert build_market(rows) == []
+    warnings = market_mod._explain_empty_market(rows, [], item=None, currency=None)
+    assert warnings
+    assert "missing a currency" in warnings[0]
+    assert "eco-app#217" in warnings[0]
+
+
+def test_named_currency_rows_do_build_a_market() -> None:
+    # The same rows, once the currency join has run.
+    markets = build_market([_ledger_row(), _ledger_row(unitPrice=0.7)])
+    assert len(markets) == 1
+    assert markets[0].item == "CementItem"
+    assert markets[0].currency == "Spectres"
+    assert markets[0].total_trades == 2
+
+
+def test_a_filter_that_matches_nothing_says_so() -> None:
+    rows = [_ledger_row()]
+    markets = build_market(rows, item="Wood Pulp")
+    assert markets == []
+    warnings = market_mod._explain_empty_market(rows, markets, item="Wood Pulp", currency=None)
+    assert "No markets matched" in warnings[0]
+    assert "Wood Pulp" in warnings[0]
+
+
+def test_a_populated_market_adds_no_diagnostic() -> None:
+    rows = [_ledger_row()]
+    markets = build_market(rows)
+    assert market_mod._explain_empty_market(rows, markets, item=None, currency=None) == []

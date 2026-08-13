@@ -310,13 +310,66 @@ async def fetch_market(
     """
     ledger = await fetch_ledger(base_url=base_url, api_key=api_key, client=client)
     markets = build_market(ledger.trades, item=item, currency=currency)
+    warnings = list(ledger.warnings)
+    warnings.extend(_explain_empty_market(ledger.trades, markets, item=item, currency=currency))
     return MarketIntelligence(
         fetched_at_iso=ledger.fetched_at_iso,
         source_base_url=ledger.source_base_url,
         total_trades=ledger.total_trades,
         markets=markets,
-        warnings=list(ledger.warnings),
+        warnings=warnings,
     )
+
+
+def _explain_empty_market(
+    rows: list[dict[str, Any]],
+    markets: list[ItemMarket],
+    *,
+    item: str | None,
+    currency: str | None,
+) -> list[str]:
+    """Say why a market query came back empty (#218).
+
+    `get_market` returned `markets: []` for every query, filtered or not, while
+    reporting `totalTrades: 22891` in the same payload — so the tool looked
+    like it was reaching data and finding nothing in it. The real cause was
+    upstream: a price series needs an item, a currency and a usable unit price,
+    and the currency-id join failure (#217) left every row's currency blank.
+    An empty answer should name the missing ingredient rather than leave the
+    caller to guess between "no data for that item" and "the tool is broken".
+    """
+    if markets or not rows:
+        return []
+    missing_currency = sum(1 for r in rows if not (r.get("currency") or "").strip())
+    missing_item = sum(1 for r in rows if not (r.get("item") or "").strip())
+    missing_price = sum(1 for r in rows if r.get("unitPrice") is None)
+    if missing_currency == len(rows):
+        return [
+            f"No markets built: all {len(rows):,} ledger rows are missing a currency, so no "
+            "price series can be keyed. See the currency attribution note (eco-app#217)."
+        ]
+    if missing_price == len(rows):
+        return [
+            f"No markets built: none of the {len(rows):,} ledger rows carry a usable unit "
+            "price (quantity or currency amount absent)."
+        ]
+    if missing_item == len(rows):
+        return [f"No markets built: none of the {len(rows):,} ledger rows name an item."]
+    if item or currency:
+        parts = []
+        if item:
+            parts.append(f"item={item!r}")
+        if currency:
+            parts.append(f"currency={currency!r}")
+        wanted = " and ".join(parts)
+        return [
+            f"No markets matched {wanted} across {len(rows):,} ledger rows — the filter "
+            "excluded everything priced."
+        ]
+    return [
+        f"No markets built from {len(rows):,} ledger rows: every row lacked an item, a "
+        "currency, or a usable unit price."
+    ]
 
 
 def price_map(markets: Iterable[ItemMarket]) -> dict[str, float]:
