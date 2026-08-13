@@ -6,6 +6,9 @@ import Civics from "./Civics"
 const REPORT = {
   fetchedAtISO: "2026-06-12T13:00:00+00:00",
   sourceBaseUrl: "http://x:3001",
+  adminAvailable: true,
+  unavailableActions: [],
+  measurementNote: "",
   totalEvents: 12,
   perActionCounts: { Vote: 3, DidntVote: 1 },
   electionsStarted: 1,
@@ -160,6 +163,32 @@ describe("Civics", () => {
     await waitFor(() => {
       expect(screen.getByTestId("civics-empty")).toBeInTheDocument()
     })
+  })
+
+  it("says nothing was measured when no exporter could be read", async () => {
+    // Every scalar null with adminAvailable false is an auth failure, not a
+    // quiet server — the two must not render the same (eco-app#259).
+    stubFetch({
+      ...REPORT,
+      adminAvailable: false,
+      unavailableActions: ["Vote", "BecomeCitizen"],
+      measurementNote: "A null scalar means its exporter could not be read.",
+      totalEvents: null,
+      votesCast: null,
+      abstentions: null,
+      turnoutRate: null,
+      recentElections: [],
+      recentSettlements: [],
+      recentDemographics: [],
+      topVoters: [],
+      trend: {},
+    })
+    renderCivics()
+
+    await waitFor(() => {
+      expect(screen.getByTestId("civics-unmeasured")).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId("civics-empty")).toBeNull()
   })
 
   it("degrades when the report fetch fails", async () => {

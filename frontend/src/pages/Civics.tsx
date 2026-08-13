@@ -126,7 +126,7 @@ export default function Civics() {
           old tagline's cross-link to Info survives as the dir-card below. */}
       <section className="hero hero-compact">
         <h1 className="hero-title">Civics &amp; governance</h1>
-        {report && report.totalEvents > 0 && (
+        {report && (report.totalEvents ?? 0) > 0 && (
           <p className="hero-pill" data-testid="civics-pill">
             <span className="pulse-dot" aria-hidden="true" />
             {formatCount(report.totalEvents)} civic events
@@ -147,7 +147,16 @@ export default function Civics() {
         />
       </section>
 
-      {report && report.totalEvents === 0 && (
+      {report && !report.adminAvailable && (
+        <section>
+          <p className="empty-note" data-testid="civics-unmeasured">
+            No civic exporter on this server could be read, so nothing below was measured.
+            This is not the same as a quiet server — the counts are unknown, not zero.
+          </p>
+        </section>
+      )}
+
+      {report && report.adminAvailable && report.totalEvents === 0 && (
         <section>
           <p className="empty-note" data-testid="civics-empty">
             No civic events recorded on this server yet. Early in a cycle this is normal —
@@ -156,7 +165,7 @@ export default function Civics() {
         </section>
       )}
 
-      {report && report.totalEvents > 0 && (
+      {report && (report.totalEvents ?? 0) > 0 && (
         <>
           <section className="stats" aria-label="civic snapshot" data-testid="civics-stats">
             <div className="stat">
@@ -174,14 +183,21 @@ export default function Civics() {
             <div className="stat">
               {/* Distinct people, not repeated exporter events (eco-app#224). */}
               <p className="stat-value">
-                {report.netDistinctCitizens >= 0 ? "+" : ""}
+                {report.netDistinctCitizens !== null && report.netDistinctCitizens >= 0
+                  ? "+"
+                  : ""}
                 {formatCount(report.netDistinctCitizens)}
               </p>
               <p className="stat-label">Net citizens</p>
               <p className="stat-detail">
                 +{formatCount(report.distinctCitizensGained)} / -
                 {formatCount(report.distinctCitizensLost)} people ·{" "}
-                {formatCount(report.citizensGained + report.citizensLost)} events
+                {formatCount(
+                  report.citizensGained === null || report.citizensLost === null
+                    ? null
+                    : report.citizensGained + report.citizensLost,
+                )}{" "}
+                events
               </p>
             </div>
             <div className="stat">

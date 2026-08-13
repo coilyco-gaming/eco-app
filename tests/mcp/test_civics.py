@@ -340,6 +340,67 @@ async def test_fetch_civics_tolerates_partial_failure(respx_mock: respx.Router) 
     assert report.votes_cast == 0
     assert report.citizens_gained == 2
     assert any("Vote" in w and "401" in w for w in report.warnings)
+    # The unread action reports null, its measured neighbours report real counts.
+    payload = report.to_dict()
+    assert payload["votesCast"] is None
+    assert payload["citizensGained"] == 2
+    assert payload["unavailableActions"] == ["Vote"]
+    assert payload["adminAvailable"] is True
+
+
+@pytest.mark.asyncio
+@respx.mock(assert_all_called=False)
+async def test_every_exporter_401_reports_null_not_zero(respx_mock: respx.Router) -> None:
+    """A rejected admin key must not read as a quiet server (#259).
+
+    The scalars came back as 0 while `trend` — sourced separately — still
+    carried real data, so the same response said both "no votes were cast" and
+    "here is the vote-over-time series".
+    """
+    _mock_full_server(
+        respx_mock,
+        status_by_action=dict.fromkeys(civics_mod.CIVICS_ACTION_TYPES, 401),
+        series_by_name={"Vote": [{"Time": 0, "Value": 4}, {"Time": 86400, "Value": 6}]},
+    )
+
+    report = await fetch_civics(base_url=BASE, api_key=None, cache_ttl_s=0)
+    payload = report.to_dict()
+
+    assert payload["adminAvailable"] is False
+    assert sorted(payload["unavailableActions"]) == sorted(civics_mod.CIVICS_ACTION_TYPES)
+    for key in (
+        "totalEvents",
+        "votesCast",
+        "abstentions",
+        "electionsStarted",
+        "citizensGained",
+        "settlementsFounded",
+        "homesteadsStarted",
+        "turnoutRate",
+    ):
+        assert payload[key] is None, key
+    # The separately-sourced trend still carries its data, and the payload now
+    # explains why it can disagree with the (null) scalars.
+    assert payload["trend"]["Vote"]
+    assert "trend" in payload["measurementNote"]
+    # The prose must not call an auth failure "no civic events recorded yet".
+    markdown = civics_markdown(report)
+    assert "no civic events recorded yet" not in markdown
+    assert "nothing here was measured" in markdown
+
+
+@pytest.mark.asyncio
+@respx.mock(assert_all_called=False)
+async def test_measured_zero_stays_zero(respx_mock: respx.Router) -> None:
+    """A server that answered and had no civic activity reports 0, not null."""
+    _mock_full_server(respx_mock, csv_by_action={}, series_by_name={})
+
+    payload = (await fetch_civics(base_url=BASE, api_key=None, cache_ttl_s=0)).to_dict()
+    assert payload["adminAvailable"] is True
+    assert payload["votesCast"] == 0
+    assert payload["citizensGained"] == 0
+    assert payload["unavailableActions"] == []
+    assert payload["measurementNote"] == ""
 
 
 @pytest.mark.asyncio

@@ -15,7 +15,10 @@ export function useCivicsPulse(): CivicsPulse | null {
   const { data } = useFreshData("civics", async (signal): Promise<CivicsPulse | null> => {
     try {
       const report = await fetchCivics(signal)
-      if (report.totalEvents === 0) return null
+      // A null count means the exporters could not be read, so there is no
+      // measurement to badge — same outcome as a genuinely quiet server, but
+      // for a different reason (eco-app#259).
+      if (report.totalEvents === null || report.totalEvents === 0) return null
       return {
         events: report.totalEvents,
         turnoutPct: report.turnoutRate !== null ? Math.round(report.turnoutRate * 100) : null,

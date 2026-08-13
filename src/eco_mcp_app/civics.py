@@ -230,21 +230,49 @@ class CivicsReport:
     # series name -> [(day, value), ...] sorted by day. Empty series omitted.
     trend: dict[str, list[tuple[float, float]]] = field(default_factory=dict)
 
+    # Actions whose exporter could not be read (401, 404, transport error).
+    # A scalar derived only from these is unmeasured, not zero (#259).
+    unavailable_actions: list[str] = field(default_factory=list)
+
     warnings: list[str] = field(default_factory=list)
+
+    @property
+    def admin_available(self) -> bool:
+        """Whether any civic exporter answered at all.
+
+        `get_region` and `get_economy` both carry this state; without it a
+        caller could not tell a quiet server from a rejected admin key (#259).
+        """
+        return len(self.unavailable_actions) < len(CIVICS_ACTION_TYPES)
+
+    def _measured(self, *actions: str) -> bool:
+        """True when at least one action backing a scalar was actually read."""
+        unavailable = set(self.unavailable_actions)
+        return any(action not in unavailable for action in actions)
+
+    def _opt(self, value: int, *actions: str) -> int | None:
+        """A count, or None when every action behind it failed to fetch."""
+        return value if self._measured(*actions) else None
 
     @property
     def turnout_rate(self) -> float | None:
         """Votes cast / (cast + abstained), or None when nobody was eligible."""
+        if not self._measured("Vote", "DidntVote"):
+            return None
         total = self.votes_cast + self.abstentions
         return (self.votes_cast / total) if total else None
 
     @property
-    def net_citizens(self) -> int:
+    def net_citizens(self) -> int | None:
+        if not self._measured("BecomeCitizen", "LeaveCitizenship"):
+            return None
         return self.citizens_gained - self.citizens_lost
 
     @property
-    def net_distinct_citizens(self) -> int:
+    def net_distinct_citizens(self) -> int | None:
         """Net headcount — distinct people, not repeated events (#224)."""
+        if not self._measured("BecomeCitizen", "LeaveCitizenship"):
+            return None
         return self.distinct_citizens_gained - self.distinct_citizens_lost
 
     def to_dict(self) -> dict[str, Any]:
@@ -253,24 +281,37 @@ class CivicsReport:
             "view": "eco_civics",
             "fetchedAtISO": self.fetched_at_iso,
             "sourceBaseUrl": self.source_base_url,
-            "totalEvents": self.total_events,
+            "totalEvents": self.total_events if self.admin_available else None,
             "perActionCounts": dict(self.per_action_counts),
-            "electionsStarted": self.elections_started,
-            "electionsWon": self.elections_won,
-            "electionsLost": self.elections_lost,
-            "votesCast": self.votes_cast,
-            "abstentions": self.abstentions,
+            # Whether any civic exporter answered. Without this a rejected admin
+            # key and a genuinely quiet server were indistinguishable, and the
+            # zeros below read as a measurement (#259).
+            "adminAvailable": self.admin_available,
+            "unavailableActions": list(self.unavailable_actions),
+            "measurementNote": (
+                "A null scalar means its exporter could not be read; a zero means the "
+                "exporter answered and recorded no events. `unavailableActions` names "
+                "the exporters behind every null. Note that `trend` is sourced "
+                "separately and can carry data while these scalars are null."
+            )
+            if self.unavailable_actions
+            else "",
+            "electionsStarted": self._opt(self.elections_started, "StartElection"),
+            "electionsWon": self._opt(self.elections_won, "WonElection"),
+            "electionsLost": self._opt(self.elections_lost, "LostElection"),
+            "votesCast": self._opt(self.votes_cast, "Vote"),
+            "abstentions": self._opt(self.abstentions, "DidntVote"),
             "turnoutRate": rate,
             "recentElections": list(self.recent_elections),
             "recentOutcomes": list(self.recent_outcomes),
             "topVoters": [[n, c] for n, c in self.top_voters],
-            "citizensGained": self.citizens_gained,
-            "citizensLost": self.citizens_lost,
+            "citizensGained": self._opt(self.citizens_gained, "BecomeCitizen"),
+            "citizensLost": self._opt(self.citizens_lost, "LeaveCitizenship"),
             "netCitizens": self.net_citizens,
             # People, not events. `citizensGained` counts BecomeCitizen rows,
             # which the exporter repeats; these count who (#224).
-            "distinctCitizensGained": self.distinct_citizens_gained,
-            "distinctCitizensLost": self.distinct_citizens_lost,
+            "distinctCitizensGained": self._opt(self.distinct_citizens_gained, "BecomeCitizen"),
+            "distinctCitizensLost": self._opt(self.distinct_citizens_lost, "LeaveCitizenship"),
             "netDistinctCitizens": self.net_distinct_citizens,
             "duplicateDemographicEvents": self.duplicate_demographic_events,
             "demographicsNote": (
@@ -278,12 +319,14 @@ class CivicsReport:
                 "perActionCounts. The exporter repeats identical rows, so use "
                 "distinctCitizensGained / distinctCitizensLost for a headcount."
             ),
-            "residencyMoves": self.residency_moves,
-            "demographicChanges": self.demographic_changes,
+            "residencyMoves": self._opt(self.residency_moves, "ResidencyChanged"),
+            "demographicChanges": self._opt(self.demographic_changes, "DemographicChange"),
             "recentDemographics": list(self.recent_demographics),
-            "settlementsFounded": self.settlements_founded,
-            "settlementFoundationsPlaced": self.settlement_foundations_placed,
-            "homesteadsStarted": self.homesteads_started,
+            "settlementsFounded": self._opt(self.settlements_founded, "SettlementFounded"),
+            "settlementFoundationsPlaced": self._opt(
+                self.settlement_foundations_placed, "PlaceNewSettlementFoundation"
+            ),
+            "homesteadsStarted": self._opt(self.homesteads_started, "StartHomestead"),
             "recentSettlements": list(self.recent_settlements),
             "trend": {name: [[d, v] for d, v in points] for name, points in self.trend.items()},
             "warnings": list(self.warnings),
@@ -534,6 +577,9 @@ class CivicsFetch:
     series: dict[str, list[tuple[float, float]]] = field(default_factory=dict)
     name_map: dict[str, str] = field(default_factory=dict)
     per_action_counts: dict[str, int] = field(default_factory=dict)
+    # Actions whose exporter could not be read at all, so a caller can tell an
+    # unmeasured scalar from a measured zero (#259).
+    unavailable_actions: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -620,6 +666,7 @@ async def fetch_civics_raw(
     headers = {"X-API-Key": api_key} if api_key else {}
     parsed: list[_CivicEvent] = []
     per_action_counts: dict[str, int] = {}
+    unavailable_actions: list[str] = []
     warnings: list[str] = []
 
     owns_client = client is None
@@ -653,8 +700,10 @@ async def fetch_civics_raw(
                 per_action_counts.setdefault(action, 0)
             except httpx.HTTPStatusError as e:
                 warnings.append(f"{action}: HTTP {e.response.status_code}")
+                unavailable_actions.append(action)
             except httpx.HTTPError as e:
                 warnings.append(f"{action}: {type(e).__name__}: {e}")
+                unavailable_actions.append(action)
 
         # Daily-count series for the trend charts, best-effort. Empty series are
         # dropped so the payload only carries lines worth drawing.
@@ -677,6 +726,7 @@ async def fetch_civics_raw(
         series=series,
         name_map=name_map,
         per_action_counts=per_action_counts,
+        unavailable_actions=unavailable_actions,
         warnings=warnings,
     )
 
@@ -698,6 +748,7 @@ async def fetch_civics(
     fetch = await fetch_civics_raw(base_url=base_url, api_key=api_key, client=client)
     report = CivicsReport(fetched_at_iso=_now_iso(), source_base_url=fetch.normalized_base_url)
     report.per_action_counts = dict(fetch.per_action_counts)
+    report.unavailable_actions = list(fetch.unavailable_actions)
     report.warnings = list(fetch.warnings)
     report.trend = dict(fetch.series)
     build_report(fetch.parsed, report, fetch.name_map)
@@ -709,30 +760,36 @@ async def fetch_civics(
 
 def _report_from_dict(data: dict[str, Any]) -> CivicsReport:
     """Rehydrate a cached report dict back into a CivicsReport."""
+
+    def _int(key: str) -> int:
+        """Cached nulls mean "not measured"; the zero is re-nulled on output."""
+        return int(data.get(key) or 0)
+
     report = CivicsReport(
         fetched_at_iso=data["fetchedAtISO"],
         source_base_url=data["sourceBaseUrl"],
-        total_events=int(data.get("totalEvents", 0)),
+        unavailable_actions=list(data.get("unavailableActions", [])),
+        total_events=_int("totalEvents"),
         per_action_counts=dict(data.get("perActionCounts", {})),
-        elections_started=int(data.get("electionsStarted", 0)),
-        elections_won=int(data.get("electionsWon", 0)),
-        elections_lost=int(data.get("electionsLost", 0)),
-        votes_cast=int(data.get("votesCast", 0)),
-        abstentions=int(data.get("abstentions", 0)),
+        elections_started=_int("electionsStarted"),
+        elections_won=_int("electionsWon"),
+        elections_lost=_int("electionsLost"),
+        votes_cast=_int("votesCast"),
+        abstentions=_int("abstentions"),
         recent_elections=list(data.get("recentElections", [])),
         recent_outcomes=list(data.get("recentOutcomes", [])),
         top_voters=[(n, int(c)) for n, c in data.get("topVoters", [])],
-        citizens_gained=int(data.get("citizensGained", 0)),
-        citizens_lost=int(data.get("citizensLost", 0)),
-        distinct_citizens_gained=int(data.get("distinctCitizensGained", 0)),
-        distinct_citizens_lost=int(data.get("distinctCitizensLost", 0)),
-        duplicate_demographic_events=int(data.get("duplicateDemographicEvents", 0)),
-        residency_moves=int(data.get("residencyMoves", 0)),
-        demographic_changes=int(data.get("demographicChanges", 0)),
+        citizens_gained=_int("citizensGained"),
+        citizens_lost=_int("citizensLost"),
+        distinct_citizens_gained=_int("distinctCitizensGained"),
+        distinct_citizens_lost=_int("distinctCitizensLost"),
+        duplicate_demographic_events=_int("duplicateDemographicEvents"),
+        residency_moves=_int("residencyMoves"),
+        demographic_changes=_int("demographicChanges"),
         recent_demographics=list(data.get("recentDemographics", [])),
-        settlements_founded=int(data.get("settlementsFounded", 0)),
-        settlement_foundations_placed=int(data.get("settlementFoundationsPlaced", 0)),
-        homesteads_started=int(data.get("homesteadsStarted", 0)),
+        settlements_founded=_int("settlementsFounded"),
+        settlement_foundations_placed=_int("settlementFoundationsPlaced"),
+        homesteads_started=_int("homesteadsStarted"),
         recent_settlements=list(data.get("recentSettlements", [])),
         trend={
             name: [(float(d), float(v)) for d, v in points]
@@ -782,6 +839,14 @@ def civics_template_context(
 
 def civics_markdown(report: CivicsReport) -> str:
     """Compact markdown summary for MCP hosts without the SPA / card."""
+    if not report.admin_available:
+        # "No civic events" is a plausible-looking answer for a quiet server,
+        # which is exactly why an auth failure must not be reported as one.
+        return (
+            f"**Civics & governance** — could not read any civic exporter on "
+            f"`{report.source_base_url}`, so nothing here was measured. "
+            f"({'; '.join(report.warnings[:3])})"
+        )
     if report.total_events == 0:
         return f"**Civics & governance** — no civic events recorded yet ({report.source_base_url})."
     lines = [
@@ -805,7 +870,7 @@ def civics_markdown(report: CivicsReport) -> str:
             # Lead with the headcount; the event totals repeat rows (#224).
             f"- Demographics: +{report.distinct_citizens_gained:,} / "
             f"-{report.distinct_citizens_lost:,} citizens "
-            f"(net {report.net_distinct_citizens:+,}) from "
+            f"(net {report.net_distinct_citizens or 0:+,}) from "
             f"{report.citizens_gained + report.citizens_lost:,} events, "
             f"{report.residency_moves:,} residency moves"
         )
