@@ -198,3 +198,91 @@ async def test_explain_item_requires_name() -> None:
     )
     result = await handler(req)
     assert result.root.isError is True
+
+
+# ---------------------------------------------------------------------------
+# The category parameter is applied and echoed (eco-app#233)
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_category_is_echoed_when_wikipedia_answers() -> None:
+    """`explain_item(name="Wheat", category="plant")` echoed `category: null`.
+
+    The Wikipedia branch hardcoded `category=None`, so whenever SPARQL missed
+    the caller's hint vanished from the response and the parameter looked
+    inert (eco-app#233).
+    """
+    respx.get(WIKIDATA_SPARQL_URL).mock(
+        return_value=httpx.Response(200, json={"results": {"bindings": []}})
+    )
+    respx.get("https://en.wikipedia.org/api/rest_v1/page/summary/Wheat").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "title": "Wheat",
+                "extract": "Wheat is a group of wild and domesticated grasses.",
+                "type": "standard",
+            },
+        )
+    )
+    card = await build_ecopedia_card("Wheat", "plant", include_image=False)
+    assert card.category == "plant"
+    payload = card.to_dict()
+    assert payload["category"] == "plant"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_empty_facts_explain_themselves() -> None:
+    """A bare `facts: []` against a documented promise read as broken."""
+    respx.get(WIKIDATA_SPARQL_URL).mock(
+        return_value=httpx.Response(200, json={"results": {"bindings": []}})
+    )
+    respx.get("https://en.wikipedia.org/api/rest_v1/page/summary/Wheat").mock(
+        return_value=httpx.Response(
+            200, json={"title": "Wheat", "extract": "A grass.", "type": "standard"}
+        )
+    )
+    card = await build_ecopedia_card("Wheat", "plant", include_image=False)
+    assert card.facts == []
+    assert card.facts_note is not None
+    # Names the category, the item, and what was looked for.
+    assert "plant" in card.facts_note
+    assert "Wheat" in card.facts_note
+    assert "Taxon rank" in card.facts_note
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_no_category_says_to_pass_one() -> None:
+    respx.get("https://en.wikipedia.org/api/rest_v1/page/summary/Wheat").mock(
+        return_value=httpx.Response(
+            200, json={"title": "Wheat", "extract": "A grass.", "type": "standard"}
+        )
+    )
+    card = await build_ecopedia_card("Wheat", include_image=False)
+    assert card.category is None
+    assert card.facts_note is not None
+    assert "No category was supplied" in card.facts_note
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_a_returned_image_carries_a_credit() -> None:
+    """image_credit was null while an image was returned (eco-app#233)."""
+    respx.get("https://en.wikipedia.org/api/rest_v1/page/summary/Wheat").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "title": "Wheat",
+                "extract": "A grass.",
+                "type": "standard",
+                "thumbnail": {"source": "https://upload.wikimedia.org/wheat.jpg"},
+            },
+        )
+    )
+    card = await build_ecopedia_card("Wheat", include_image=False)
+    assert card.image_url == "https://upload.wikimedia.org/wheat.jpg"
+    assert card.image_credit == "https://upload.wikimedia.org/wheat.jpg"

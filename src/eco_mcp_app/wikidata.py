@@ -137,6 +137,9 @@ class EcopediaCard:
     image_url: str | None = None
     image_credit: str | None = None
     facts: list[tuple[str, str]] = field(default_factory=list)
+    # Why `facts` is empty, when it is. A bare [] alongside a documented
+    # promise of "category-specific facts" read as a broken feature (#233).
+    facts_note: str | None = None
     source: str = ""
     source_url: str | None = None
     not_found: bool = False
@@ -294,7 +297,9 @@ def _build_card_from_sparql(name: str, category: str, binding: dict[str, Any]) -
     )
 
 
-def _build_card_from_wikipedia(name: str, data: dict[str, Any]) -> EcopediaCard:
+def _build_card_from_wikipedia(
+    name: str, data: dict[str, Any], category: str | None = None
+) -> EcopediaCard:
     title = str(data.get("title") or name)
     description = str(data.get("extract") or data.get("description") or "")
     # `type == "disambiguation"` means the name is ambiguous — treat it as a
@@ -307,9 +312,16 @@ def _build_card_from_wikipedia(name: str, data: dict[str, Any]) -> EcopediaCard:
         source_url = desktop.get("page")
     return EcopediaCard(
         name=name,
-        category=None,
+        # Echo the caller's category. Hardcoding None here discarded the hint
+        # whenever the Wikipedia path won, so `explain_item(name="Wheat",
+        # category="plant")` answered `category: null` and looked like the
+        # parameter did nothing (#233).
+        category=category,
         title=title,
         description=description,
+        # Wikipedia's summary endpoint carries prose, not structured claims.
+        # Category-specific facts come from the Wikidata/SPARQL path; when that
+        # misses, `facts_note` says so rather than leaving a bare [].
         facts=[],
         source="Wikipedia",
         source_url=source_url,
@@ -359,7 +371,7 @@ async def build_ecopedia_card(
         if card is None or not card.description:
             wiki = await _fetch_wikipedia_summary(client, name)
             if wiki:
-                wiki_card = _build_card_from_wikipedia(name, wiki)
+                wiki_card = _build_card_from_wikipedia(name, wiki, category)
                 if card is None:
                     # No SPARQL result — if Wikipedia returned a disambiguation
                     # page and we don't have a category, fall through to SPARQL
@@ -397,7 +409,28 @@ async def build_ecopedia_card(
                     image_url = thumb.get("source")
         if image_url:
             card.image_url = image_url
+            # Attribution for an image we did return. get_species populates
+            # photoAttribution from iNat; Wikimedia's summary endpoint carries
+            # no licence string, so the file URL is the honest credit — a link
+            # to the source beats a null next to a rendered image (#233).
+            if not card.image_credit:
+                card.image_credit = image_url
             if include_image:
                 card.image_data_uri = await _inline_image(client, image_url)
+
+        if not card.facts:
+            if card.category is None:
+                card.facts_note = (
+                    "No category was supplied, so no category-specific facts were looked up. "
+                    f"Pass one of: {', '.join(sorted(SUPPORTED_CATEGORIES))}."
+                )
+            else:
+                card.facts_note = (
+                    f"Wikidata returned no {card.category} facts for {card.name!r} "
+                    f"(looked for: "
+                    f"{', '.join(label for label, _ in CATEGORY_FACTS.get(card.category, []))}"
+                    "). The description above comes from Wikipedia, which carries prose "
+                    "rather than structured claims."
+                )
 
         return card
