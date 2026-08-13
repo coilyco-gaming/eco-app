@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import EcoRichText from "../components/EcoRichText"
 import ItemLink from "../components/ItemLink"
+import FreshnessNote from "../components/FreshnessNote"
 import Layout from "../components/Layout"
 import PriceHistoryPanel from "../components/PriceHistoryPanel"
 import { fetchFairPrice, type FairPriceResult } from "../lib/fairPriceApi"
@@ -9,12 +10,12 @@ import { fetchJsonOrNull } from "../lib/api"
 import {
   fetchLogistics,
   type GapReason,
-  type LogisticsBoard,
   type PricedBoardRow,
   type ShelfOffer,
 } from "../lib/logisticsApi"
-import { fetchMarket, type ItemMarket, type MarketIntelligence, type MarketTrend } from "../lib/marketApi"
+import { fetchMarket, type ItemMarket, type MarketTrend } from "../lib/marketApi"
 import { formatCount, prettifyEcoName } from "../lib/format"
+import { useFreshData } from "../lib/useFreshData"
 import {
   fetchItemPriceHistory,
   type ItemPriceHistory,
@@ -201,12 +202,20 @@ export default function UsesPrice() {
           confidence,
         }
       : null
-  const [market, setMarket] = useState<MarketIntelligence | null>(null)
-  const [logistics, setLogistics] = useState<LogisticsBoard | null>(null)
+  // Refresh contract lives in freshness.ts, not here (eco-app#201). This is
+  // the page-level market spine — the only plane here that was locked to
+  // initial load. The item and currency detail fetches below already re-run on
+  // their own parameters.
+  const spinePlane = useFreshData("shopCheck", async (signal) => ({
+    market: await fetchMarket(signal).catch(() => null),
+    logistics: await fetchLogistics(signal).catch(() => null),
+  }))
+  const market = spinePlane.data?.market ?? null
+  const logistics = spinePlane.data?.logistics ?? null
   const [fairPrice, setFairPrice] = useState<FairPriceResult | null>(null)
   const [recipes, setRecipes] = useState<CostRecipeIndex | null>(null)
   const [priceHistory, setPriceHistory] = useState<ItemPriceHistory | null>(null)
-  const [loaded, setLoaded] = useState(false)
+  const loaded = !spinePlane.loading
   const [detailLoadedFor, setDetailLoadedFor] = useState("")
   const [fairPriceFor, setFairPriceFor] = useState("")
   const [recipesFor, setRecipesFor] = useState("")
@@ -231,18 +240,6 @@ export default function UsesPrice() {
     requestedCurrency ||
     fallbackShelfCurrency
   const selectedMarketRow = requestedMarketRow ?? marketRowsForItem[0] ?? null
-
-  useEffect(() => {
-    const controller = new AbortController()
-    const s = controller.signal
-    Promise.all([
-      fetchMarket(s).then(setMarket, () => setMarket(null)),
-      fetchLogistics(s).then(setLogistics, () => setLogistics(null)),
-    ]).finally(() => {
-      if (!s.aborted) setLoaded(true)
-    })
-    return () => controller.abort()
-  }, [])
 
   useEffect(() => {
     if (!item) {
@@ -440,6 +437,13 @@ export default function UsesPrice() {
         <p className="hero-tagline">
           Pick an item, compare the shelf, and let the craft cost tell you where the margin lives.
         </p>
+        <FreshnessNote
+          plane="shopCheck"
+          loadedAt={spinePlane.loadedAt}
+          refreshing={spinePlane.refreshing}
+          refreshError={spinePlane.refreshError}
+          onRefresh={spinePlane.refresh}
+        />
       </section>
 
       {item && opportunityContext && (

@@ -125,6 +125,16 @@ export const REFRESH_CONTRACTS = {
     staleAfterMs: 15 * MINUTE,
     rationale: "Per-item price history moves with the ledger, on the same slow cadence.",
   },
+  trade: {
+    mode: "live",
+    pollMs: LIVE_POLL_MS,
+    staleAfterMs: 2 * LIVE_POLL_MS,
+    rationale:
+      "Composes market, stores, currency, logistics, the ledger and watchers. Two of those " +
+      "are live, and this is the page a trader leaves open while deciding, so the whole " +
+      "board keeps up rather than going quietly stale under them.",
+  },
+
   // Composite planes. A page that fans out to several sources refreshes them
   // together, because a summary stitched from reads minutes apart is worse
   // than one that is uniformly a few minutes old. The contract is the

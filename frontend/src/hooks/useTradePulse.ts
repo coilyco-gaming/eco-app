@@ -1,33 +1,28 @@
-import { useEffect, useState } from "react"
 import { fetchMarket } from "../lib/marketApi"
+import { useFreshData } from "../lib/useFreshData"
 
 export interface TradePulse {
   markets: number
   totalVolume: number
 }
 
-// Live badge feed for the homepage /trade card: a one-shot fetch of the market
-// plane, folded to a market count and total volume. Best-effort — a missing or
-// failing endpoint leaves the badge absent rather than surfacing an error, the
-// same graceful-degrade contract the /trade page itself keeps (eco-app#54).
+// Goes through the shared refresh contract (eco-app#201) rather than a
+// hand-rolled mount-only effect, so a homepage badge on a `live` plane keeps up
+// instead of freezing at whatever it read when the tab opened. Best-effort by
+// design: any failure leaves the badge absent rather than surfacing an error.
+
 export function useTradePulse(): TradePulse | null {
-  const [pulse, setPulse] = useState<TradePulse | null>(null)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    fetchMarket(controller.signal)
-      .then((market) => {
-        if (!market || controller.signal.aborted) return
-        setPulse({
-          markets: market.markets.length,
-          totalVolume: market.markets.reduce((s, m) => s + m.totalVolume, 0),
-        })
-      })
-      .catch(() => {
-        /* non-fatal: leave the badge absent */
-      })
-    return () => controller.abort()
-  }, [])
-
-  return pulse
+  const { data } = useFreshData("market", async (signal): Promise<TradePulse | null> => {
+    try {
+      const market = await fetchMarket(signal)
+      if (!market) return null
+      return {
+        markets: market.markets.length,
+        totalVolume: market.markets.reduce((sum, m) => sum + m.totalVolume, 0),
+      }
+    } catch {
+      return null
+    }
+  })
+  return data ?? null
 }

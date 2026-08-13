@@ -59,26 +59,27 @@ plane that never refetches.
 
 ## Wiring status
 
-Contracts are declared for every plane. Pages are migrated to the shared hook
-in batches.
+**Every SPA data plane is wired.** No page or hook fetches on mount without a
+declared contract; `useFreshData` is the only fetch path.
 
-**Wired:** `status` (site-wide, via `useEcoStatus`), `/map` (climate, region,
-map), `/civics`, `/crafting`, `/social`, `/items`, `/recipes`, `/replay`,
-`/species`, `/item`, `/user`, `/uses/demand`, `/uses/arbitrage`,
-`/uses/buy-sell`, `/uses/food`, `/recipe`, `/uses/shop-check`,
-`/uses/resolve`.
+That includes the eight homepage "pulse" badge hooks, which were the easiest
+planes to miss — they live in `hooks/`, not `pages/`, so a sweep of the page
+directory does not see them. Two of them read `live` planes, so a homepage left
+open now keeps its badges current instead of freezing them at whatever the tab
+first read.
 
-**Not yet wired** — contract declared, but the page still fetches on mount only
-and shows no caption or Refresh control: `/trade`, `/jobs`, `/uses/price`.
+Two shapes worth knowing about:
 
-The unwired set is `manual` and `static` planes, where a mount-only fetch is
-closer to correct than it was for the live ones.
+- **Composite planes** (`trade`, `shopCheck`, `resolve`) belong to a page that
+  fans out to several sources. Their members refresh together, because a
+  summary stitched from reads minutes apart is worse than one that is uniformly
+  a few minutes old. Every member stays best-effort: one source resolving to
+  null thins the board rather than failing the page.
+- **Parameterised pages** pass their URL key in the hook's `deps`, so a changed
+  item, species or user re-fetches. `/species` and `/item` additionally gate on
+  the identifier their payload names, so a slow response for a previous query
+  can never render against the current one.
 
-Parameterised pages pass the hook's `deps` argument so a changed query
-re-fetches. `/species` also has its fetcher return the name it answered for, so
-a slow response for a previous query can never be rendered against the current
-one; `/item` and `/user` key on their URL segment instead, which is equivalent.
-A page that fans out to several sources gets a **composite** plane
-(`shopCheck`, `resolve`) and refreshes them together: a summary stitched from
-reads minutes apart is worse than one that is uniformly a few minutes old. Tracked on
-eco-app#201.
+The two remaining raw effects in `/uses/price` are deliberate: they key on
+`item` and `selectedCurrency` and already re-run when those change, so they were
+never page-load-only. Only the page-level market spine there needed a contract.

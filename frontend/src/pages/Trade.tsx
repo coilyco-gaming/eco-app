@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import EcoRichText from "../components/EcoRichText"
 import ItemLink from "../components/ItemLink"
+import FreshnessNote from "../components/FreshnessNote"
 import Layout from "../components/Layout"
-import { fetchMarket, type ItemMarket, type MarketIntelligence, type MarketTrend } from "../lib/marketApi"
-import { fetchStores, type StoreDirectory } from "../lib/storesApi"
-import { fetchCurrency, type CurrencySnapshot } from "../lib/currencyApi"
-import { fetchLogistics, type GapReason, type LogisticsBoard, type SupplyGap } from "../lib/logisticsApi"
-import { fetchTradesLedger, type Trade as TradeRow, type TradesLedger } from "../lib/tradesApi"
+import { fetchMarket, type ItemMarket, type MarketTrend } from "../lib/marketApi"
+import { fetchStores } from "../lib/storesApi"
+import { fetchCurrency } from "../lib/currencyApi"
+import { fetchLogistics, type GapReason, type SupplyGap } from "../lib/logisticsApi"
+import { fetchTradesLedger, type Trade as TradeRow } from "../lib/tradesApi"
 import { fetchWatchers, type WatcherHit } from "../lib/watchersApi"
 import { formatCount, prettifyEcoName, stripEcoMarkup } from "../lib/format"
+import { useFreshData } from "../lib/useFreshData"
 
 const TOP_MOVERS = 6
 const TOP_TRADED = 12
@@ -260,37 +262,37 @@ function matchesTrade(t: TradeRow, needle: string): boolean {
 }
 
 export default function Trade() {
-  const [market, setMarket] = useState<MarketIntelligence | null>(null)
-  const [stores, setStores] = useState<StoreDirectory | null>(null)
-  const [currency, setCurrency] = useState<CurrencySnapshot | null>(null)
-  const [logistics, setLogistics] = useState<LogisticsBoard | null>(null)
-  const [ledger, setLedger] = useState<TradesLedger | null>(null)
-  const [watchers, setWatchers] = useState<WatcherHit[]>([])
-  const [loaded, setLoaded] = useState(false)
+  // Refresh contract lives in freshness.ts, not here (eco-app#201). This is a
+  // `live` composite: two of its six planes advance continuously and a trader
+  // leaves the page open while deciding, so the board keeps up rather than
+  // going quietly stale under them.
+  //
+  // Every plane stays best-effort and independent: siblings land on their own
+  // schedule, so one 404 must never take the page down. Each resolves to null
+  // (or [] for watchers) and its panel degrades in place. The trades ledger
+  // (folded in from the former /trades page, eco-app#90) is one more such
+  // plane: the market plane carries the price-intelligence view, the ledger
+  // the row-level trades and their party leaderboards.
+  const tradePlane = useFreshData("trade", async (signal) => {
+    const [market, stores, currency, logistics, ledger, watchers] = await Promise.all([
+      fetchMarket(signal).catch(() => null),
+      fetchStores(signal).catch(() => null),
+      fetchCurrency(signal).catch(() => null),
+      fetchLogistics(signal).catch(() => null),
+      fetchTradesLedger(signal).catch(() => null),
+      fetchWatchers(signal).catch((): WatcherHit[] => []),
+    ])
+    return { market, stores, currency, logistics, ledger, watchers }
+  })
+  const market = tradePlane.data?.market ?? null
+  const stores = tradePlane.data?.stores ?? null
+  const currency = tradePlane.data?.currency ?? null
+  const logistics = tradePlane.data?.logistics ?? null
+  const ledger = tradePlane.data?.ledger ?? null
+  const watchers = tradePlane.data?.watchers ?? []
+  const loaded = !tradePlane.loading
   const [params, setParams] = useSearchParams()
   const q = params.get("q") ?? ""
-
-  useEffect(() => {
-    const controller = new AbortController()
-    const s = controller.signal
-    // Every plane is best-effort and independent: siblings land on their own
-    // schedule, so one 404 must never take the page down. Each resolves to null
-    // (or [] for watchers) and its panel degrades in place. The trades ledger
-    // (folded in from the former /trades page, eco-app#90) is one more such
-    // plane: the market plane carries the price-intelligence view, the ledger
-    // the row-level trades and their party leaderboards.
-    Promise.all([
-      fetchMarket(s).then(setMarket, () => setMarket(null)),
-      fetchStores(s).then(setStores, () => setStores(null)),
-      fetchCurrency(s).then(setCurrency, () => setCurrency(null)),
-      fetchLogistics(s).then(setLogistics, () => setLogistics(null)),
-      fetchTradesLedger(s).then(setLedger, () => setLedger(null)),
-      fetchWatchers(s).then(setWatchers, () => setWatchers([])),
-    ]).finally(() => {
-      if (!s.aborted) setLoaded(true)
-    })
-    return () => controller.abort()
-  }, [])
 
   const setQuery = (value: string) => {
     setParams(value ? { q: value } : {}, { replace: false })
@@ -388,6 +390,13 @@ export default function Trade() {
             trade data unavailable right now — check back once the game server has traded
           </p>
         )}
+        <FreshnessNote
+          plane="trade"
+          loadedAt={tradePlane.loadedAt}
+          refreshing={tradePlane.refreshing}
+          refreshError={tradePlane.refreshError}
+          onRefresh={tradePlane.refresh}
+        />
       </section>
 
       {!loaded && (

@@ -1,24 +1,24 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import type { ReactNode } from "react"
 import { Link } from "react-router-dom"
 import EcoRichText from "../components/EcoRichText"
+import FreshnessNote from "../components/FreshnessNote"
 import Layout from "../components/Layout"
 import { useJobsData } from "../hooks/useJobsData"
-import { fetchLogistics, type GapReason, type LogisticsBoard } from "../lib/logisticsApi"
-import { fetchMarket, type MarketIntelligence } from "../lib/marketApi"
+import { fetchLogistics, type GapReason } from "../lib/logisticsApi"
+import { fetchMarket } from "../lib/marketApi"
 import { formatCount, prettifyEcoName } from "../lib/format"
 import {
   fetchRecipeIndexWithCost,
-  type RecipeIndexWithCost,
   type RecipeSkillDef,
 } from "../lib/recipesApi"
-import { fetchTradesLedger, type TradesLedger } from "../lib/tradesApi"
+import { fetchTradesLedger } from "../lib/tradesApi"
 import type { ProfessionStat, SpecialtyStat } from "../lib/jobsApi"
+import { useFreshData } from "../lib/useFreshData"
 import {
   fetchProgressionHistory,
   KIND_LABELS,
   TREND_ORDER,
-  type ProgressionHistory,
 } from "../lib/progressionApi"
 
 // Survivalist and Self Improvement are the universal starter skills — every
@@ -378,67 +378,29 @@ export default function Jobs() {
   // roster shows who does what now, progression shows how they got there. It is
   // a best-effort enrichment — a failure leaves the current-state tables exactly
   // as they were before this surface existed, so we swallow errors.
-  const [progression, setProgression] = useState<ProgressionHistory | null>(null)
-  const [recipeIndex, setRecipeIndex] = useState<RecipeIndexWithCost | null>(null)
-  const [logistics, setLogistics] = useState<LogisticsBoard | null>(null)
-  const [market, setMarket] = useState<MarketIntelligence | null>(null)
-  const [trades, setTrades] = useState<TradesLedger | null>(null)
-  const [valueLoaded, setValueLoaded] = useState(false)
   const [showAllPeople, setShowAllPeople] = useState(false)
 
-  useEffect(() => {
-    const controller = new AbortController()
-    fetchProgressionHistory(controller.signal)
-      .then(setProgression)
-      .catch(() => {
-        /* non-fatal: the trajectory layer just doesn't render */
-      })
-    return () => controller.abort()
-  }, [])
+  // Refresh contract lives in freshness.ts, not here (eco-app#201). The
+  // progression layer and the value spine are one plane: both are enrichment
+  // over the current-state tables, and a failure in either leaves those tables
+  // exactly as they were before these surfaces existed.
+  const jobsPlane = useFreshData("jobs", async (signal) => {
+    const [progression, recipeIndex, logistics, market, trades] = await Promise.all([
+      fetchProgressionHistory(signal).catch(() => null),
+      fetchRecipeIndexWithCost(signal).catch(() => null),
+      fetchLogistics(signal).catch(() => null),
+      fetchMarket(signal).catch(() => null),
+      fetchTradesLedger(signal).catch(() => null),
+    ])
+    return { progression, recipeIndex, logistics, market, trades }
+  })
+  const progression = jobsPlane.data?.progression ?? null
+  const recipeIndex = jobsPlane.data?.recipeIndex ?? null
+  const logistics = jobsPlane.data?.logistics ?? null
+  const market = jobsPlane.data?.market ?? null
+  const trades = jobsPlane.data?.trades ?? null
+  const valueLoaded = !jobsPlane.loading
 
-  useEffect(() => {
-    const controller = new AbortController()
-    const { signal } = controller
-    const requests = [
-      fetchRecipeIndexWithCost(signal).then(
-        (value) => {
-          if (!signal.aborted) setRecipeIndex(value)
-        },
-        () => {
-          if (!signal.aborted) setRecipeIndex(null)
-        },
-      ),
-      fetchLogistics(signal).then(
-        (value) => {
-          if (!signal.aborted) setLogistics(value)
-        },
-        () => {
-          if (!signal.aborted) setLogistics(null)
-        },
-      ),
-      fetchMarket(signal).then(
-        (value) => {
-          if (!signal.aborted) setMarket(value)
-        },
-        () => {
-          if (!signal.aborted) setMarket(null)
-        },
-      ),
-      fetchTradesLedger(signal).then(
-        (value) => {
-          if (!signal.aborted) setTrades(value)
-        },
-        () => {
-          if (!signal.aborted) setTrades(null)
-        },
-      ),
-    ]
-    Promise.all(requests).finally(() => {
-      if (!signal.aborted) setValueLoaded(true)
-    })
-
-    return () => controller.abort()
-  }, [])
 
   const trendPanels = useMemo(() => {
     if (!progression) return []
@@ -588,6 +550,13 @@ export default function Jobs() {
           />{" "}
           Show people outside Active and Long Term
         </label>
+        <FreshnessNote
+          plane="jobs"
+          loadedAt={jobsPlane.loadedAt}
+          refreshing={jobsPlane.refreshing}
+          refreshError={jobsPlane.refreshError}
+          onRefresh={jobsPlane.refresh}
+        />
       </section>
 
       {/* The server-wide trajectory layer: how the current roster below formed.
