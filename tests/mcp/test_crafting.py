@@ -492,3 +492,54 @@ def test_by_citizen_never_exceeds_total_events() -> None:
     assert dict(atlas.by_citizen_iterations)["4478"] == 501
     # The invariant the sweep's cross-check would have caught.
     assert all(count <= atlas.total_events for _, count in atlas.by_citizen)
+
+
+@pytest.mark.asyncio
+async def test_the_atlas_bounds_every_array_not_only_flows(monkeypatch) -> None:
+    """limit bounded 1 of 6 arrays, leaving ~45 KB at limit=1. Each array
+    grows with world size, so each has to honour it. See #267."""
+    import json
+
+    import mcp.types as mt
+
+    from eco_mcp_app import server
+    from eco_mcp_app.crafting import CraftingAtlas
+
+    atlas = CraftingAtlas(fetched_at_iso="2026-01-01T00:00:00Z", source_base_url="http://e")
+    atlas.total_events = 900
+    atlas.by_crafted = [(f"item{i}", float(i)) for i in range(40)]
+    atlas.by_gathered = [(f"g{i}", i) for i in range(40)]
+    atlas.by_station = [(f"s{i}", i) for i in range(40)]
+    atlas.by_citizen = [(f"c{i}", i) for i in range(40)]
+    atlas.by_citizen_iterations = [(f"c{i}", i) for i in range(40)]
+    atlas.flows = [(f"a{i}", f"b{i}", i) for i in range(40)]
+
+    async def stub(**_):
+        return atlas
+
+    monkeypatch.setattr(server, "fetch_atlas", stub)
+    mcp_server = server.build_server()
+    handler = mcp_server.request_handlers[mt.CallToolRequest]
+    result = await handler(
+        mt.CallToolRequest(
+            method="tools/call",
+            params=mt.CallToolRequestParams(name="get_crafting_atlas", arguments={"limit": 5}),
+        )
+    )
+    payload = json.loads(result.root.content[-1].text)
+
+    for key in (
+        "byCrafted",
+        "byGathered",
+        "byStation",
+        "byCitizen",
+        "byCitizenIterations",
+        "flows",
+    ):
+        assert len(payload[key]) == 5, f"{key} ignored limit"
+        assert any(w.startswith(f"{key}:") for w in payload["warnings"]), (
+            f"{key} truncated without saying so"
+        )
+
+    # Rule 5: the summary still describes the whole population.
+    assert payload["totalEvents"] == 900

@@ -2135,7 +2135,19 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
             except httpx.HTTPError as e:
                 return _unreachable_result("Eco exporter", e)
             atlas_payload = atlas.to_dict()
-            _bound_rows(atlas_payload, _resolve_limit(arguments or {}), "flows")
+            # Every array here grows with world size, and bounding one of six
+            # left ~45 KB at limit=1. The summaries above are computed from the
+            # full population, so they still describe every row. See #267.
+            _bound_rows(
+                atlas_payload,
+                _resolve_limit(arguments or {}),
+                "byCrafted",
+                "byGathered",
+                "byStation",
+                "byCitizen",
+                "byCitizenIterations",
+                "flows",
+            )
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=atlas_markdown(atlas)),
