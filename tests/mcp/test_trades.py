@@ -322,3 +322,42 @@ async def test_list_tools_includes_get_trades() -> None:
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {tool.name for tool in result.root.tools}
     assert "get_trades" in names
+
+
+def test_counts_block_reconciles_every_trade_number() -> None:
+    """Four numbers presented as trade counts, now each labelled (eco-app#221).
+
+    On Sirens `perTypeCounts` summed to 3,672 and reconciled with nothing else
+    in the payload: not `detailedTrades` (526), not `rollupTrades` (22,365),
+    not `totalTrades` (22,891) — while sitting in the same object as the first.
+    It counts exporter *rows*; the rest count trade *events*.
+    """
+    ledger = TradesLedger(fetched_at_iso="t", source_base_url=BASE)
+    ledger.detailed_trades = 526
+    ledger.rollup_rows = 3146
+    ledger.rollup_trades = 22365
+    ledger.total_trades = 526 + 22365
+    ledger.per_type_counts = {"CurrencyTrade": 3668, "BarterTrade": 4}
+
+    counts = ledger.to_dict()["counts"]
+    # perTypeCounts is a row count, and the block says so with a number that
+    # actually matches it.
+    assert counts["exporterRows"] == sum(ledger.per_type_counts.values())
+    assert counts["exporterRows"] == counts["detailedRows"] + counts["rollupRows"]
+    # And the event count reconciles the other way.
+    assert counts["tradeEvents"] == counts["detailedRows"] + counts["rollupTrades"]
+    assert "exporter rows, not trades" in counts["note"]
+    # The /info counter is named as a separate population rather than left to
+    # look like a contradiction.
+    assert "get_economy.trades_total" in counts["note"]
+
+
+def test_ledger_markdown_names_both_units() -> None:
+    ledger = TradesLedger(fetched_at_iso="t", source_base_url=BASE)
+    ledger.detailed_trades = 526
+    ledger.rollup_rows = 3146
+    ledger.rollup_trades = 22365
+    ledger.total_trades = 22891
+    headline = ledger_markdown(ledger).splitlines()[0]
+    assert "22,891 trade events" in headline
+    assert "3,672 exporter rows" in headline

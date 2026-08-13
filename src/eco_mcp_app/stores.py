@@ -179,6 +179,11 @@ class StoreDirectory:
     source_base_url: str
     total_trades: int = 0
     per_type_counts: dict[str, int] = field(default_factory=dict)
+    # Detail rows vs hourly-rollup rows, so `perTypeCounts` (which counts rows)
+    # can be reconciled against `totalTrades` (which counts events). See #221.
+    detailed_rows: int = 0
+    rollup_rows: int = 0
+    rollup_trades: int = 0
     stores: list[StoreProfile] = field(default_factory=list)
     traders: list[TraderProfile] = field(default_factory=list)
     total_stores: int = 0
@@ -192,6 +197,19 @@ class StoreDirectory:
             "sourceBaseUrl": self.source_base_url,
             "totalTrades": self.total_trades,
             "perTypeCounts": dict(self.per_type_counts),
+            "counts": {
+                "exporterRows": self.detailed_rows + self.rollup_rows,
+                "tradeEvents": self.total_trades,
+                "detailedRows": self.detailed_rows,
+                "rollupRows": self.rollup_rows,
+                "rollupTrades": self.rollup_trades,
+                "note": (
+                    "perTypeCounts counts exporter rows, not trades; totalTrades counts trade "
+                    "events, with each hourly rollup row standing for its merged Count. "
+                    "Eco's own /info counter (get_economy.trades_total) counts a different "
+                    "population again and will not match."
+                ),
+            },
             "stores": [s.to_dict() for s in self.stores],
             "traders": [t.to_dict() for t in self.traders],
             "totalStores": self.total_stores,
@@ -281,6 +299,9 @@ def build_directory(
         # hourly TradeAction rollups are only representative (eco-app#132).
         total_trades=sum(t.event_count for t in fetch.parsed),
         per_type_counts=dict(fetch.per_type_counts),
+        detailed_rows=sum(1 for t in fetch.parsed if not t.is_rollup),
+        rollup_rows=len(rollups),
+        rollup_trades=sum(t.event_count for t in rollups),
         warnings=list(fetch.warnings),
     )
     if rollups:

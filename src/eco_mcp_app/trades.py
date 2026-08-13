@@ -144,6 +144,27 @@ class TradesLedger:
     price_series: dict[str, list[tuple[float, float]]] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
 
+    @property
+    def exporter_rows(self) -> int:
+        """CSV rows folded. This is what ``per_type_counts`` sums to."""
+        return self.detailed_trades + self.rollup_rows
+
+    def counts_note(self) -> str:
+        """One sentence reconciling every trade count in the payload (#221).
+
+        The sweep found four numbers presented as trade counts with nothing to
+        say why they differ — `perTypeCounts` (3,672) reconciled with none of
+        `totalTrades` (22,891), `rollupTrades` (22,365), or `detailedTrades`
+        (526), while sitting in the same object as the last of them.
+        """
+        return (
+            f"perTypeCounts counts exporter rows, not trades: {self.exporter_rows:,} rows = "
+            f"{self.detailed_trades:,} detail rows (one trade each) + {self.rollup_rows:,} "
+            f"hourly rollup rows covering {self.rollup_trades:,} merged trades, so the ledger "
+            f"reports {self.total_trades:,} trade events. Eco's own /info counter "
+            "(get_economy.trades_total) counts a different population again and will not match."
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "fetchedAtISO": self.fetched_at_iso,
@@ -153,6 +174,16 @@ class TradesLedger:
             "rollupRows": self.rollup_rows,
             "rollupTrades": self.rollup_trades,
             "perTypeCounts": dict(self.per_type_counts),
+            # Every count in one place, each labelled with its unit, so a
+            # reader never has to guess which of four numbers to believe.
+            "counts": {
+                "exporterRows": self.exporter_rows,
+                "tradeEvents": self.total_trades,
+                "detailedRows": self.detailed_trades,
+                "rollupRows": self.rollup_rows,
+                "rollupTrades": self.rollup_trades,
+                "note": self.counts_note(),
+            },
             "trades": list(self.trades),
             "totalCurrencyVolume": self.total_currency_volume,
             "byItem": [[n, c, v] for n, c, v in self.by_item],
@@ -598,7 +629,8 @@ def ledger_markdown(ledger: TradesLedger) -> str:
     if ledger.total_trades == 0:
         return f"**Trades ledger** — no trades recorded yet ({ledger.source_base_url})."
     lines = [
-        f"**Trades ledger** — {ledger.total_trades:,} trades "
+        f"**Trades ledger** — {ledger.total_trades:,} trade events from "
+        f"{ledger.exporter_rows:,} exporter rows "
         f"({ledger.total_currency_volume:,.0f} total currency, `{ledger.source_base_url}`)",
         "",
     ]

@@ -1293,6 +1293,16 @@ def compute_economy_payload(raw: dict[str, Any]) -> dict[str, Any]:
         "kpis": {
             "trades_per_day": trades_per_day,
             "trades_total": trades_total,
+            # Name the source. The ledger tools count a different population
+            # and report a much larger number; a reader comparing the two
+            # without this got contradictory economic conclusions (#221).
+            "trades_total_source": "info.EconomyDesc",
+            "trades_total_note": (
+                "Eco's own trade counter, parsed from /info. The exporter ledger "
+                "(get_trades, get_market, get_stores) counts trade events from the action "
+                "log instead and reports a much larger total; see its `counts.note`. The two "
+                "are not reconcilable from this tool's data."
+            ),
             "contract_completion_ratio": completion_ratio,
             "contract_failure_rate": failure_rate,
             "contracts_posted": int(posted_contracts),
@@ -1431,7 +1441,8 @@ def _format_economy_markdown(payload: dict[str, Any]) -> str:
         "",
         payload["narrative"],
         "",
-        f"- Trades/day: **{k['trades_per_day']}** (total {k['trades_total']:,})",
+        f"- Trades/day: **{k['trades_per_day']}** (total {k['trades_total']:,},"
+        " per Eco's own counter — the exporter ledger counts differently)",
         f"- Contracts: {k['contracts_completed']}/{k['contracts_posted']} completed"
         f" · {k['contract_failure_rate']}% failure rate",
         f"- Loans: {k['loans_accepted']} accepted / {k['loans_defaulted']} defaulted"
