@@ -27,6 +27,11 @@ const REPORT = {
   citizensGained: 2,
   citizensLost: 1,
   netCitizens: 1,
+  distinctCitizensGained: 2,
+  distinctCitizensLost: 1,
+  netDistinctCitizens: 1,
+  duplicateDemographicEvents: 0,
+  demographicsNote: "citizensGained / citizensLost count exporter events.",
   residencyMoves: 1,
   demographicChanges: 0,
   recentDemographics: [

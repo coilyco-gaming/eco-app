@@ -171,13 +171,16 @@ export default function Civics() {
               <p className="stat-detail">{formatCount(report.electionsWon)} won</p>
             </div>
             <div className="stat">
+              {/* Distinct people, not repeated exporter events (eco-app#224). */}
               <p className="stat-value">
-                {report.netCitizens >= 0 ? "+" : ""}
-                {formatCount(report.netCitizens)}
+                {report.netDistinctCitizens >= 0 ? "+" : ""}
+                {formatCount(report.netDistinctCitizens)}
               </p>
               <p className="stat-label">Net citizens</p>
               <p className="stat-detail">
-                +{formatCount(report.citizensGained)} / -{formatCount(report.citizensLost)}
+                +{formatCount(report.distinctCitizensGained)} / -
+                {formatCount(report.distinctCitizensLost)} people ·{" "}
+                {formatCount(report.citizensGained + report.citizensLost)} events
               </p>
             </div>
             <div className="stat">

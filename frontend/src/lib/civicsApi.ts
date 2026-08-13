@@ -60,8 +60,16 @@ export interface CivicsReport {
   recentOutcomes: OutcomeEvent[]
   // [name, votes]
   topVoters: Array<[string, number]>
+  // Event counts, which reconcile with perActionCounts. The exporter repeats
+  // identical rows, so these are not a headcount — use the distinct counts
+  // below for people (eco-app#224).
   citizensGained: number
   citizensLost: number
+  distinctCitizensGained: number
+  distinctCitizensLost: number
+  netDistinctCitizens: number
+  duplicateDemographicEvents: number
+  demographicsNote: string
   netCitizens: number
   residencyMoves: number
   demographicChanges: number

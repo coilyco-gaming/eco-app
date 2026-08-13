@@ -477,3 +477,65 @@ def test_a_position_triple_subject_is_still_dropped() -> None:
     entry = report.recent_settlements[0]
     assert entry["subject"] is None
     assert entry["subjectId"] is None
+
+
+# ---------------------------------------------------------------------------
+# Duplicate demographic events (eco-app#224)
+# ---------------------------------------------------------------------------
+
+
+def test_repeated_demographic_rows_are_counted_once_as_people() -> None:
+    """The exporter repeats whole runs of identical rows (eco-app#224).
+
+    A day-19 joined block appeared three times verbatim, so `citizensGained`
+    reached 371 on a server that has seen 165 distinct players ever — roughly
+    2x reality presented as a headcount.
+    """
+    parsed = [
+        _civic("BecomeCitizen", "101", "Rivertown", day=19.0),
+        _civic("BecomeCitizen", "101", "Rivertown", day=19.0),
+        _civic("BecomeCitizen", "101", "Rivertown", day=19.0),
+        _civic("BecomeCitizen", "102", "Rivertown", day=19.0),
+        _civic("LeaveCitizenship", "102", "Rivertown", day=20.0),
+    ]
+    report = CivicsReport(fetched_at_iso="t", source_base_url="b")
+    build_report(parsed, report, {"101": "alice", "102": "bob"})
+
+    # Event counts still reconcile with perActionCounts.
+    assert report.citizens_gained == 4
+    assert report.citizens_lost == 1
+    # Headcount is the truth about people.
+    assert report.distinct_citizens_gained == 2
+    assert report.distinct_citizens_lost == 1
+    assert report.net_distinct_citizens == 1
+    # The browsable list shows each event once.
+    joined = [d for d in report.recent_demographics if d["kind"] == "joined"]
+    assert len(joined) == 2
+    assert report.duplicate_demographic_events == 2
+    assert any("eco-app#224" in w for w in report.warnings)
+
+
+def test_the_payload_labels_events_against_people() -> None:
+    parsed = [
+        _civic("BecomeCitizen", "101", "Rivertown", day=19.0),
+        _civic("BecomeCitizen", "101", "Rivertown", day=19.0),
+    ]
+    report = CivicsReport(fetched_at_iso="t", source_base_url="b")
+    build_report(parsed, report, {"101": "alice"})
+    payload = report.to_dict()
+    assert payload["citizensGained"] == 2
+    assert payload["distinctCitizensGained"] == 1
+    assert "count exporter events" in payload["demographicsNote"]
+
+
+def test_the_same_person_rejoining_on_a_later_day_is_not_a_duplicate() -> None:
+    parsed = [
+        _civic("BecomeCitizen", "101", "Rivertown", day=19.0),
+        _civic("BecomeCitizen", "101", "Rivertown", day=27.0),
+    ]
+    report = CivicsReport(fetched_at_iso="t", source_base_url="b")
+    build_report(parsed, report, {"101": "alice"})
+    assert report.duplicate_demographic_events == 0
+    assert len(report.recent_demographics) == 2
+    # One person, two arrivals.
+    assert report.distinct_citizens_gained == 1

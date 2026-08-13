@@ -200,8 +200,17 @@ class CivicsReport:
     top_voters: list[tuple[str, int]] = field(default_factory=list)
 
     # --- Demographics ---
+    # Event counts — these reconcile with perActionCounts. The civic exports
+    # repeat whole runs of identical rows (a day-19 joined block appeared three
+    # times verbatim), so an event count is not a headcount: Sirens reported
+    # citizensGained 371 on a server that has seen 165 distinct players ever
+    # (#224). The distinct counts below are the headcount.
     citizens_gained: int = 0
     citizens_lost: int = 0
+    distinct_citizens_gained: int = 0
+    distinct_citizens_lost: int = 0
+    # Exact-duplicate demographic rows dropped from `recent_demographics`.
+    duplicate_demographic_events: int = 0
     residency_moves: int = 0
     demographic_changes: int = 0
     # Recent BecomeCitizen / LeaveCitizenship events: {name, day, kind}.
@@ -233,6 +242,11 @@ class CivicsReport:
     def net_citizens(self) -> int:
         return self.citizens_gained - self.citizens_lost
 
+    @property
+    def net_distinct_citizens(self) -> int:
+        """Net headcount — distinct people, not repeated events (#224)."""
+        return self.distinct_citizens_gained - self.distinct_citizens_lost
+
     def to_dict(self) -> dict[str, Any]:
         rate = self.turnout_rate
         return {
@@ -253,6 +267,17 @@ class CivicsReport:
             "citizensGained": self.citizens_gained,
             "citizensLost": self.citizens_lost,
             "netCitizens": self.net_citizens,
+            # People, not events. `citizensGained` counts BecomeCitizen rows,
+            # which the exporter repeats; these count who (#224).
+            "distinctCitizensGained": self.distinct_citizens_gained,
+            "distinctCitizensLost": self.distinct_citizens_lost,
+            "netDistinctCitizens": self.net_distinct_citizens,
+            "duplicateDemographicEvents": self.duplicate_demographic_events,
+            "demographicsNote": (
+                "citizensGained / citizensLost count exporter events and reconcile with "
+                "perActionCounts. The exporter repeats identical rows, so use "
+                "distinctCitizensGained / distinctCitizensLost for a headcount."
+            ),
             "residencyMoves": self.residency_moves,
             "demographicChanges": self.demographic_changes,
             "recentDemographics": list(self.recent_demographics),
@@ -376,6 +401,11 @@ def build_report(
     report.total_events = len(parsed)
 
     voter_counts: dict[str, int] = defaultdict(int)
+    # Distinct people behind the demographic event stream, and the exact
+    # duplicate rows we drop from the browsable list (#224).
+    gained_people: set[str] = set()
+    lost_people: set[str] = set()
+    seen_demographics: set[tuple[str, int, bool, str]] = set()
     # Newest first so the "recent" lists lead with the latest events.
     ordered = sorted(parsed, key=lambda e: e.time_s, reverse=True)
 
@@ -421,28 +451,28 @@ def build_report(
                 report.unresolved_voter_ids += 1
         elif e.action == "DidntVote":
             report.abstentions += 1
-        elif e.action == "BecomeCitizen":
-            report.citizens_gained += 1
-            if len(report.recent_demographics) < MAX_EVENTS:
+        elif e.action in ("BecomeCitizen", "LeaveCitizenship"):
+            joined = e.action == "BecomeCitizen"
+            if joined:
+                report.citizens_gained += 1
+                gained_people.add(e.citizen_id or f"?{len(gained_people)}")
+            else:
+                report.citizens_lost += 1
+                lost_people.add(e.citizen_id or f"?{len(lost_people)}")
+            # The exporter repeats whole runs of identical rows — a day-19
+            # joined block appeared three times verbatim — so the same person,
+            # day and kind is one event to show, not three (#224).
+            row_key = (e.citizen_id, day, joined, e.subject)
+            if row_key in seen_demographics:
+                report.duplicate_demographic_events += 1
+            elif len(report.recent_demographics) < MAX_EVENTS:
+                seen_demographics.add(row_key)
                 report.recent_demographics.append(
                     {
                         "name": name,
                         "nameId": actor_id,
                         "day": day,
-                        "kind": "joined",
-                        "settlement": subject,
-                        "settlementId": subject_id,
-                    }
-                )
-        elif e.action == "LeaveCitizenship":
-            report.citizens_lost += 1
-            if len(report.recent_demographics) < MAX_EVENTS:
-                report.recent_demographics.append(
-                    {
-                        "name": name,
-                        "nameId": actor_id,
-                        "day": day,
-                        "kind": "left",
+                        "kind": "joined" if joined else "left",
                         "settlement": subject,
                         "settlementId": subject_id,
                     }
@@ -475,6 +505,16 @@ def build_report(
                         "kind": kind,
                     }
                 )
+
+    report.distinct_citizens_gained = len(gained_people)
+    report.distinct_citizens_lost = len(lost_people)
+    if report.duplicate_demographic_events:
+        report.warnings.append(
+            f"{report.duplicate_demographic_events} duplicate demographic event(s) were "
+            "dropped from recentDemographics; the exporter repeats identical rows. "
+            "citizensGained counts events, distinctCitizensGained counts people "
+            "(eco-app#224)."
+        )
 
     report.top_voters = sorted(voter_counts.items(), key=lambda kv: kv[1], reverse=True)
     if report.unresolved_voter_ids:
@@ -684,6 +724,9 @@ def _report_from_dict(data: dict[str, Any]) -> CivicsReport:
         top_voters=[(n, int(c)) for n, c in data.get("topVoters", [])],
         citizens_gained=int(data.get("citizensGained", 0)),
         citizens_lost=int(data.get("citizensLost", 0)),
+        distinct_citizens_gained=int(data.get("distinctCitizensGained", 0)),
+        distinct_citizens_lost=int(data.get("distinctCitizensLost", 0)),
+        duplicate_demographic_events=int(data.get("duplicateDemographicEvents", 0)),
         residency_moves=int(data.get("residencyMoves", 0)),
         demographic_changes=int(data.get("demographicChanges", 0)),
         recent_demographics=list(data.get("recentDemographics", [])),
@@ -759,8 +802,12 @@ def civics_markdown(report: CivicsReport) -> str:
         )
     if report.citizens_gained or report.citizens_lost:
         lines.append(
-            f"- Demographics: +{report.citizens_gained:,} / -{report.citizens_lost:,} citizens "
-            f"(net {report.net_citizens:+,}), {report.residency_moves:,} residency moves"
+            # Lead with the headcount; the event totals repeat rows (#224).
+            f"- Demographics: +{report.distinct_citizens_gained:,} / "
+            f"-{report.distinct_citizens_lost:,} citizens "
+            f"(net {report.net_distinct_citizens:+,}) from "
+            f"{report.citizens_gained + report.citizens_lost:,} events, "
+            f"{report.residency_moves:,} residency moves"
         )
     if (
         report.settlements_founded
