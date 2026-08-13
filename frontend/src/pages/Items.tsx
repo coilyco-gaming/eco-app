@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import ItemLink from "../components/ItemLink"
+import FreshnessNote from "../components/FreshnessNote"
 import Layout from "../components/Layout"
-import { fetchItemIndex, type ItemIndex, type ItemStat } from "../lib/itemsApi"
+import { fetchItemIndex, type ItemStat } from "../lib/itemsApi"
 import { formatCount, prettifyEcoName } from "../lib/format"
+import { useFreshData } from "../lib/useFreshData"
 
 const LIST_ROWS = 200
 
@@ -34,22 +36,15 @@ function sortItems(items: ItemStat[], key: SortKey): ItemStat[] {
 // and the ?untraded= toggle are all deep-linkable. Untraded (craft-only) items
 // are hidden by default — most of the directory is noise for someone shopping.
 export default function Items() {
-  const [index, setIndex] = useState<ItemIndex | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // Refresh contract lives in freshness.ts, not here (eco-app#201).
+  const itemsPlane = useFreshData("items", fetchItemIndex)
+  const index = itemsPlane.data
+  const error = itemsPlane.error
   const [params, setParams] = useSearchParams()
   const q = params.get("q") ?? ""
   const sort = (params.get("sort") ?? "activity") as SortKey
   const showUntraded = params.get("untraded") === "show"
 
-  useEffect(() => {
-    const controller = new AbortController()
-    fetchItemIndex(controller.signal)
-      .then(setIndex)
-      .catch((err) => {
-        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : String(err))
-      })
-    return () => controller.abort()
-  }, [])
 
   // Preserve the other params when one control changes.
   const update = (patch: Record<string, string>) => {
@@ -95,6 +90,7 @@ export default function Items() {
             item directory unavailable right now
           </p>
         )}
+        <FreshnessNote plane="items" loadedAt={itemsPlane.loadedAt} />
       </section>
 
       {index && index.totalItems === 0 && (

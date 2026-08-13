@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import ItemLink from "../components/ItemLink"
+import FreshnessNote from "../components/FreshnessNote"
 import Layout from "../components/Layout"
-import { fetchRecipeIndex, type Recipe, type RecipeIndex } from "../lib/recipesApi"
+import { fetchRecipeIndex, type Recipe } from "../lib/recipesApi"
 import { formatCount, formatDuration, prettifyEcoName } from "../lib/format"
+import { useFreshData } from "../lib/useFreshData"
 
 const LIST_ROWS = 200
 
@@ -45,8 +47,10 @@ function ingredientSummary(r: Recipe) {
 }
 
 export default function Recipes() {
-  const [index, setIndex] = useState<RecipeIndex | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // Refresh contract lives in freshness.ts, not here (eco-app#201).
+  const recipesPlane = useFreshData("recipes", fetchRecipeIndex)
+  const index = recipesPlane.data
+  const error = recipesPlane.error
   const [params, setParams] = useSearchParams()
   const q = params.get("q") ?? ""
   const skill = params.get("skill") ?? ""
@@ -54,15 +58,6 @@ export default function Recipes() {
   const ingredient = params.get("ingredient") ?? ""
   const tier = params.get("tier") ?? ""
 
-  useEffect(() => {
-    const controller = new AbortController()
-    fetchRecipeIndex(controller.signal)
-      .then(setIndex)
-      .catch((err) => {
-        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : String(err))
-      })
-    return () => controller.abort()
-  }, [])
 
   // Preserve the other params when one control changes.
   const update = (patch: Record<string, string>) => {
@@ -137,6 +132,7 @@ export default function Recipes() {
             recipe directory unavailable right now
           </p>
         )}
+        <FreshnessNote plane="recipes" loadedAt={recipesPlane.loadedAt} />
       </section>
 
       {index && total === 0 && (

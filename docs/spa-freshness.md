@@ -63,12 +63,11 @@ Contracts are declared for every plane. Pages are migrated to the shared hook
 in batches.
 
 **Wired:** `status` (site-wide, via `useEcoStatus`), `/map` (climate, region,
-map), `/civics`, `/crafting`, `/social`.
+map), `/civics`, `/crafting`, `/social`, `/items`, `/recipes`.
 
 **Not yet wired** — contract declared, but the page still fetches on mount only
-and shows no caption or Refresh control: `/items`, `/item`, `/species`,
-`/replay`, `/recipes`, `/recipe`, `/trade`, `/user`, `/jobs`, and the seven
-`/uses/*` pages.
+and shows no caption or Refresh control: `/item`, `/species`, `/replay`,
+`/recipe`, `/trade`, `/user`, `/jobs`, and the seven `/uses/*` pages.
 
 The unwired set is mostly `manual` and `static` planes, where a mount-only
 fetch is closer to correct than it was for the live ones. The parameterised
