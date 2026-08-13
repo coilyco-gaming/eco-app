@@ -720,6 +720,7 @@ a.dir-card:hover {
 }
 
 .species-state-recovering,
+.species-state-growing,
 .species-state-stable {
   color: var(--leaf);
 }

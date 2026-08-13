@@ -49,6 +49,10 @@ export type SpeciesRiskState =
   | "at_risk"
   | "declining"
   | "recovering"
+  // Recent window up past the same 15% band `declining` uses. Growth used to
+  // land in `declining` because the classifier tested the absolute value
+  // (eco-app#220).
+  | "growing"
   | "stable"
   | "naturally_sparse"
   | "insufficient"

@@ -141,6 +141,7 @@ const RISK_STATE_LABEL: Record<SpeciesRiskState, string> = {
   at_risk: "at risk",
   declining: "declining",
   recovering: "recovering",
+  growing: "growing",
   stable: "stable",
   naturally_sparse: "naturally sparse",
   insufficient: "insufficient data",

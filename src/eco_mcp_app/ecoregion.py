@@ -607,15 +607,7 @@ def classify_species_risk(
                     ),
                 )
             )
-        elif recent_change_pct is None or abs(recent_change_pct) < abs(_RISK_RECENT_DECLINE):
-            out.append(
-                replace(
-                    evidence,
-                    state="stable",
-                    reason="Recent movement stayed inside the 15% warning band.",
-                )
-            )
-        else:
+        elif recent_change_pct is not None and recent_change_pct <= _RISK_RECENT_DECLINE:
             out.append(
                 replace(
                     evidence,
@@ -626,16 +618,43 @@ def classify_species_risk(
                     ),
                 )
             )
+        elif recent_change_pct is not None and recent_change_pct >= _RECOVERY_RECENT_GROWTH:
+            # Growth past the same band. This branch used to be absent, so the
+            # `declining` else-arm swallowed it: the test was on
+            # `abs(recent_change_pct)`, which reported a species up 74% in the
+            # recent window as declining (#220). This is the field a reader
+            # uses to decide what to protect, so it was naming the winners.
+            out.append(
+                replace(
+                    evidence,
+                    state="growing",
+                    reason="Recent population is up at least 15%.",
+                )
+            )
+        else:
+            out.append(
+                replace(
+                    evidence,
+                    state="stable",
+                    reason=(
+                        "Recent movement stayed inside the 15% warning band, but the "
+                        "population is still well down across the cycle."
+                        if change_pct is not None and change_pct <= _RISK_CYCLE_DECLINE
+                        else "Recent movement stayed inside the 15% warning band."
+                    ),
+                )
+            )
 
     state_order = {
         "at_risk": 0,
         "declining": 1,
         "recovering": 2,
-        "stable": 3,
-        "naturally_sparse": 4,
-        "insufficient": 5,
-        "stale": 6,
-        "missing": 7,
+        "growing": 3,
+        "stable": 4,
+        "naturally_sparse": 5,
+        "insufficient": 6,
+        "stale": 7,
+        "missing": 8,
     }
     out.sort(key=lambda row: (state_order[row.state], row.name))
     return out
@@ -805,9 +824,12 @@ def build_payload(
                 "minSamples": _MIN_RISK_SAMPLES,
                 "minObservationSeconds": _MIN_OBSERVATION_SECONDS,
                 "staleLagSeconds": _STALE_LAG_SECONDS,
+                "recentGrowthPct": _RECOVERY_RECENT_GROWTH,
                 "description": (
                     "Warn when current population falls to 25% of its own observed peak, "
                     "or when a 30% cycle decline is still down 15% in the recent window. "
+                    "Movement past the same 15% band the other way is `growing`, not "
+                    "`declining` — the classifier tests the signed change. "
                     "No universal healthy population baseline is assumed."
                 ),
             },

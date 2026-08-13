@@ -275,6 +275,54 @@ def test_species_risk_distinguishes_decline_stability_recovery_and_sparse() -> N
     assert rows["SparseSpecies"].warning is False
 
 
+def test_species_risk_does_not_call_growth_a_decline() -> None:
+    """The classifier tests the signed recent change, not its magnitude (#220).
+
+    It used to bucket on `abs(recentChangePct)`, so Huckleberry (+425% over the
+    cycle, +28% in the recent window) and Tomatoes (+635% / +74.5%) came back
+    `declining` with the reason "Population is declining". This is the field a
+    reader uses to decide what to protect, and it was naming the winners.
+    """
+    series = {
+        # Up sharply in the recent window — the Huckleberry shape.
+        "HuckleberrySpecies": [(0, 20.0), (2000, 60.0), (4000, 82.0), (6000, 105.0)],
+        # Down sharply in the recent window — must stay `declining`.
+        "FadingSpecies": [(0, 100.0), (2000, 130.0), (4000, 125.0), (6000, 90.0)],
+    }
+    rows = {row.name: row for row in eco.classify_species_risk(series)}
+
+    assert rows["HuckleberrySpecies"].recent_change_pct is not None
+    assert rows["HuckleberrySpecies"].recent_change_pct > 0
+    assert rows["HuckleberrySpecies"].state == "growing"
+    assert rows["HuckleberrySpecies"].warning is False
+    assert "declining" not in rows["HuckleberrySpecies"].reason.lower()
+
+    assert rows["FadingSpecies"].recent_change_pct is not None
+    assert rows["FadingSpecies"].recent_change_pct < 0
+    assert rows["FadingSpecies"].state == "declining"
+
+
+def test_species_risk_flat_recent_window_stays_stable() -> None:
+    # Movement inside the band either way is `stable`, not `growing`.
+    series = {"SteadySpecies": [(0, 100.0), (2000, 104.0), (4000, 103.0), (6000, 106.0)]}
+    rows = {row.name: row for row in eco.classify_species_risk(series)}
+    assert rows["SteadySpecies"].state == "stable"
+
+
+def test_stable_reason_names_a_large_cycle_decline() -> None:
+    """Daisy: -58% across the cycle, -2% recently. The bucket was right, the caption was not.
+
+    A flat recent window keeps it out of `declining`, but reporting it as
+    plainly "stable" hid that the population is less than half what it was
+    (#220).
+    """
+    series = {"DaisySpecies": [(0, 240.0), (2000, 140.0), (4000, 102.0), (6000, 100.0)]}
+    row = next(iter(eco.classify_species_risk(series)))
+    assert row.state == "stable"
+    assert row.change_pct is not None and row.change_pct <= -0.30
+    assert "down across the cycle" in row.reason
+
+
 def test_species_risk_marks_missing_stale_and_thin_data_insufficient() -> None:
     series = {
         "CurrentSpecies": [(0, 100.0), (2000, 100.0), (4000, 100.0), (6000, 100.0)],
