@@ -45,6 +45,7 @@ packages = ["src/eco_mcp_app", "src/eco_discord", "src/eco_spec_tracker", "src/e
 [tool.hatch.build.targets.wheel.force-include]
 "data/ecoregions.json" = "eco_mcp_app/data/ecoregions.json"
 "data/eco_gnome_data.json" = "eco_mcp_app/data/eco_gnome_data.json"
+"data/eco_autogen_data.json" = "eco_mcp_app/data/eco_autogen_data.json"
 
 [tool.ruff]
 line-length = 100

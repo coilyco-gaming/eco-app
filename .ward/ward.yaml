@@ -23,6 +23,9 @@ commands:
   smoke:
     run: bash scripts/ward-command.sh smoke
     description: End-to-end smoke test the MCP server via stdio.
+  autogen-refresh:
+    run: uv run python scripts/autogen_refresh.py
+    description: Regenerate data/eco_autogen_data.json from Eco's dedicated-server AutoGen C#. Downloads the server via anonymous steamcmd unless given a tree. Native args - [--root PATH] [--download-dir PATH] [--output PATH].
   frontend-install:
     run: pnpm --dir frontend install
     description: Install frontend deps into frontend/node_modules (pnpm).
