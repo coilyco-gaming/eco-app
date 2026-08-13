@@ -63,14 +63,18 @@ Contracts are declared for every plane. Pages are migrated to the shared hook
 in batches.
 
 **Wired:** `status` (site-wide, via `useEcoStatus`), `/map` (climate, region,
-map), `/civics`, `/crafting`, `/social`, `/items`, `/recipes`.
+map), `/civics`, `/crafting`, `/social`, `/items`, `/recipes`, `/replay`,
+`/species`.
 
 **Not yet wired** — contract declared, but the page still fetches on mount only
-and shows no caption or Refresh control: `/item`, `/species`, `/replay`,
-`/recipe`, `/trade`, `/user`, `/jobs`, and the seven `/uses/*` pages.
+and shows no caption or Refresh control: `/item`, `/recipe`, `/trade`,
+`/user`, `/jobs`, and the seven `/uses/*` pages.
 
-The unwired set is mostly `manual` and `static` planes, where a mount-only
-fetch is closer to correct than it was for the live ones. The parameterised
-pages (`/item`, `/species`, `/user`, `/uses/*`) need the hook's `deps`
-argument so a changed query re-fetches, which is why they were not swept in
-with the simple single-plane pages. Tracked on eco-app#201.
+The unwired set is `manual` and `static` planes, where a mount-only fetch is
+closer to correct than it was for the live ones.
+
+Parameterised pages pass the hook's `deps` argument so a changed query
+re-fetches. `/species` also has its fetcher return the name it answered for, so
+a slow response for a previous query can never be rendered against the current
+one; `/item`, `/user` and `/uses/*` need the same care. Tracked on
+eco-app#201.

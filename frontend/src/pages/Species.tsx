@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
+import FreshnessNote from "../components/FreshnessNote"
 import Layout from "../components/Layout"
 import Loading from "../components/Loading"
 import { formatCount, safeHttpUrl } from "../lib/format"
 import { fetchSpecies, type SpeciesPopulationSample, type SpeciesProfile } from "../lib/speciesApi"
+import { useFreshData } from "../lib/useFreshData"
 
 function PopulationCurve({ samples }: { samples: SpeciesPopulationSample[] }) {
   if (samples.length < 2) {
@@ -49,21 +50,25 @@ function PopulationCurve({ samples }: { samples: SpeciesPopulationSample[] }) {
 export default function Species() {
   const [params] = useSearchParams()
   const name = params.get("name") ?? ""
-  const [result, setResult] = useState<{ name: string; profile: SpeciesProfile | null } | null>(null)
 
-  useEffect(() => {
-    if (!name) return
-    const controller = new AbortController()
-    fetchSpecies(name, controller.signal).then(
-      (value) => {
-        if (!controller.signal.aborted) setResult({ name, profile: value })
-      },
-      () => {
-        if (!controller.signal.aborted) setResult({ name, profile: null })
-      },
-    )
-    return () => controller.abort()
-  }, [name])
+  // Refresh contract lives in freshness.ts, not here (eco-app#201). The
+  // fetcher carries the name it answered for so a slow response for the
+  // previous species can never be shown against the current one — the
+  // stale-result guard this page already had.
+  const speciesPlane = useFreshData(
+    "species",
+    async (signal): Promise<{ name: string; profile: SpeciesProfile | null }> => {
+      if (!name) return { name, profile: null }
+      try {
+        return { name, profile: await fetchSpecies(name, signal) }
+      } catch {
+        // A miss is a normal state here, not a page error.
+        return { name, profile: null }
+      }
+    },
+    [name],
+  )
+  const result = speciesPlane.data
 
   const loaded = !name || result?.name === name
   const profile = result?.name === name ? result.profile : null
@@ -81,6 +86,7 @@ export default function Species() {
             {profile.populationDelta === null ? "n/a" : formatCount(profile.populationDelta)} this cycle
           </p>
         )}
+        <FreshnessNote plane="species" loadedAt={speciesPlane.loadedAt} />
       </section>
 
       {!loaded && <Loading label="Reading the population curve…" />}

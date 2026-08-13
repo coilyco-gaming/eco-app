@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
 import { Link, useSearchParams } from "react-router-dom"
+import FreshnessNote from "../components/FreshnessNote"
 import Layout from "../components/Layout"
 import Loading from "../components/Loading"
 import { fetchReplayData, type ReplayEvent } from "../lib/replayApi"
 import { formatCount } from "../lib/format"
+import { useFreshData } from "../lib/useFreshData"
 
 const VISIBLE_ROWS = 100
 
@@ -23,31 +25,14 @@ function matchesEvent(e: ReplayEvent, needle: string): boolean {
 }
 
 export default function Replay() {
-  const [events, setEvents] = useState<ReplayEvent[] | null>(null)
-  const [total, setTotal] = useState(0)
-  const [mockData, setMockData] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // Refresh contract lives in freshness.ts, not here (eco-app#201).
+  const replayPlane = useFreshData("replay", (signal) => fetchReplayData(200, signal))
+  const events = replayPlane.data?.events ?? null
+  const total = replayPlane.data?.total ?? 0
+  const mockData = replayPlane.data?.mockData ?? false
+  const error = replayPlane.error
   const [params, setParams] = useSearchParams()
   const q = params.get("q") ?? ""
-
-  useEffect(() => {
-    const controller = new AbortController()
-    fetchReplayData(200, controller.signal)
-      .then((data) => {
-        setEvents(data.events)
-        setTotal(data.total)
-        setMockData(data.mockData)
-      })
-      .catch((err) => {
-        if (!controller.signal.aborted) {
-          setEvents(null)
-          setTotal(0)
-          setMockData(false)
-          setError(err instanceof Error ? err.message : String(err))
-        }
-      })
-    return () => controller.abort()
-  }, [])
 
   const setQuery = (value: string) => {
     setParams(value ? { q: value } : {}, { replace: false })
@@ -89,6 +74,13 @@ export default function Replay() {
             chronicle unavailable right now
           </p>
         )}
+        <FreshnessNote
+          plane="replay"
+          loadedAt={replayPlane.loadedAt}
+          refreshing={replayPlane.refreshing}
+          refreshError={replayPlane.refreshError}
+          onRefresh={replayPlane.refresh}
+        />
       </section>
 
       {!events && !error && <Loading label="Reading the chronicle…" testid="replay-loading" />}
