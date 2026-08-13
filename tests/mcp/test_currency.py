@@ -703,3 +703,71 @@ def test_preview_currency_json_sanitizes_nested_nonfinite_values(
         "activeCurrencies": [[0.0, 3.0]],
         "trades7d": [[0.0, None]],
     }
+
+
+# ---------------------------------------------------------------------------
+# Response size — the `currency` filter has to actually narrow (eco-app#231)
+# ---------------------------------------------------------------------------
+
+
+def _many_records(n: int = 185) -> list[CurrencyRecord]:
+    """A roster the size of the one on Sirens."""
+    records = [
+        CurrencyRecord(f"Currency{i:03d}", is_minted=i % 2 == 0, trade_count=i, trade_volume=i * 2)
+        for i in range(n - 1)
+    ]
+    records.append(CurrencyRecord("Spectres", is_minted=True, trade_count=99, trade_volume=1234.5))
+    return records
+
+
+def test_naming_one_currency_drops_the_whole_roster() -> None:
+    """Asking about one currency used to fail exactly like asking about all.
+
+    `get_currency(currency="Spectres")` returned 136,670 characters — the same
+    185-entry `currencies[]` and `personal[]` as the unfiltered call, plus a
+    `selected` block. All three variants exceeded the MCP response cap.
+    """
+    snap = _snapshot_with(_many_records())
+    full = compute_currency_payload(snap)
+    one = compute_currency_payload(snap, currency="Spectres")
+
+    assert one["selected"] is not None
+    assert one["selected"]["name"] == "Spectres"
+    # The roster is gone, but the summary totals that describe it remain.
+    assert one["currencies"] == []
+    assert one["personal"] == []
+    assert one["minted"] == []
+    assert one["counts"]["total"] == 185
+    assert one["money"] == full["money"]
+    # The filter now buys a real reduction rather than adding a block.
+    assert len(json.dumps(one)) < len(json.dumps(full)) / 10
+
+
+def test_a_miss_returns_suggestions_not_the_corpus() -> None:
+    snap = _snapshot_with(_many_records())
+    miss = compute_currency_payload(snap, currency="Sun Coin")
+    assert miss["notFound"] is True
+    assert miss["selected"] is None
+    assert miss["currencies"] == []
+    assert miss["suggestions"]
+    assert len(miss["suggestions"]) <= 8
+    assert len(json.dumps(miss)) < 5_000
+
+
+def test_the_holders_note_is_not_repeated_on_every_row() -> None:
+    """185 copies of the same 200-byte note cost ~37 KB on their own."""
+    snap = _snapshot_with(_many_records())
+    payload = compute_currency_payload(snap)
+    body = json.dumps(payload)
+    # Exactly one copy: the hoisted top-level note.
+    assert body.count(HOLDERS_UNAVAILABLE_NOTE) == 1
+    assert payload["holders_unavailable_note"] == HOLDERS_UNAVAILABLE_NOTE
+    # Rows still say the holders are unreachable, just without the prose.
+    assert payload["currencies"][0]["holders"]["reachable"] is False
+
+
+def test_the_selected_currency_keeps_its_own_holders_note() -> None:
+    # A report reader has no roster context to fall back on.
+    snap = _snapshot_with(_many_records())
+    one = compute_currency_payload(snap, currency="Spectres")
+    assert one["selected"]["holders"]["note"] == HOLDERS_UNAVAILABLE_NOTE

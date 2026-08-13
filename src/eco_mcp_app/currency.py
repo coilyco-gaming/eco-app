@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import difflib
 import os
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -668,17 +669,20 @@ def _currency_view(rec: CurrencyRecord) -> dict[str, Any]:
     }
 
 
-def _holders_view(rec: CurrencyRecord) -> dict[str, Any]:
+def _holders_view(rec: CurrencyRecord, *, include_note: bool = True) -> dict[str, Any]:
     """The per-currency top-holder block (meets ``Currency <name>``'s holders).
 
     ``reachable`` False means the exporter mod is not deployed on the target
-    server, so ``note`` carries ``HOLDERS_UNAVAILABLE_NOTE``. Reachable-but-empty
-    ("no accounts hold this currency yet") is a distinct, valid state.
+    server. ``include_note`` controls whether the row repeats the explanation:
+    185 copies of the same 200-byte unavailability note cost ~37 KB, so list
+    rows omit it and defer to the payload's top-level
+    ``holders_unavailable_note`` (#231). The single ``selected`` currency keeps
+    its own copy, because a report reader has no list context to fall back on.
     """
     if not rec.holders_reachable:
         return {
             "reachable": False,
-            "note": HOLDERS_UNAVAILABLE_NOTE,
+            "note": HOLDERS_UNAVAILABLE_NOTE if include_note else "",
             "accountsCounted": 0,
             "totalHoldings": 0.0,
             "list": [],
@@ -704,7 +708,7 @@ def _currency_view_full(rec: CurrencyRecord) -> dict[str, Any]:
     issuance / trade facts. The report view builds the same shape inline for its
     single ``selected`` currency, so the two stay consistent.
     """
-    return {**_currency_view(rec), "holders": _holders_view(rec)}
+    return {**_currency_view(rec), "holders": _holders_view(rec, include_note=False)}
 
 
 def _rank_key(rec: CurrencyRecord) -> tuple[float, float, float, str]:
@@ -743,10 +747,12 @@ def compute_currency_payload(
 
     selected: dict[str, Any] | None = None
     not_found = False
+    suggestions: list[str] = []
     if currency:
         match = _find_currency(records, currency)
         if match is None:
             not_found = True
+            suggestions = _suggest_currencies(records, currency)
         else:
             selected = {
                 **_currency_view(match),
@@ -793,15 +799,23 @@ def compute_currency_payload(
             "activeCurrencies": [[t, v] for t, v in snapshot.active_currencies_series],
             "trades7d": [[t, v] for t, v in snapshot.trades_7d_series],
         },
-        "currencies": [_currency_view_full(r) for r in records],
-        "minted": [_currency_view_full(r) for r in minted],
-        "personal": [_currency_view_full(r) for r in personal],
+        # Report mode answers about one currency, so it ships `selected` and
+        # the summary totals and drops the full roster. Shipping all 185 rows
+        # (65 KB of `currencies` plus another 65 KB of `personal`) meant asking
+        # about one currency failed exactly the way asking about all of them
+        # did — and a miss returned the entire corpus too (#231).
+        "currencies": [] if currency else [_currency_view_full(r) for r in records],
+        "minted": [] if currency else [_currency_view_full(r) for r in minted],
+        "personal": [] if currency else [_currency_view_full(r) for r in personal],
         "counts": {
             "total": len(records),
             "minted": len(minted),
             "personal": len(personal),
         },
         "selected": selected,
+        # Only populated on a miss, so a caller can retry without pulling the
+        # roster down to look up a spelling.
+        "suggestions": suggestions,
         "holders_reachable": snapshot.holders_reachable,
         "holders_unavailable_note": HOLDERS_UNAVAILABLE_NOTE,
         "trade_currency_column_seen": snapshot.trade_currency_column_seen,
@@ -810,6 +824,24 @@ def compute_currency_payload(
         "fetched_at_iso": snapshot.fetched_at_iso,
         "source_base_url": snapshot.source_base_url,
     }
+
+
+def _suggest_currencies(records: list[CurrencyRecord], query: str, limit: int = 8) -> list[str]:
+    """Names to try after a miss, so the caller need not pull the whole roster.
+
+    Close spellings first, then the most economically active currencies, which
+    is what someone who typed a half-remembered name most likely wanted.
+    ``records`` arrives already ranked by activity.
+    """
+    names = [rec.name for rec in records]
+    close = difflib.get_close_matches(query.strip(), names, n=limit, cutoff=0.6)
+    out = list(close)
+    for name in names:
+        if len(out) >= limit:
+            break
+        if name not in out:
+            out.append(name)
+    return out
 
 
 def _find_currency(records: list[CurrencyRecord], query: str) -> CurrencyRecord | None:
