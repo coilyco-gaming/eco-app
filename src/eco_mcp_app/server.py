@@ -64,7 +64,11 @@ DEFAULT_ECO_BASE_URL = DEFAULT_ECO_INFO_URL.rsplit("/info", 1)[0]
 # Economy dashboard: datasets pulled from the admin /datasets/get endpoint.
 # Listed here so both tool wiring and tests share one source of truth; each
 # string must appear in `/datasets/flatlist` on the live server.
-ECONOMY_DATASETS: tuple[str, ...] = (
+#
+# Flow datasets are per-event magnitudes: summing them over a window is
+# meaningful, so these are what drive sparklines and the week-over-week
+# activity delta.
+ECONOMY_FLOW_DATASETS: tuple[str, ...] = (
     "OfferedLoanOrBond",
     "AcceptedLoanOrBond",
     "RepaidLoanOrBond",
@@ -80,6 +84,14 @@ ECONOMY_DATASETS: tuple[str, ...] = (
     "PayTax",
     "ReceiveGovernmentFunds",
 )
+
+# Level datasets are balances sampled over time. The last point is the current
+# value; summing them is meaningless, so they stay out of sparks and the WoW
+# delta. `get_currency` reads the same government-holdings dataset, and the two
+# tools contradicted each other while `get_economy` did not read it (#258).
+ECONOMY_LEVEL_DATASETS: tuple[str, ...] = (currency_mod.GOVERNMENT_HOLDINGS_DATASET,)
+
+ECONOMY_DATASETS: tuple[str, ...] = ECONOMY_FLOW_DATASETS + ECONOMY_LEVEL_DATASETS
 
 # Admin endpoints (exporter/*) require an API key. We read it from the
 # environment (populated by SSM at boot in the homelab deploy, or set by hand
@@ -1161,11 +1173,14 @@ async def _fetch_dataset(
     name: str,
     day_end: int,
     headers: dict[str, str],
-) -> list[tuple[float, float]]:
-    """Fetch a single /datasets/get series. Returns [] on any non-200 or shape surprise.
+) -> list[tuple[float, float]] | None:
+    """Fetch a single /datasets/get series.
 
-    Day-3 reality: some series are legitimately empty, and malformed stats
-    return 500. We shouldn't let a single bad series blow up the whole card.
+    Returns ``None`` when the series could not be read at all (non-200,
+    transport error, unparseable body) and a list — possibly empty — when the
+    server answered. A single bad series must not blow up the whole card, but
+    collapsing "could not measure" into "measured zero" made `get_economy`
+    report confident zeros for datasets it never actually read (#261).
     """
     try:
         url = f"{base}/datasets/get"
@@ -1175,10 +1190,10 @@ async def _fetch_dataset(
             headers=headers,
         )
         if r.status_code != 200:
-            return []
+            return None
         data = r.json()
     except (httpx.HTTPError, ValueError):
-        return []
+        return None
     # /datasets/get returns either a list of {Time, Value} dicts or a list of
     # two-item [time, value] pairs — tolerate both shapes defensively.
     out: list[tuple[float, float]] = []
@@ -1238,6 +1253,7 @@ async def fetch_economy(server: str | None = None) -> dict[str, Any]:
     token = _load_admin_token()
     admin_ok = bool(token)
     series: dict[str, list[tuple[float, float]]] = {}
+    unavailable: list[str] = []
     if token:
         headers = {"X-API-Key": token}
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -1250,14 +1266,20 @@ async def fetch_economy(server: str | None = None) -> dict[str, Any]:
                 ),
                 return_exceptions=False,
             )
-        series = dict(zip(ECONOMY_DATASETS, results, strict=True))
+        for name, points in zip(ECONOMY_DATASETS, results, strict=True):
+            if points is None:
+                unavailable.append(name)
+            else:
+                series[name] = points
     else:
-        series = {name: [] for name in ECONOMY_DATASETS}
+        # No token means nothing was measured, not that everything is zero.
+        unavailable = list(ECONOMY_DATASETS)
 
     out: dict[str, Any] = {
         "info": info,
         "days_elapsed": days_elapsed,
         "series": series,
+        "datasets_unavailable": unavailable,
         "admin_ok": admin_ok,
     }
     _economy_cache[cache_key] = dict(out)
@@ -1277,6 +1299,58 @@ def _pct(numerator: float, denominator: float) -> float:
     if denominator <= 0:
         return 0.0
     return round(100.0 * numerator / denominator, 1)
+
+
+def _opt_total(series: dict[str, list[tuple[float, float]]], name: str) -> float | None:
+    """Sum a flow dataset, or None when that dataset was never read.
+
+    `series` only carries datasets the server actually answered for, so a
+    missing key is "not collected" and an empty list is a measured zero.
+    """
+    points = series.get(name)
+    return None if points is None else _series_total(points)
+
+
+def _opt_last(series: dict[str, list[tuple[float, float]]], name: str) -> float | None:
+    """Current value of a level dataset, or None when it was never read."""
+    points = series.get(name)
+    if points is None:
+        return None
+    return _series_last(points) if points else 0.0
+
+
+def _opt_pct(numerator: float | None, denominator: float | None) -> float | None:
+    """Percentage that stays None when either side is unmeasured.
+
+    Also returns None for a zero denominator: "0% of nothing" is not a rate,
+    and reporting it as 0.0 let a healthy-looking number stand in for an
+    absence of activity (#261).
+    """
+    if numerator is None or denominator is None or denominator <= 0:
+        return None
+    return round(100.0 * numerator / denominator, 1)
+
+
+def _opt_sub(left: float | None, right: float | None) -> float | None:
+    if left is None or right is None:
+        return None
+    return left - right
+
+
+def _opt_add(left: float | None, right: float | None) -> float | None:
+    if left is None or right is None:
+        return None
+    return left + right
+
+
+def _opt_trunc(value: float | None) -> int | None:
+    """Truncate an optional KPI to int, preserving the unmeasured case."""
+    return None if value is None else int(value)
+
+
+def _fmt_pct(value: float | None) -> str:
+    """Render an optional percentage, naming the absent case."""
+    return _UNREPORTED if value is None else f"{value}%"
 
 
 def _stddev(values: list[float]) -> float:
@@ -1336,21 +1410,35 @@ def compute_economy_payload(raw: dict[str, Any]) -> dict[str, Any]:
     info = raw.get("info") or {}
     series: dict[str, list[tuple[float, float]]] = raw.get("series") or {}
     days_elapsed = max(1, int(raw.get("days_elapsed") or 1))
+    # Datasets the fetch could not read. Anything named here yields None KPIs
+    # rather than zeros. Fall back to deriving it from `series` so a caller
+    # holding an older raw dict still gets consistent output.
+    unavailable: list[str] = list(
+        raw.get("datasets_unavailable")
+        if raw.get("datasets_unavailable") is not None
+        else [name for name in ECONOMY_DATASETS if name not in series]
+    )
 
-    # KPI primitives.
-    offered_loans = _series_total(series.get("OfferedLoanOrBond", []))
-    accepted_loans = _series_total(series.get("AcceptedLoanOrBond", []))
-    repaid_loans = _series_total(series.get("RepaidLoanOrBond", []))
-    defaulted_loans = _series_total(series.get("DefaultedOnLoanOrBond", []))
+    # KPI primitives. Every one of these is None when its dataset was not read,
+    # so a caller can tell "no loans were taken out" from "we never looked".
+    offered_loans = _opt_total(series, "OfferedLoanOrBond")
+    accepted_loans = _opt_total(series, "AcceptedLoanOrBond")
+    repaid_loans = _opt_total(series, "RepaidLoanOrBond")
+    defaulted_loans = _opt_total(series, "DefaultedOnLoanOrBond")
 
-    posted_contracts = _series_total(series.get("PostedContract", []))
-    completed_contracts = _series_total(series.get("CompletedContract", []))
-    failed_contracts = _series_total(series.get("FailedContract", []))
+    posted_contracts = _opt_total(series, "PostedContract")
+    completed_contracts = _opt_total(series, "CompletedContract")
+    failed_contracts = _opt_total(series, "FailedContract")
 
-    wages = _series_total(series.get("PayWages", []))
-    taxes_paid = _series_total(series.get("PayTax", []))
-    govt_funds = _series_total(series.get("ReceiveGovernmentFunds", []))
-    net_tax_flow = taxes_paid - govt_funds
+    wages = _opt_total(series, "PayWages")
+    taxes_paid = _opt_total(series, "PayTax")
+    # Flow out of the treasury over the cycle...
+    govt_funds_received = _opt_total(series, "ReceiveGovernmentFunds")
+    net_tax_flow = _opt_sub(taxes_paid, govt_funds_received)
+    # ...versus the treasury's current balance, which is a level. get_currency
+    # reports this same dataset as `money.governmentHoldings`; reading it here
+    # is what makes the two tools agree (#258).
+    govt_funds = _opt_last(series, currency_mod.GOVERNMENT_HOLDINGS_DATASET)
 
     # Trades/day: EconomyDesc on /info says "N trades, M contracts" authoritatively.
     # We parse it for the displayed number because /datasets doesn't have a
@@ -1363,34 +1451,67 @@ def compute_economy_payload(raw: dict[str, Any]) -> dict[str, Any]:
     trades_per_day = round(trades_total / days_elapsed, 1) if days_elapsed else 0.0
 
     # Loan default rate — defaults vs (defaulted + repaid) gives the realized
-    # rate; open loans (accepted-but-not-yet-repaid) aren't resolved yet.
-    resolved_loans = defaulted_loans + repaid_loans
-    default_rate = _pct(defaulted_loans, resolved_loans)
+    # rate; open loans (accepted-but-not-yet-repaid) aren't resolved yet. None
+    # when no loan has resolved: there is no rate to report yet.
+    resolved_loans = _opt_add(defaulted_loans, repaid_loans)
+    default_rate = _opt_pct(defaulted_loans, resolved_loans)
 
     # Contract completion ratio — completed / (completed + failed). Posted-but-
     # open contracts haven't had a chance to fail yet, so excluding them avoids
     # a cold-start penalty that would wrongly trigger "stressed".
-    completion_ratio = _pct(completed_contracts, completed_contracts + failed_contracts)
-    failure_rate = _pct(failed_contracts, completed_contracts + failed_contracts)
+    settled_contracts = _opt_add(completed_contracts, failed_contracts)
+    completion_ratio = _opt_pct(completed_contracts, settled_contracts)
+    failure_rate = _opt_pct(failed_contracts, settled_contracts)
 
     # Week-over-week economic-activity delta (a real trailing-vs-prior window,
     # summed across the datasets' per-day events). None until two weeks of
     # runtime with prior-window activity. See _wow_activity_delta for why this
     # can't be a literal trades/day WoW.
-    trades_wow_pct = _wow_activity_delta(series, days_elapsed)
+    trades_wow_pct = _wow_activity_delta(
+        {name: pts for name, pts in series.items() if name in ECONOMY_FLOW_DATASETS},
+        days_elapsed,
+    )
 
-    # Classify.
-    if default_rate > 15.0 or failure_rate > 30.0:
+    # Classify. Only a measured rate can move the verdict. Note the three-way
+    # distinction: a rate of None because no loan ever resolved is evidence of
+    # a quiet credit market, while a rate of None because the dataset was never
+    # read is evidence of nothing at all — and only the latter blocks `booming`.
+    loans_measured = not {"DefaultedOnLoanOrBond", "RepaidLoanOrBond"} & set(unavailable)
+    credit_ok = loans_measured and (default_rate is None or default_rate < 5.0)
+
+    if (default_rate is not None and default_rate > 15.0) or (
+        failure_rate is not None and failure_rate > 30.0
+    ):
         health = "stressed"
-    elif default_rate < 5.0 and (trades_wow_pct is not None and trades_wow_pct >= 20.0):
+    elif credit_ok and trades_wow_pct is not None and trades_wow_pct >= 20.0:
         health = "booming"
     else:
         health = "healthy"
 
-    narrative = (
-        f"Economy is {health} — {default_rate}% default rate, "
-        f"{completion_ratio}% contracts completed"
-    )
+    # Describe what was actually measured. The old narrative read a 0% default
+    # rate off zero loans and a 0% completion ratio off zero contracts, then
+    # presented both as evidence of health (#261).
+    clauses: list[str] = []
+    if default_rate is not None:
+        clauses.append(f"{default_rate}% loan default rate")
+    elif "DefaultedOnLoanOrBond" in unavailable or "RepaidLoanOrBond" in unavailable:
+        clauses.append("loan data unavailable")
+    else:
+        clauses.append("no loans resolved")
+
+    if completion_ratio is not None:
+        clauses.append(f"{completion_ratio}% contracts completed")
+    elif "CompletedContract" in unavailable or "FailedContract" in unavailable:
+        clauses.append("contract data unavailable")
+    else:
+        clauses.append("no contract activity recorded")
+
+    narrative = f"Economy is {health} — {', '.join(clauses)}"
+    if unavailable:
+        narrative += (
+            f" (verdict is partial: {len(unavailable)} of {len(ECONOMY_DATASETS)} "
+            "datasets could not be read)"
+        )
 
     # Sparkline candidates: pick up to 4 series with the highest normalized
     # stddev (excluding series that have fewer than 2 points). Normalizing by
@@ -1398,7 +1519,9 @@ def compute_economy_payload(raw: dict[str, Any]) -> dict[str, Any]:
     # footing with high-volume series like TransferMoney.
     candidates: list[tuple[str, float, list[tuple[float, float]]]] = []
     for name, pts in series.items():
-        if len(pts) < 2:
+        # Level datasets are balances, not activity — a treasury sparkline
+        # ranked by normalized stddev would crowd out real economic volatility.
+        if name in ECONOMY_LEVEL_DATASETS or len(pts) < 2:
             continue
         values = [v for _, v in pts]
         mean = sum(values) / len(values) if values else 0.0
@@ -1441,17 +1564,25 @@ def compute_economy_payload(raw: dict[str, Any]) -> dict[str, Any]:
             ),
             "contract_completion_ratio": completion_ratio,
             "contract_failure_rate": failure_rate,
-            "contracts_posted": int(posted_contracts),
-            "contracts_completed": int(completed_contracts),
-            "contracts_failed": int(failed_contracts),
+            "contracts_posted": _opt_trunc(posted_contracts),
+            "contracts_completed": _opt_trunc(completed_contracts),
+            "contracts_failed": _opt_trunc(failed_contracts),
             "loan_default_rate": default_rate,
-            "loans_offered": int(offered_loans),
-            "loans_accepted": int(accepted_loans),
-            "loans_repaid": int(repaid_loans),
-            "loans_defaulted": int(defaulted_loans),
+            "loans_offered": _opt_trunc(offered_loans),
+            "loans_accepted": _opt_trunc(accepted_loans),
+            "loans_repaid": _opt_trunc(repaid_loans),
+            "loans_defaulted": _opt_trunc(defaulted_loans),
             "wages_total": wages,
             "taxes_paid": taxes_paid,
             "govt_funds": govt_funds,
+            "govt_funds_source": currency_mod.GOVERNMENT_HOLDINGS_DATASET,
+            "govt_funds_note": (
+                "Current treasury balance, read from the same dataset "
+                "get_currency reports as `money.governmentHoldings`. This is a "
+                "balance, not a flow — `govt_funds_received` is the cycle-total "
+                "paid out of the treasury."
+            ),
+            "govt_funds_received": govt_funds_received,
             "net_tax_flow": net_tax_flow,
             "total_culture": total_culture,
             "total_culture_source": culture_source,
@@ -1460,6 +1591,16 @@ def compute_economy_payload(raw: dict[str, Any]) -> dict[str, Any]:
         "sparks": sparks,
         "health": health,
         "narrative": narrative,
+        # Name what could not be measured, so a null KPI above is explained
+        # rather than merely absent (#261).
+        "datasets_unavailable": unavailable,
+        "datasets_note": (
+            "A null KPI means its dataset was not read; a zero means the server "
+            "reported no activity. Datasets listed in `datasets_unavailable` "
+            "produced the nulls."
+        )
+        if unavailable
+        else "",
         "economy_desc": econ_desc,
     }
 
@@ -1579,13 +1720,17 @@ def _format_economy_markdown(payload: dict[str, Any]) -> str:
         "",
         f"- Trades/day: **{k['trades_per_day']}** (total {k['trades_total']:,},"
         " per Eco's own counter — the exporter ledger counts differently)",
-        f"- Contracts: {k['contracts_completed']}/{k['contracts_posted']} completed"
-        f" · {k['contract_failure_rate']}% failure rate",
-        f"- Loans: {k['loans_accepted']} accepted / {k['loans_defaulted']} defaulted"
-        f" · {k['loan_default_rate']}% default rate",
-        f"- Wages paid: **{k['wages_total']:,.0f}**",
-        f"- Net tax flow: **{k['net_tax_flow']:+,.0f}**"
-        f" (taxes in {k['taxes_paid']:,.0f} · govt out {k['govt_funds']:,.0f})",
+        f"- Contracts: {_fmt_num(k['contracts_completed'], ',.0f')}"
+        f"/{_fmt_num(k['contracts_posted'], ',.0f')} completed"
+        f" · {_fmt_pct(k['contract_failure_rate'])} failure rate",
+        f"- Loans: {_fmt_num(k['loans_accepted'], ',.0f')} accepted /"
+        f" {_fmt_num(k['loans_defaulted'], ',.0f')} defaulted"
+        f" · {_fmt_pct(k['loan_default_rate'])} default rate",
+        f"- Wages paid: **{_fmt_num(k['wages_total'], ',.0f')}**",
+        f"- Net tax flow: **{_fmt_num(k['net_tax_flow'], '+,.0f')}**"
+        f" (taxes in {_fmt_num(k['taxes_paid'], ',.0f')}"
+        f" · govt paid out {_fmt_num(k['govt_funds_received'], ',.0f')})",
+        f"- Government holdings: **{_fmt_num(k['govt_funds'], ',.0f')}**",
         f"- Total culture: {_fmt_num(k['total_culture'], '.1f')}"
         + ("+ (from milestones)" if k.get("total_culture_source") == "milestones" else ""),
     ]

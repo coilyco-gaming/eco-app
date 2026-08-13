@@ -97,7 +97,9 @@ def register_wave2_routes(registry: DualRouteRegistry, invoke: ToolInvoker) -> N
         title="Eco - economic health dashboard",
         description=(
             "Show live economic vitals for an Eco server, including trades, contracts, "
-            "loans, wages, tax flow, culture, and volatile-series trends."
+            "loans, wages, tax flow, culture, and volatile-series trends. A KPI is null "
+            "when its dataset could not be read and zero only when the server reported "
+            "no activity; `datasets_unavailable` names every dataset behind a null."
         ),
         rest_path=WAVE2_PATHS["get_economy"],
         input_model=ServerInput,

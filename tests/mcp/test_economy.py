@@ -128,9 +128,13 @@ async def test_fetch_economy_tolerates_per_dataset_500() -> None:
     respx.get(_DATASET_URL).mock(side_effect=handler)
 
     raw = await fetch_economy()
-    assert raw["series"]["TransferMoney"] == []  # swallowed
+    # The failed dataset is named as unread rather than silently reported as an
+    # empty (and therefore zero-valued) series (#261).
+    assert "TransferMoney" not in raw["series"]
+    assert "TransferMoney" in raw["datasets_unavailable"]
     # A healthy series is still populated.
     assert raw["series"]["PayWages"] == [(0.0, 1.0), (1.0, 2.0), (2.0, 3.0)]
+    assert "PayWages" not in raw["datasets_unavailable"]
 
 
 @pytest.mark.asyncio
@@ -184,11 +188,68 @@ def test_compute_healthy_classification_on_day3_zero_contracts() -> None:
     assert payload["health"] == "healthy"
     assert k["trades_total"] == 524
     assert k["trades_per_day"] == round(524 / 3, 1)
-    # Zero resolved → no crash, rates are 0.
-    assert k["loan_default_rate"] == 0.0
-    assert k["contract_completion_ratio"] == 0.0
-    # Narrative is readable, not "None% default rate".
-    assert "0.0% default rate" in payload["narrative"]
+    # Nothing resolved → there is no rate to report. A 0.0 here would read as a
+    # measured "no defaults" when the truth is "no loans at all" (#261).
+    assert k["loan_default_rate"] is None
+    assert k["contract_completion_ratio"] is None
+    # The counts behind those rates were measured, so they stay real zeros.
+    assert k["contracts_posted"] == 0
+    assert k["loans_offered"] == 0
+    # Narrative says what was observed instead of dressing zeros up as health.
+    assert "no loans resolved" in payload["narrative"]
+    assert "no contract activity recorded" in payload["narrative"]
+    assert "0.0% contracts completed" not in payload["narrative"]
+
+
+def test_unread_datasets_yield_null_kpis_not_zeros() -> None:
+    """A dataset the fetch could not read must not become a confident zero."""
+    raw = _raw()
+    raw["series"] = {}
+    raw["datasets_unavailable"] = list(ECONOMY_DATASETS)
+    payload = compute_economy_payload(raw)
+    k = payload["kpis"]
+
+    assert k["wages_total"] is None
+    assert k["taxes_paid"] is None
+    assert k["contracts_posted"] is None
+    assert k["loans_offered"] is None
+    assert k["net_tax_flow"] is None
+    assert payload["datasets_unavailable"] == list(ECONOMY_DATASETS)
+    assert "unavailable" in payload["narrative"]
+    # Unknown credit conditions must never be read as a boom.
+    assert payload["health"] != "booming"
+
+
+def test_govt_funds_reads_the_same_dataset_as_get_currency() -> None:
+    """get_economy and get_currency must agree on the treasury balance (#258)."""
+    raw = _raw(
+        series={
+            eco_server.currency_mod.GOVERNMENT_HOLDINGS_DATASET: [100, 500, 87912],
+            "PayTax": [150],
+            "ReceiveGovernmentFunds": [30],
+        }
+    )
+    k = compute_economy_payload(raw)["kpis"]
+
+    # A level dataset reports its current value, not the sum of its samples.
+    assert k["govt_funds"] == 87912.0
+    assert k["govt_funds_source"] == eco_server.currency_mod.GOVERNMENT_HOLDINGS_DATASET
+    # The flow out of the treasury stays a separate, still-summed number.
+    assert k["govt_funds_received"] == 30.0
+    assert k["net_tax_flow"] == 120.0
+
+
+def test_level_datasets_stay_out_of_sparks() -> None:
+    """Treasury balance is not economic volatility, so it cannot win a spark slot."""
+    raw = _raw(
+        series={
+            eco_server.currency_mod.GOVERNMENT_HOLDINGS_DATASET: [1, 900, 5, 4000],
+            "PropertyTransfer": [1, 2, 1, 3],
+        }
+    )
+    names = [s["name"] for s in compute_economy_payload(raw)["sparks"]]
+    assert eco_server.currency_mod.GOVERNMENT_HOLDINGS_DATASET not in names
+    assert "PropertyTransfer" in names
 
 
 def test_compute_stressed_on_high_default_rate() -> None:
