@@ -414,3 +414,58 @@ async def test_call_get_economy_handles_info_failure() -> None:
     assert result.root.isError is True
     assert "unreachable" in result.root.content[0].text.lower()
     assert result.root.meta is None
+
+
+@pytest.mark.asyncio
+async def test_a_shape_we_cannot_parse_is_unmeasured_not_zero() -> None:
+    """A 200 whose body yields no parsed points is not an empty dataset. It is
+    a dataset we could not read, and reporting 0 for it made get_economy
+    contradict get_currency about a funded treasury. See #266."""
+    import httpx
+
+    from eco_mcp_app.server import _fetch_dataset
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        # 200, non-empty, and in none of the shapes the parser knows.
+        return httpx.Response(200, json={"unexpectedEnvelope": [{"t": 1, "v": 2}]})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        points = await _fetch_dataset(client, "http://e", "AnyDataset", 5, {})
+
+    assert points is None, "an unreadable body was reported as a measured empty series"
+
+
+@pytest.mark.asyncio
+async def test_a_genuinely_empty_series_stays_measured() -> None:
+    """The distinction that has to survive: nothing happened is not the same
+    as nothing was read."""
+    import httpx
+
+    from eco_mcp_app.server import _fetch_dataset
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[])
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        points = await _fetch_dataset(client, "http://e", "AnyDataset", 5, {})
+
+    assert points == [], "a genuinely empty dataset was reported as unreadable"
+
+
+@pytest.mark.asyncio
+async def test_rows_that_all_fail_to_parse_are_unmeasured() -> None:
+    """Every row skipped means the shape is wrong, not that the server is idle."""
+    import httpx
+
+    from eco_mcp_app.server import _fetch_dataset
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[{"when": 1, "howMuch": 2}, {"when": 2}])
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        points = await _fetch_dataset(client, "http://e", "AnyDataset", 5, {})
+
+    assert points is None
