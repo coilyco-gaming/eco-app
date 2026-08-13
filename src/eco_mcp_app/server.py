@@ -814,6 +814,51 @@ def _get_admin_token() -> str | None:
     return _ECO_ADMIN_TOKEN
 
 
+def _fetch_failure(exc: Exception) -> str:
+    """Describe a failed upstream fetch: what went wrong, and against what URL.
+
+    httpx's connect-side errors routinely carry an empty ``str()``, so
+    interpolating the exception alone produced "Could not reach Eco server: "
+    with nothing after the colon (#228). That leaves an operator unable to
+    tell a dead host from a wrong port, a block, or a timeout. The exception
+    type is always present, so lead with it, add the detail when there is one,
+    and name the URL httpx actually attempted.
+    """
+    kind = type(exc).__name__
+    detail = str(exc).strip()
+    cause = f"{kind}: {detail}" if detail else kind
+
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status is not None:
+        cause = f"{cause} (HTTP {status})"
+
+    # httpx.RequestError.request raises when the transport never set it.
+    try:
+        url = str(exc.request.url)  # type: ignore[attr-defined]
+    except (AttributeError, RuntimeError):
+        url = ""
+    return f"{cause} while requesting {url}" if url else cause
+
+
+def _unreachable_result(subject: str, exc: Exception) -> CallToolResult:
+    """The one shape every "could not reach <subject>" tool error takes.
+
+    Sixteen call sites hand-rolled this block, which is how the bare-exception
+    interpolation in #228 spread across all of them. Routing them through
+    :func:`_fetch_failure` keeps the cause and the attempted URL on every
+    upstream failure.
+    """
+    failure = _fetch_failure(exc)
+    payload = {"view": "error", "message": f"Could not reach {subject}: {failure}"}
+    return CallToolResult(
+        content=[
+            TextContent(type="text", text=f"**{subject} unreachable:** {failure}"),
+            TextContent(type="text", text=json.dumps(payload)),
+        ],
+        isError=True,
+    )
+
+
 _UNREPORTED = "not reported"
 
 
@@ -1642,17 +1687,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
             try:
                 atlas = await fetch_atlas(base_url=server_arg, api_key=api_key)
             except httpx.HTTPError as e:
-                err_payload = {
-                    "view": "error",
-                    "message": f"Could not reach Eco exporter: {e}",
-                }
-                return CallToolResult(
-                    content=[
-                        TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
-                        TextContent(type="text", text=json.dumps(err_payload)),
-                    ],
-                    isError=True,
-                )
+                return _unreachable_result("Eco exporter", e)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=atlas_markdown(atlas)),
@@ -1666,17 +1701,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
             try:
                 activity = await fetch_world(base_url=server_arg, api_key=api_key)
             except httpx.HTTPError as e:
-                err_payload = {
-                    "view": "error",
-                    "message": f"Could not reach Eco exporter: {e}",
-                }
-                return CallToolResult(
-                    content=[
-                        TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
-                        TextContent(type="text", text=json.dumps(err_payload)),
-                    ],
-                    isError=True,
-                )
+                return _unreachable_result("Eco exporter", e)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=world_markdown(activity)),
@@ -1690,17 +1715,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
             try:
                 ledger = await fetch_ledger(base_url=server_arg, api_key=api_key)
             except httpx.HTTPError as e:
-                err_payload = {
-                    "view": "error",
-                    "message": f"Could not reach Eco exporter: {e}",
-                }
-                return CallToolResult(
-                    content=[
-                        TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
-                        TextContent(type="text", text=json.dumps(err_payload)),
-                    ],
-                    isError=True,
-                )
+                return _unreachable_result("Eco exporter", e)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=ledger_markdown(ledger)),
@@ -1714,17 +1729,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
             try:
                 civics_report = await fetch_civics(base_url=server_arg, api_key=api_key)
             except httpx.HTTPError as e:
-                err_payload = {
-                    "view": "error",
-                    "message": f"Could not reach Eco exporter: {e}",
-                }
-                return CallToolResult(
-                    content=[
-                        TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
-                        TextContent(type="text", text=json.dumps(err_payload)),
-                    ],
-                    isError=True,
-                )
+                return _unreachable_result("Eco exporter", e)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=civics_markdown(civics_report)),
@@ -1738,17 +1743,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
             try:
                 history = await fetch_history(base_url=server_arg, api_key=api_key)
             except httpx.HTTPError as e:
-                err_payload = {
-                    "view": "error",
-                    "message": f"Could not reach Eco exporter: {e}",
-                }
-                return CallToolResult(
-                    content=[
-                        TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
-                        TextContent(type="text", text=json.dumps(err_payload)),
-                    ],
-                    isError=True,
-                )
+                return _unreachable_result("Eco exporter", e)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=history_markdown(history)),
@@ -1835,16 +1830,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 try:
                     ledger = await fetch_ledger(base_url=server_arg, api_key=api_key)
                 except httpx.HTTPError as e:
-                    return CallToolResult(
-                        content=[
-                            TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
-                            TextContent(
-                                type="text",
-                                text=json.dumps({"view": "error", "message": str(e)}),
-                            ),
-                        ],
-                        isError=True,
-                    )
+                    return _unreachable_result("Eco exporter", e)
                 hits = evaluate_all(ledger.trades, advance=advance)
                 payload = {
                     "view": "watcher_hits",
@@ -1875,17 +1861,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
             try:
                 directory = await fetch_directory(base_url=server_arg, api_key=api_key)
             except httpx.HTTPError as e:
-                err_payload = {
-                    "view": "error",
-                    "message": f"Could not reach Eco exporter: {e}",
-                }
-                return CallToolResult(
-                    content=[
-                        TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
-                        TextContent(type="text", text=json.dumps(err_payload)),
-                    ],
-                    isError=True,
-                )
+                return _unreachable_result("Eco exporter", e)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=directory_markdown(directory)),
@@ -1902,17 +1878,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                     base_url=server_arg, api_key=api_key, reveal_names=reveal_names
                 )
             except httpx.HTTPError as e:
-                err_payload = {
-                    "view": "error",
-                    "message": f"Could not reach Eco exporter: {e}",
-                }
-                return CallToolResult(
-                    content=[
-                        TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
-                        TextContent(type="text", text=json.dumps(err_payload)),
-                    ],
-                    isError=True,
-                )
+                return _unreachable_result("Eco exporter", e)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=social_markdown(surface)),
@@ -1940,14 +1906,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
             try:
                 raw = await fetch_economy(server_arg)
             except httpx.HTTPError as e:
-                err_payload = {"view": "error", "message": f"Could not reach Eco server: {e}"}
-                return CallToolResult(
-                    content=[
-                        TextContent(type="text", text=f"**Eco server unreachable:** {e}"),
-                        TextContent(type="text", text=json.dumps(err_payload)),
-                    ],
-                    isError=True,
-                )
+                return _unreachable_result("Eco server", e)
             payload = compute_economy_payload(raw)
             return CallToolResult(
                 content=[
@@ -1961,14 +1920,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
             try:
                 bundle = await fetch_map_bundle(server_arg)
             except httpx.HTTPError as e:
-                err_payload = {"view": "error", "message": f"Could not reach Eco server: {e}"}
-                return CallToolResult(
-                    content=[
-                        TextContent(type="text", text=f"**Eco server unreachable:** {e}"),
-                        TextContent(type="text", text=json.dumps(err_payload)),
-                    ],
-                    isError=True,
-                )
+                return _unreachable_result("Eco server", e)
             payload = build_map_payload(bundle)
             json_payload = {
                 k: v for k, v in payload.items() if k not in ("gifDataUri", "pollutionDataUri")
@@ -1988,17 +1940,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                     info_url, api_key=_get_admin_token()
                 )
             except httpx.HTTPError as e:
-                err_payload = {
-                    "view": "error",
-                    "message": f"Could not reach Eco worldlayers endpoint: {e}",
-                }
-                return CallToolResult(
-                    content=[
-                        TextContent(type="text", text=f"**Eco worldlayers unreachable:** {e}"),
-                        TextContent(type="text", text=json.dumps(err_payload)),
-                    ],
-                    isError=True,
-                )
+                return _unreachable_result("Eco worldlayers endpoint", e)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=_format_ecoregion_markdown(payload)),
@@ -2012,10 +1954,14 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
             try:
                 species_payload_obj = await species_mod.build_species_payload(species_id)
             except httpx.HTTPError as e:
-                err_payload = {"view": "error", "message": f"Could not fetch species: {e}"}
+                failure = _fetch_failure(e)
+                err_payload = {
+                    "view": "error",
+                    "message": f"Could not fetch species: {failure}",
+                }
                 return CallToolResult(
                     content=[
-                        TextContent(type="text", text=f"**Species fetch failed:** {e}"),
+                        TextContent(type="text", text=f"**Species fetch failed:** {failure}"),
                         TextContent(type="text", text=json.dumps(err_payload)),
                     ],
                     isError=True,
@@ -2033,14 +1979,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
             try:
                 raw_gov = await fetch_eco_government(server_arg)
             except httpx.HTTPError as e:
-                err_payload = {"view": "error", "message": f"Could not reach Eco server: {e}"}
-                return CallToolResult(
-                    content=[
-                        TextContent(type="text", text=f"**Eco server unreachable:** {e}"),
-                        TextContent(type="text", text=json.dumps(err_payload)),
-                    ],
-                    isError=True,
-                )
+                return _unreachable_result("Eco server", e)
             gov_payload = to_government_payload(
                 raw_gov, fetched_at_iso=datetime.now(UTC).isoformat()
             )
@@ -2056,14 +1995,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
             try:
                 info = await fetch_eco_info(server_arg)
             except httpx.HTTPError as e:
-                err_payload = {"view": "error", "message": f"Could not reach Eco server: {e}"}
-                return CallToolResult(
-                    content=[
-                        TextContent(type="text", text=f"**Eco server unreachable:** {e}"),
-                        TextContent(type="text", text=json.dumps(err_payload)),
-                    ],
-                    isError=True,
-                )
+                return _unreachable_result("Eco server", e)
             # /info already gives DaysRunning; fall back to TimeSinceStart for
             # bootstrap servers that haven't ticked the daily counter yet.
             days_elapsed = int(info.get("DaysRunning") or 0)
@@ -2096,14 +2028,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
             try:
                 info = await fetch_eco_info(server_arg)
             except httpx.HTTPError as e:
-                err_payload = {"view": "error", "message": f"Could not reach Eco server: {e}"}
-                return CallToolResult(
-                    content=[
-                        TextContent(type="text", text=f"**Eco server unreachable:** {e}"),
-                        TextContent(type="text", text=json.dumps(err_payload)),
-                    ],
-                    isError=True,
-                )
+                return _unreachable_result("Eco server", e)
             days_elapsed = int(info.get("DaysRunning") or 0)
             if days_elapsed <= 0:
                 tss = info.get("TimeSinceStart")
@@ -2167,17 +2092,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                     currency=currency_arg,
                 )
             except httpx.HTTPError as e:
-                err_payload = {
-                    "view": "error",
-                    "message": f"Could not reach Eco exporter: {e}",
-                }
-                return CallToolResult(
-                    content=[
-                        TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
-                        TextContent(type="text", text=json.dumps(err_payload)),
-                    ],
-                    isError=True,
-                )
+                return _unreachable_result("Eco exporter", e)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=market_mod.market_markdown(intel)),
@@ -2198,17 +2113,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                     currency=currency_arg,
                 )
             except httpx.HTTPError as e:
-                err_payload = {
-                    "view": "error",
-                    "message": f"Could not reach Eco exporter: {e}",
-                }
-                return CallToolResult(
-                    content=[
-                        TextContent(type="text", text=f"**Eco exporter unreachable:** {e}"),
-                        TextContent(type="text", text=json.dumps(err_payload)),
-                    ],
-                    isError=True,
-                )
+                return _unreachable_result("Eco exporter", e)
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=logistics_markdown(report)),
@@ -2223,14 +2128,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
         try:
             raw = await fetch_eco_info(server_arg)
         except httpx.HTTPError as e:
-            err_payload = {"view": "error", "message": f"Could not reach Eco server: {e}"}
-            return CallToolResult(
-                content=[
-                    TextContent(type="text", text=f"**Eco server unreachable:** {e}"),
-                    TextContent(type="text", text=json.dumps(err_payload)),
-                ],
-                isError=True,
-            )
+            return _unreachable_result("Eco server", e)
 
         raw["_fetchedAtISO"] = datetime.now(UTC).isoformat()
 
