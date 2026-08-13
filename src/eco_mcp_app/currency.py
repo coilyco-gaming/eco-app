@@ -174,6 +174,9 @@ class CurrencySnapshot:
     info: dict[str, Any]
     days_elapsed: int
     admin_ok: bool
+    # A refused read is not an absent feature. 404/405 mean the server does not
+    # expose an action; 401 means our token was rejected. See #266.
+    admin_reads_refused: bool = False
     # Money-supply series (each [(t, v), ...], possibly empty).
     active_currencies_series: list[tuple[float, float]] = field(default_factory=list)
     trades_7d_series: list[tuple[float, float]] = field(default_factory=list)
@@ -719,7 +722,13 @@ async def fetch_currency(
             _rows, warn = await _aggregate_currency_action(client, base, action, headers, snapshot)
             # 401/404/405 just means "this server doesn't expose that action" -
             # silent. Other failures are worth surfacing on the card.
-            if warn and not any(code in warn for code in ("401", "404", "405")):
+            if warn and "401" in warn:
+                # Refused, not absent. Recorded rather than surfaced: a partial
+                # 401 with a roster built from the other actions is not worth a
+                # warning, but a server that refused everything must not be
+                # described as having no currencies. See #266.
+                snapshot.admin_reads_refused = True
+            elif warn and not any(code in warn for code in ("404", "405")):
                 snapshot.warnings.append(warn)
 
         # Top holders from the stores/economy exporter mod. Folded after the
@@ -917,6 +926,7 @@ def compute_currency_payload(
         "money": money,
         "narrative": _narrative(
             admin_ok=snapshot.admin_ok,
+            reads_refused=snapshot.admin_reads_refused,
             records=records,
             money=money,
             available=snapshot.available_currency_datasets,
@@ -992,6 +1002,7 @@ def _find_currency(records: list[CurrencyRecord], query: str) -> CurrencyRecord 
 def _narrative(
     *,
     admin_ok: bool,
+    reads_refused: bool = False,
     records: list[CurrencyRecord],
     money: dict[str, Any],
     available: list[str],
@@ -1001,6 +1012,13 @@ def _narrative(
         return (
             "Admin token unavailable - currency roster and money-supply series "
             "require ECO_ADMIN_TOKEN. Showing the public /info headline only."
+        )
+    if not records and reads_refused:
+        # The server answered and refused us, so nothing is known about its
+        # currencies. Saying there are none asserts a fact we never read.
+        return (
+            "Currency roster unreadable - the server refused this token (HTTP 401). "
+            "Showing the public /info headline only."
         )
     if not records:
         if available:
