@@ -990,6 +990,12 @@ def _compute_breakdown(snapshot: ClimateSnapshot, days_elapsed: int) -> dict[str
     source's cumulative lifetime total and its most-recent per-day rate, plus
     the net daily change, so a player can see at a glance whether the world is
     accumulating or shedding CO2 and which lever dominates.
+
+    ``net_per_day`` is a **flux** — how much the sources and sinks moved — not
+    the rate of change of the observed CO2 level. The two diverge sharply once
+    CO2 is pinned at the simulation floor, where enormous sink capacity coexists
+    with a level that is not moving at all. ``observed_per_day`` is the actual
+    day-over-day change in the level, so a caller can tell them apart (#235).
     """
     poll = snapshot.co2_pollution_series
     animals = snapshot.co2_animals_series
@@ -1001,12 +1007,20 @@ def _compute_breakdown(snapshot: ClimateSnapshot, days_elapsed: int) -> dict[str
     animals_day = _daily_rate(animals, days_elapsed)
     plants_day = _daily_rate(plants, days_elapsed)
     net_day = poll_day + animals_day + plants_day
+    # The level's own movement. Only meaningful with two samples to difference:
+    # _daily_rate's single-sample fallback divides a lifetime total by the day
+    # count, which is right for a cumulative source series and nonsense for a
+    # level.
+    observed_day = (
+        _daily_rate(snapshot.co2_series, days_elapsed) if len(snapshot.co2_series) >= 2 else None
+    )
     return {
         "has_data": True,
         "pollution": {"lifetime": round(_series_last(poll), 1), "per_day": round(poll_day, 2)},
         "animals": {"lifetime": round(_series_last(animals), 1), "per_day": round(animals_day, 2)},
         "plants": {"lifetime": round(_series_last(plants), 1), "per_day": round(plants_day, 2)},
         "net_per_day": round(net_day, 2),
+        "observed_per_day": round(observed_day, 2) if observed_day is not None else None,
     }
 
 
@@ -1157,20 +1171,41 @@ def _build_explainer(breakdown: dict[str, Any], effects: dict[str, Any]) -> list
         out.append(f"CO2 currently stands at {co2_now:.0f} ppm.")
 
     # 2. Who's pushing it which way.
+    #
+    # net_per_day is a flux, not the rate of change of the level. Narrating it
+    # as the latter claimed "CO2 is falling about 361.4 ppm per day" about a
+    # value of 325 ppm that was pinned flat at its 325 ppm floor (#235). Lead
+    # with what the level is doing; describe the flux as capacity.
     if breakdown.get("has_data"):
         net = breakdown["net_per_day"]
+        observed = breakdown.get("observed_per_day")
+        absorbed_day = abs(breakdown["plants"]["per_day"])
+        emitted_day = breakdown["pollution"]["per_day"] + breakdown["animals"]["per_day"]
         plants_life = breakdown["plants"]["lifetime"]
         poll_life = breakdown["pollution"]["lifetime"]
-        if net < 0:
+        if effects["at_floor"]:
             out.append(
-                f"Plants are winning: they've pulled {abs(plants_life):,.0f} ppm out of the air "
-                f"over the cycle versus {poll_life:,.0f} ppm added by machines, so CO2 is "
-                f"falling about {abs(net):,.1f} ppm per day."
+                f"Sinks have capacity to spare — plants absorb about {absorbed_day:,.0f} ppm/day "
+                f"against roughly {emitted_day:,.0f} ppm/day emitted — but the level itself is "
+                "not moving, because it is already at the floor."
+            )
+        elif observed is not None and abs(observed) >= 0.05:
+            direction = "falling" if observed < 0 else "climbing"
+            out.append(
+                f"CO2 is {direction} about {abs(observed):,.1f} ppm per day. Over the cycle "
+                f"plants have pulled {abs(plants_life):,.0f} ppm out of the air against "
+                f"{poll_life:,.0f} ppm added by machines."
+            )
+        elif net < 0:
+            out.append(
+                f"Plants absorb about {absorbed_day:,.0f} ppm/day against roughly "
+                f"{emitted_day:,.0f} ppm/day emitted, but the level is holding steady."
             )
         elif net > 0:
             out.append(
-                f"Machines are outpacing the plants — CO2 is climbing about {net:,.1f} ppm per "
-                f"day ({poll_life:,.0f} ppm added by pollution so far)."
+                f"Machines are outpacing the plants — about {emitted_day:,.0f} ppm/day emitted "
+                f"against {absorbed_day:,.0f} ppm/day absorbed ({poll_life:,.0f} ppm added by "
+                "pollution so far) — though the level is not moving yet."
             )
         else:
             out.append("Sources and sinks are roughly balanced — CO2 is holding steady.")

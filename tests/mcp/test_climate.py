@@ -820,12 +820,47 @@ def test_explainer_tells_at_floor_recovery_story() -> None:
         co2_animals_series=[(0.0, 0.0), (1.0, 1400.0), (2.0, 1450.0)],
         co2_plants_series=[(0.0, 0.0), (1.0, -28000.0), (2.0, -28989.0)],
     )
-    sentences = compute_climate_payload(snap)["explainer"]
-    joined = " ".join(sentences)
+    payload = compute_climate_payload(snap)
+    joined = " ".join(payload["explainer"])
     assert "pinned to the simulation floor" in joined
-    assert "Plants are winning" in joined
     assert "headroom" in joined
     assert "peaked at 520 ppm" in joined
+
+    # A value pinned at its floor is not falling. The explainer used to read
+    # the source/sink flux as the level's rate of change and announce "CO2 is
+    # falling about N ppm per day" over a series sitting flat at 325 (#235).
+    assert "falling" not in joined
+    assert "capacity to spare" in joined
+    assert "not moving" in joined
+
+
+def test_breakdown_separates_observed_movement_from_source_sink_flux() -> None:
+    """`net_per_day` is a flux; the level's own movement is its own field (#235)."""
+    snap = _snap(
+        # Level flat at the floor across the last two samples.
+        co2_series=[(0.0, 325.0), (1.0, 325.0), (2.0, 325.0)],
+        co2_pollution_series=[(0.0, 0.0), (1.0, 12000.0), (2.0, 12687.0)],
+        co2_animals_series=[(0.0, 0.0), (1.0, 1400.0), (2.0, 1450.0)],
+        co2_plants_series=[(0.0, 0.0), (1.0, -28000.0), (2.0, -28989.0)],
+    )
+    breakdown = compute_climate_payload(snap)["breakdown"]
+    # Sinks still outrun sources by a wide margin...
+    assert breakdown["net_per_day"] < 0
+    # ...while the observed level has not moved at all.
+    assert breakdown["observed_per_day"] == 0.0
+
+
+def test_observed_per_day_tracks_a_level_that_is_actually_moving() -> None:
+    snap = _snap(
+        co2_series=[(0.0, 400.0), (1.0, 405.0), (2.0, 412.0)],
+        co2_pollution_series=[(0.0, 0.0), (1.0, 100.0), (2.0, 210.0)],
+        co2_animals_series=[(0.0, 0.0), (1.0, 10.0), (2.0, 20.0)],
+        co2_plants_series=[(0.0, 0.0), (1.0, -50.0), (2.0, -95.0)],
+    )
+    payload = compute_climate_payload(snap)
+    assert payload["breakdown"]["observed_per_day"] == 7.0
+    joined = " ".join(payload["explainer"])
+    assert "climbing about 7.0 ppm per day" in joined
 
 
 # ---------------------------------------------------------------------------
