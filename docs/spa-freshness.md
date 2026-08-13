@@ -65,11 +65,11 @@ in batches.
 **Wired:** `status` (site-wide, via `useEcoStatus`), `/map` (climate, region,
 map), `/civics`, `/crafting`, `/social`, `/items`, `/recipes`, `/replay`,
 `/species`, `/item`, `/user`, `/uses/demand`, `/uses/arbitrage`,
-`/uses/buy-sell`, `/uses/food`.
+`/uses/buy-sell`, `/uses/food`, `/recipe`, `/uses/shop-check`,
+`/uses/resolve`.
 
 **Not yet wired** — contract declared, but the page still fetches on mount only
-and shows no caption or Refresh control: `/recipe`, `/trade`, `/jobs`,
-`/uses/price`, `/uses/resolve`, `/uses/shop-check`.
+and shows no caption or Refresh control: `/trade`, `/jobs`, `/uses/price`.
 
 The unwired set is `manual` and `static` planes, where a mount-only fetch is
 closer to correct than it was for the live ones.
@@ -78,5 +78,7 @@ Parameterised pages pass the hook's `deps` argument so a changed query
 re-fetches. `/species` also has its fetcher return the name it answered for, so
 a slow response for a previous query can never be rendered against the current
 one; `/item` and `/user` key on their URL segment instead, which is equivalent.
-The three remaining `/uses/*` pages compose several planes each and still need the same care. Tracked on
+A page that fans out to several sources gets a **composite** plane
+(`shopCheck`, `resolve`) and refreshes them together: a summary stitched from
+reads minutes apart is worse than one that is uniformly a few minutes old. Tracked on
 eco-app#201.

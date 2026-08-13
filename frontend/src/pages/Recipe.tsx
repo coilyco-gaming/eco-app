@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import ItemLink, { itemHref } from "../components/ItemLink"
+import FreshnessNote from "../components/FreshnessNote"
 import Layout from "../components/Layout"
 import {
   fetchRecipeIndex,
@@ -9,6 +10,7 @@ import {
   type RecipeIndex,
 } from "../lib/recipesApi"
 import { formatCount, formatDuration, prettifyEcoName } from "../lib/format"
+import { useFreshData } from "../lib/useFreshData"
 
 // Per-recipe detail (eco-app#101), modeled on pages/Item.tsx: a query-param key
 // (?id=<recipe name>) reached only from /recipes. Unlike the item pivot there is
@@ -62,18 +64,10 @@ export default function Recipe() {
   const [params] = useSearchParams()
   const id = params.get("id") ?? ""
 
-  const [index, setIndex] = useState<RecipeIndex | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    fetchRecipeIndex(controller.signal)
-      .then(setIndex)
-      .catch((err) => {
-        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : String(err))
-      })
-    return () => controller.abort()
-  }, [])
+  // Refresh contract lives in freshness.ts, not here (eco-app#201).
+  const recipesPlane = useFreshData("recipes", fetchRecipeIndex)
+  const index = recipesPlane.data
+  const error = recipesPlane.error
 
   const recipe: RecipeDTO | null = useMemo(
     () => (index && id ? (index.recipes.find((r) => r.name === id) ?? null) : null),
@@ -127,6 +121,7 @@ export default function Recipe() {
             recipe data unavailable right now
           </p>
         )}
+        <FreshnessNote plane="recipes" loadedAt={recipesPlane.loadedAt} />
       </section>
 
       {!id && (

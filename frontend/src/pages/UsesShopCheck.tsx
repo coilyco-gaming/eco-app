@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import EcoRichText from "../components/EcoRichText"
 import ItemLink from "../components/ItemLink"
+import FreshnessNote from "../components/FreshnessNote"
 import Layout from "../components/Layout"
-import { fetchStores, type StoreDirectory, type StoreProfile } from "../lib/storesApi"
-import { fetchMarket, type MarketIntelligence } from "../lib/marketApi"
+import { fetchStores, type StoreProfile } from "../lib/storesApi"
+import { fetchMarket } from "../lib/marketApi"
 import { formatCount, stripEcoMarkup } from "../lib/format"
+import { useFreshData } from "../lib/useFreshData"
 
 const PICK_ROWS = 200
 // A shelf priced within ±this of the market median reads as "at market"; beyond
@@ -44,24 +46,18 @@ interface CheckRow {
 // 404 independently, so each degrades to a clear note rather than blanking the
 // page.
 export default function UsesShopCheck() {
-  const [stores, setStores] = useState<StoreDirectory | null>(null)
-  const [market, setMarket] = useState<MarketIntelligence | null>(null)
-  const [loaded, setLoaded] = useState(false)
+  // Refresh contract lives in freshness.ts, not here (eco-app#201). Both
+  // planes refresh together so the shop check is internally consistent.
+  const shopPlane = useFreshData("shopCheck", async (signal) => ({
+    stores: await fetchStores(signal).catch(() => null),
+    market: await fetchMarket(signal).catch(() => null),
+  }))
+  const stores = shopPlane.data?.stores ?? null
+  const market = shopPlane.data?.market ?? null
+  const loaded = !shopPlane.loading
   const [params, setParams] = useSearchParams()
   const storeKey = params.get("store") ?? ""
   const [filter, setFilter] = useState("")
-
-  useEffect(() => {
-    const controller = new AbortController()
-    const s = controller.signal
-    Promise.all([
-      fetchStores(s).then(setStores, () => setStores(null)),
-      fetchMarket(s).then(setMarket, () => setMarket(null)),
-    ]).finally(() => {
-      if (!s.aborted) setLoaded(true)
-    })
-    return () => controller.abort()
-  }, [])
 
   const pickStore = (key: string) => {
     setParams(key ? { store: key } : {}, { replace: false })
@@ -153,6 +149,13 @@ export default function UsesShopCheck() {
             store directory unavailable right now — check back once the shops have exported
           </p>
         )}
+        <FreshnessNote
+          plane="shopCheck"
+          loadedAt={shopPlane.loadedAt}
+          refreshing={shopPlane.refreshing}
+          refreshError={shopPlane.refreshError}
+          onRefresh={shopPlane.refresh}
+        />
       </section>
 
       {!loaded && (

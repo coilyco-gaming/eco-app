@@ -120,6 +120,27 @@ export const REFRESH_CONTRACTS = {
     staleAfterMs: 15 * MINUTE,
     rationale: "Shelf contents change with play, but a shopper re-checks deliberately.",
   },
+  market: {
+    mode: "manual",
+    staleAfterMs: 15 * MINUTE,
+    rationale: "Per-item price history moves with the ledger, on the same slow cadence.",
+  },
+  // Composite planes. A page that fans out to several sources refreshes them
+  // together, because a summary stitched from reads minutes apart is worse
+  // than one that is uniformly a few minutes old. The contract is the
+  // fastest-moving member's.
+  shopCheck: {
+    mode: "manual",
+    staleAfterMs: 15 * MINUTE,
+    rationale: "Composes stores and market; both are manual on the same cadence.",
+  },
+  resolve: {
+    mode: "manual",
+    staleAfterMs: 15 * MINUTE,
+    rationale:
+      "Composes recipes, logistics, market and jobs. Refreshed as one so the answer is " +
+      "internally consistent rather than stitched from reads minutes apart.",
+  },
   region: {
     mode: "manual",
     staleAfterMs: 15 * MINUTE,

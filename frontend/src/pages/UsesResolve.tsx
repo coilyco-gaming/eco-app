@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import EcoRichText from "../components/EcoRichText"
 import ItemLink from "../components/ItemLink"
+import FreshnessNote from "../components/FreshnessNote"
 import Layout from "../components/Layout"
 import { formatCount, prettifyEcoName } from "../lib/format"
-import { fetchJobsData, type JobsData } from "../lib/jobsApi"
-import { fetchLogistics, type LogisticsBoard, type ShelfOffer } from "../lib/logisticsApi"
-import { fetchMarket, type MarketIntelligence } from "../lib/marketApi"
-import { fetchRecipeIndexWithCost, type RecipeIndexWithCost } from "../lib/recipesApi"
+import { fetchJobsData } from "../lib/jobsApi"
+import { fetchLogistics, type ShelfOffer } from "../lib/logisticsApi"
+import { fetchMarket } from "../lib/marketApi"
+import { fetchRecipeIndexWithCost } from "../lib/recipesApi"
+import { useFreshData } from "../lib/useFreshData"
 
 function fmtPrice(value: number): string {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value)
@@ -33,25 +35,23 @@ function offersFor(row: { offers: ShelfOffer[] } | null, side: "sell" | "buy"): 
 export default function UsesResolve() {
   const [params, setParams] = useSearchParams()
   const item = params.get("item") ?? ""
-  const [recipes, setRecipes] = useState<RecipeIndexWithCost | null>(null)
-  const [logistics, setLogistics] = useState<LogisticsBoard | null>(null)
-  const [market, setMarket] = useState<MarketIntelligence | null>(null)
-  const [jobs, setJobs] = useState<JobsData | null>(null)
-  const [loaded, setLoaded] = useState(false)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    const signal = controller.signal
-    Promise.all([
-      fetchRecipeIndexWithCost(signal).then(setRecipes, () => setRecipes(null)),
-      fetchLogistics(signal).then(setLogistics, () => setLogistics(null)),
-      fetchMarket(signal).then(setMarket, () => setMarket(null)),
-      fetchJobsData(signal).then(setJobs, () => setJobs(null)),
-    ]).finally(() => {
-      if (!signal.aborted) setLoaded(true)
-    })
-    return () => controller.abort()
-  }, [])
+  // Refresh contract lives in freshness.ts, not here (eco-app#201). All four
+  // planes refresh together so the resolve answer is internally consistent
+  // rather than stitched from reads minutes apart.
+  const resolvePlane = useFreshData("resolve", async (signal) => {
+    const [recipes, logistics, market, jobs] = await Promise.all([
+      fetchRecipeIndexWithCost(signal).catch(() => null),
+      fetchLogistics(signal).catch(() => null),
+      fetchMarket(signal).catch(() => null),
+      fetchJobsData(signal).catch(() => null),
+    ])
+    return { recipes, logistics, market, jobs }
+  })
+  const recipes = resolvePlane.data?.recipes ?? null
+  const logistics = resolvePlane.data?.logistics ?? null
+  const market = resolvePlane.data?.market ?? null
+  const jobs = resolvePlane.data?.jobs ?? null
+  const loaded = !resolvePlane.loading
 
   const options = useMemo(() => {
     const values = new Map<string, string>()
@@ -108,6 +108,13 @@ export default function UsesResolve() {
         {loaded && !recipes && !logistics && !market && !jobs && (
           <p className="hero-pill hero-pill-muted" data-testid="resolve-error">Resolver data unavailable right now.</p>
         )}
+        <FreshnessNote
+          plane="resolve"
+          loadedAt={resolvePlane.loadedAt}
+          refreshing={resolvePlane.refreshing}
+          refreshError={resolvePlane.refreshError}
+          onRefresh={resolvePlane.refresh}
+        />
       </section>
 
       {!loaded && <p className="empty-note" data-testid="resolve-loading">Loading recipes, shelves, and specialty roster…</p>}
