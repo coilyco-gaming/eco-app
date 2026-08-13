@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -51,6 +52,23 @@ from .crafting import prettify_eco_name
 
 # Where the vendored graph came from, surfaced on the index so a consumer (and a
 # human reading /preview/recipes.json) can tell vanilla-seed from modded-export.
+# Which tier produced a recipe graph. A pricing surface has to be able to say
+# whether its numbers came from the running server or from the vanilla seed;
+# presenting one as the other is the failure #179 exists to prevent.
+SOURCE_KIND_MODDED_EXPORT = "modded-export"
+SOURCE_KIND_AUTOGEN = "autogen"
+SOURCE_KIND_VANILLA_SEED = "vanilla-seed"
+
+# Read-only path to a DataExporter-shaped modded recipe export, supplied by the
+# operator (eco-ops#71). Absent by default: every deploy without it keeps
+# serving the vanilla seed, explicitly labelled as such.
+MODDED_EXPORT_ENV = "ECO_MODDED_RECIPE_EXPORT"
+
+# An export older than this is treated as stale and refused, because a modded
+# graph that no longer matches the server is worse than an honest vanilla
+# fallback — it is wrong *and* it claims to be server-specific.
+MODDED_EXPORT_MAX_AGE_DAYS = float(os.environ.get("ECO_MODDED_RECIPE_MAX_AGE_DAYS", "14"))
+
 GNOME_DATA_SOURCE = (
     "eco-gnome-website ecocraft/eco_gnome_data.json "
     "(MIT, master@28113f2, 2026-07-04, en-US-trimmed)"
@@ -142,6 +160,12 @@ class RecipeIndex:
 
     fetched_at_iso: str
     source: str
+    # Which tier answered, so a pricing response can never present vanilla
+    # numbers as server-specific ones (#179). One of SOURCE_KIND_*.
+    source_kind: str = SOURCE_KIND_VANILLA_SEED
+    # When the modded export was produced, straight from the export. None for
+    # the bundled tiers, which have no per-server export moment.
+    exported_at_iso: str | None = None
     version: int = 0
     recipes: list[Recipe] = field(default_factory=list)
     # product item id -> recipe names that produce it (a product can be crafted
@@ -168,6 +192,11 @@ class RecipeIndex:
         return {
             "fetchedAtISO": self.fetched_at_iso,
             "source": self.source,
+            "sourceKind": self.source_kind,
+            "exportedAtISO": self.exported_at_iso,
+            # The single boolean a pricing consumer needs: is this the running
+            # server's own recipe graph, or the vanilla fallback (#179)?
+            "serverSpecific": self.source_kind == SOURCE_KIND_MODDED_EXPORT,
             "version": self.version,
             "counts": self.counts(),
             "recipes": [r.to_dict() for r in self.recipes],
@@ -218,14 +247,25 @@ def _en_name(node: Any, fallback: str) -> str:
     return prettify_eco_name(fallback)
 
 
-def build_recipe_index(raw: dict[str, Any], *, source: str = GNOME_DATA_SOURCE) -> RecipeIndex:
+def build_recipe_index(
+    raw: dict[str, Any],
+    *,
+    source: str = GNOME_DATA_SOURCE,
+    source_kind: str = SOURCE_KIND_VANILLA_SEED,
+    exported_at_iso: str | None = None,
+) -> RecipeIndex:
     """Fold a parsed Eco Gnome export into a `RecipeIndex`.
 
     Pure function (no I/O) so tests hand in a minimal dict. Handles the vanilla
     seed and a modded DataExporter dump identically — both carry
     `{Version, Skills[], Items[], Tags[], Recipes[]}`.
     """
-    index = RecipeIndex(fetched_at_iso=datetime.now(UTC).isoformat(), source=source)
+    index = RecipeIndex(
+        fetched_at_iso=datetime.now(UTC).isoformat(),
+        source=source,
+        source_kind=source_kind,
+        exported_at_iso=exported_at_iso,
+    )
     index.version = int(raw.get("Version", 0) or 0)
 
     tags_raw = raw.get("Tags") or []
@@ -394,6 +434,8 @@ def index_from_serialized(raw: dict[str, Any]) -> RecipeIndex:
     return RecipeIndex(
         fetched_at_iso=str(raw.get("fetchedAtISO", "")),
         source=str(raw.get("source", "")),
+        source_kind=str(raw.get("sourceKind", SOURCE_KIND_VANILLA_SEED)),
+        exported_at_iso=raw.get("exportedAtISO"),
         version=int(raw.get("version", 0) or 0),
         recipes=recipes,
         by_product={k: list(v) for k, v in (raw.get("byProduct") or {}).items()},
@@ -410,6 +452,83 @@ def index_from_serialized(raw: dict[str, Any]) -> RecipeIndex:
 _INDEX_CACHE: dict[str, RecipeIndex] = {}
 
 
+def _load_modded_export() -> tuple[RecipeIndex | None, str | None]:
+    """Load the operator-supplied modded recipe export, if there is a good one.
+
+    Returns ``(index, refusal_reason)``. Exactly one is set. Every refusal
+    reason is surfaced as a warning on whichever tier does answer, so the
+    fallback is never silent — a pricing surface showing vanilla numbers while
+    a modded server is running is the failure this guards (#179).
+
+    Read-only by contract: this opens one file the operator names and writes
+    nothing. It never touches game state, player state, store state, or pricing
+    configuration.
+    """
+    configured = (os.environ.get(MODDED_EXPORT_ENV) or "").strip()
+    if not configured:
+        return None, None
+
+    path = Path(configured)
+    try:
+        raw_text = path.read_text()
+    except OSError as e:
+        return None, f"{MODDED_EXPORT_ENV}={configured} could not be read ({type(e).__name__})"
+
+    try:
+        raw = json.loads(raw_text)
+    except ValueError as e:
+        return None, f"{MODDED_EXPORT_ENV}={configured} is not valid JSON ({type(e).__name__})"
+
+    if not isinstance(raw, dict) or not raw.get("Recipes"):
+        return None, (
+            f"{MODDED_EXPORT_ENV}={configured} is not a DataExporter-shaped export (no Recipes[])"
+        )
+
+    exported_at = raw.get("ExportedAt") or raw.get("exportedAt")
+    exported_at_iso = str(exported_at) if exported_at else None
+    stale = _export_staleness(exported_at_iso)
+    if stale is not None:
+        return None, f"{MODDED_EXPORT_ENV}={configured} {stale}"
+
+    server = raw.get("ServerName") or raw.get("serverName") or "unknown server"
+    version = raw.get("Version", 0)
+    source = (
+        f"DataExporter modded export from {server} "
+        f"(version {version}, exported {exported_at_iso or 'at an unstated time'})"
+    )
+    index = build_recipe_index(
+        raw,
+        source=source,
+        source_kind=SOURCE_KIND_MODDED_EXPORT,
+        exported_at_iso=exported_at_iso,
+    )
+    return index, None
+
+
+def _export_staleness(exported_at_iso: str | None) -> str | None:
+    """Describe why an export is too old to trust, or None when it is fine.
+
+    An export with no timestamp is accepted — the operator pointed at it
+    deliberately — but the missing timestamp rides along in the source string
+    so nobody mistakes it for a fresh one.
+    """
+    if not exported_at_iso:
+        return None
+    try:
+        exported = datetime.fromisoformat(exported_at_iso.replace("Z", "+00:00"))
+    except ValueError:
+        return f"has an unparseable ExportedAt ({exported_at_iso!r})"
+    if exported.tzinfo is None:
+        exported = exported.replace(tzinfo=UTC)
+    age_days = (datetime.now(UTC) - exported).total_seconds() / 86400.0
+    if age_days > MODDED_EXPORT_MAX_AGE_DAYS:
+        return (
+            f"was exported {age_days:.1f} days ago, past the "
+            f"{MODDED_EXPORT_MAX_AGE_DAYS:.0f}-day freshness bound"
+        )
+    return None
+
+
 def load_recipe_index() -> RecipeIndex:
     """Load the vendored recipe graph into a cached `RecipeIndex`.
 
@@ -424,6 +543,22 @@ def load_recipe_index() -> RecipeIndex:
     than raising, so the SPA renders "no recipe data" instead of a 500 — the
     same graceful-empty posture the crafting atlas takes.
     """
+    # Tier 1: the running server's own recipe graph, when the operator has
+    # supplied one (#179). Refused for any reason -> fall through, but the
+    # reason travels with whichever tier answers.
+    modded_index, modded_refusal = _load_modded_export()
+    if modded_index is not None:
+        return modded_index
+
+    def _with_fallback_note(index: RecipeIndex) -> RecipeIndex:
+        """Say why this is not the modded graph, when a modded graph was asked for."""
+        if modded_refusal:
+            index.warnings.append(
+                f"Serving the vanilla recipe seed: {modded_refusal}. Prices and recipes "
+                "are NOT server-specific."
+            )
+        return index
+
     autogen_failure: str | None = None
     if (autogen_path := _bundled_data_path(_AUTOGEN_DATA_FILENAME)) is not None:
         key = str(autogen_path)
@@ -436,25 +571,26 @@ def load_recipe_index() -> RecipeIndex:
         except (OSError, ValueError, gzip.BadGzipFile) as e:
             autogen_failure = f"{type(e).__name__}: {e}"
         else:
+            index.source_kind = SOURCE_KIND_AUTOGEN
             _INDEX_CACHE[key] = index
-            return index
+            return _with_fallback_note(index)
 
     path = _bundled_data_path()
     key = str(path) if path else ""
     if key and key in _INDEX_CACHE:
-        return _INDEX_CACHE[key]
+        return _with_fallback_note(_INDEX_CACHE[key])
 
     if path is None:
         empty = RecipeIndex(fetched_at_iso=datetime.now(UTC).isoformat(), source=GNOME_DATA_SOURCE)
         empty.warnings.append(f"{_DATA_FILENAME} not found (bundled recipe graph missing)")
-        return empty
+        return _with_fallback_note(empty)
 
     try:
         raw = json.loads(path.read_text())
     except (OSError, ValueError) as e:
         empty = RecipeIndex(fetched_at_iso=datetime.now(UTC).isoformat(), source=GNOME_DATA_SOURCE)
         empty.warnings.append(f"failed to read {_DATA_FILENAME}: {type(e).__name__}: {e}")
-        return empty
+        return _with_fallback_note(empty)
 
     index = build_recipe_index(raw)
     if autogen_failure is not None:
@@ -462,7 +598,7 @@ def load_recipe_index() -> RecipeIndex:
             f"fell back to the Eco Gnome seed: {_AUTOGEN_DATA_FILENAME} {autogen_failure}"
         )
     _INDEX_CACHE[key] = index
-    return index
+    return _with_fallback_note(index)
 
 
 def _clear_cache() -> None:
