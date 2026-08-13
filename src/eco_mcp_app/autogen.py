@@ -21,7 +21,7 @@ Parsing rather than compiling: the tree is machine-generated from templates, so
 its grammar is a handful of stable shapes rather than the whole C# language. A
 regex reader keeps this a build step with no .NET in the pipeline. `autogen.py`
 never runs at request time — `scripts/autogen_refresh.py` writes the parsed index
-to `data/eco_autogen_data.json`, and that vendored file is what ships, matching
+to `data/eco_autogen_data.json.gz`, and that vendored file is what ships, matching
 the "vendor, do not fetch at build time" finding from eco-app#105.
 
 Two class shapes carry recipes, and both are handled:
@@ -62,9 +62,8 @@ _SKIP_DIRS = frozenset({"BlockFills", "BlockFormGroup", "BlockFormType", "Forms"
 # classes, and the tag -> members map is what lets a tag ingredient be expanded.
 # The base type is captured so the fold can dispatch on it.
 _CLASS_RE = re.compile(r"public\s+(?:partial\s+)?class\s+(?P<name>\w+)\s*:\s*(?P<base>\w+)")
-# Attributes sit above the class declaration; capture the whole run so a class's
-# own attributes are not confused with the previous class's.
-# Attributes are matched without their opening bracket: the generator freely
+# Attributes sit above the class declaration, and are matched without their
+# opening bracket: the generator freely
 # combines them on one line — `[RequiresSkill(typeof(ChefSkill), 0), Tag("Chef
 # Specialty"), Tier(3)]` — so anchoring on `[` silently drops every attribute
 # after the first. A `\b` prefix still keeps `Tier` from matching `BlockTier`.

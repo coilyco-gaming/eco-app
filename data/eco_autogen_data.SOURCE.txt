@@ -1,9 +1,16 @@
-Provenance — eco_autogen_data.json
-==================================
+Provenance — eco_autogen_data.json.gz
+=====================================
 
-eco_autogen_data.json is generated, not authored. It is a structured summary of
+eco_autogen_data.json.gz is generated, not authored. It is a structured summary of
 the recipe, skill, and tag definitions that Eco's dedicated server ships as
 generated C# under Mods/__core__/AutoGen.
+
+It is stored gzipped (125 KB rather than 1.6 MB) because it is machine-generated
+data that no one reads by hand, and leaving 73k lines of it expanded buries every
+grep and every diff in this repository. Read it with:
+
+  python -c "import gzip,json;print(json.load(gzip.open('data/eco_autogen_data.json.gz')))"
+  gzcat data/eco_autogen_data.json.gz | jq .counts
 
   Source        : Eco Dedicated Server, Steam app 739590
   Build id      : 24618181 (Eco 0.13.0)

@@ -31,7 +31,7 @@ the only vanilla source that carries every DTO field at once.
   string, so a stale graph is visible in any payload rather than silent.
 
 `src/eco_mcp_app/autogen.py` parses the tree; `scripts/autogen_refresh.py`
-(`ward exec autogen-refresh`) regenerates `data/eco_autogen_data.json`. Parsing
+(`ward exec autogen-refresh`) regenerates `data/eco_autogen_data.json.gz`. Parsing
 rather than compiling keeps .NET out of the pipeline entirely — the tree is
 machine-generated, so its grammar is a handful of stable shapes. Provenance and
 the SLG copyright are recorded in `data/eco_autogen_data.SOURCE.txt`.

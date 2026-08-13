@@ -16,6 +16,8 @@ Covers:
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -256,6 +258,33 @@ def test_load_recipe_index_serves_the_autogen_graph() -> None:
 
 def test_load_recipe_index_is_memoized() -> None:
     assert load_recipe_index() is load_recipe_index()
+
+
+def test_corrupt_autogen_bundle_falls_back_to_the_gnome_seed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A broken AutoGen file must degrade to the seed, and say that it did.
+
+    The whole point of keeping the Gnome graph is that an Eco layout change which
+    breaks the parse still serves recipes. Silently serving the older graph would
+    be worse than failing, so the fallback is announced in `warnings`.
+    """
+    corrupt = tmp_path / recipes_mod._AUTOGEN_DATA_FILENAME
+    corrupt.write_bytes(b"this is not gzip")
+    real_resolver = recipes_mod._bundled_data_path
+
+    def fake_resolver(filename: str = recipes_mod._DATA_FILENAME) -> Path | None:
+        if filename == recipes_mod._AUTOGEN_DATA_FILENAME:
+            return corrupt
+        return real_resolver(filename)
+
+    monkeypatch.setattr(recipes_mod, "_bundled_data_path", fake_resolver)
+    recipes_mod._clear_cache()
+
+    index = load_recipe_index()
+    assert index.counts()["recipes"] == 1453
+    assert index.source.startswith("eco-gnome-website")
+    assert any("fell back to the Eco Gnome seed" in w for w in index.warnings)
 
 
 def test_preview_recipes_route_serves_and_filters() -> None:

@@ -23,6 +23,7 @@ recipe graph came from, and a stale vendored file is obvious rather than silent.
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import re
 import shutil
@@ -40,7 +41,10 @@ ECO_SERVER_APP_ID = "739590"
 # (`Eco_Data/Server/Mods/AutoGen`), so this path is not interchangeable.
 AUTOGEN_RELATIVE = Path("Mods/__core__/AutoGen")
 REPO_ROOT = Path(__file__).resolve().parent.parent
-OUTPUT = REPO_ROOT / "data" / "eco_autogen_data.json"
+# Gzipped: the index is ~1.6 MB of generated data nobody reads by hand, and it is
+# regenerable from this script. Compressing keeps it out of grep results and out
+# of diffs, where 73k lines of machine output drowns real review.
+OUTPUT = REPO_ROOT / "data" / "eco_autogen_data.json.gz"
 
 _BUILD_ID_RE = re.compile(r'"buildid"\s*"(?P<value>\d+)"')
 
@@ -107,12 +111,13 @@ def main() -> int:
     payload = index.to_dict()
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    # sort_keys so an unrelated Eco patch produces a reviewable diff rather than
-    # a reshuffled 1,500-recipe file.
-    args.output.write_text(
-        json.dumps(payload, indent=1, sort_keys=True, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    # sort_keys so an unrelated Eco patch produces a stable ordering rather than a
+    # reshuffled 1,500-recipe file, and mtime=0 so the gzip header contributes no
+    # nondeterminism. The payload's own `fetchedAtISO` still changes per run, so
+    # two refreshes of the same Eco build differ; compare the `source` build id
+    # and the counts to tell a real content change from a re-run.
+    text = json.dumps(payload, indent=1, sort_keys=True, ensure_ascii=False) + "\n"
+    args.output.write_bytes(gzip.compress(text.encode("utf-8"), mtime=0))
 
     counts = index.counts()
     print(f"wrote {args.output.relative_to(REPO_ROOT)} from {index.source}")
