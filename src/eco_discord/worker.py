@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Any
@@ -31,9 +32,33 @@ def _required_channel_id(name: str) -> int:
     return channel_id
 
 
+def _ensure_event_loop() -> None:
+    """Guarantee a current event loop before Pycord reads one (eco-app#248).
+
+    `discord.Bot(...)` resolves the ambient loop during construction, and
+    Pycord's own fallback for that only covers Python 3.14 and up — on 3.13 it
+    calls a bare `asyncio.get_event_loop()`, which raises when no loop is
+    running and none has been set. `main()` builds the bot before `bot.run()`,
+    so the worker died at startup rather than connecting.
+
+    A running loop or an already-set one is left alone; `bot.run()` then drives
+    whichever loop is current.
+    """
+    try:
+        asyncio.get_running_loop()
+        return
+    except RuntimeError:
+        pass
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
+
 def build_bot() -> Any:
     import discord
 
+    _ensure_event_loop()
     service = CommandService(
         EcoAppClient(_required("ECO_DISCORD_ECO_APP_URL")),
         EmbedFactory(os.getenv("ECO_DISCORD_SERVER_LABEL", "Eco")),
