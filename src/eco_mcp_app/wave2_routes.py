@@ -18,6 +18,14 @@ class SpeciesInput(BaseModel):
     name: str = Field(
         description=("Species id or common name, such as WheatSpecies, Wheat, or Snapping Turtle.")
     )
+    include_image: bool = Field(
+        default=False,
+        description=(
+            "Inline the species photo as a base64 data URI. Off by default: the image runs "
+            "to ~285 KB and will exceed an MCP client's response cap on its own. `photoUrl` "
+            "is always returned, so fetch that instead unless you need the bytes inline."
+        ),
+    )
 
 
 class ExplainItemInput(BaseModel):
@@ -31,6 +39,14 @@ class ExplainItemInput(BaseModel):
     category: Literal["material", "plant", "animal", "mineral", "food"] | None = Field(
         default=None,
         description="Optional category used to disambiguate the item name.",
+    )
+    include_image: bool = Field(
+        default=False,
+        description=(
+            "Inline the Wikimedia image as a base64 data URI. Off by default: the image runs "
+            "to ~100 KB around a three-sentence description and will exceed an MCP client's "
+            "response cap. `image_url` is always returned, so fetch that instead."
+        ),
     )
 
 

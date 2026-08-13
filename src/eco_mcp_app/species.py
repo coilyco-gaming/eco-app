@@ -78,7 +78,11 @@ class SpeciesPayload:
     view: str = "eco_species"
     name: str = ""  # Cleaned human-readable name
     species_id: str = ""  # Raw CamelCase id from specieslist
+    # The inlined image. 285 KB of base64 around a 150-character wiki extract
+    # blew the MCP response budget, so it is opt-in for MCP callers and the URL
+    # below is always available instead (#230).
     photo_data_uri: str | None = None
+    photo_url: str | None = None
     photo_attribution: str | None = None
     wiki_extract: str | None = None
     wiki_url: str | None = None
@@ -97,6 +101,7 @@ class SpeciesPayload:
             "name": self.name,
             "speciesId": self.species_id,
             "photoDataUri": self.photo_data_uri,
+            "photoUrl": self.photo_url,
             "photoAttribution": self.photo_attribution,
             "wikiExtract": self.wiki_extract,
             "wikiUrl": self.wiki_url,
@@ -439,8 +444,16 @@ def _extract_taxonomy(taxon: dict[str, Any]) -> list[dict[str, str]]:
     return [b for b in breadcrumb if b["name"]]
 
 
-async def build_species_payload(species_id: str) -> SpeciesPayload:
-    """Assemble the full card payload for a given Eco species id."""
+async def build_species_payload(species_id: str, *, include_image: bool = True) -> SpeciesPayload:
+    """Assemble the full card payload for a given Eco species id.
+
+    ``include_image`` controls whether the iNat photo is downloaded and inlined
+    as a base64 ``data:`` URI. The web surfaces want it; MCP callers do not,
+    because 285 KB of base64 around a two-sentence extract exceeds the client's
+    response cap and turns an answer into an error plus a spill file (#230).
+    ``photo_url`` is populated either way, so a caller that wants the image can
+    fetch it itself.
+    """
     name = clean_species_name(species_id)
     payload = SpeciesPayload(name=name, species_id=species_id)
 
@@ -480,10 +493,12 @@ async def build_species_payload(species_id: str) -> SpeciesPayload:
         photo = taxon.get("default_photo") or {}
         photo_url = photo.get("medium_url") or photo.get("square_url")
         if photo_url:
-            photo_bytes = await _fetch_inat_photo_bytes(photo_url)
-            if photo_bytes:
-                payload.photo_data_uri = _photo_to_data_uri(photo_bytes)
-                payload.photo_attribution = photo.get("attribution")
+            payload.photo_url = str(photo_url)
+            payload.photo_attribution = photo.get("attribution")
+            if include_image:
+                photo_bytes = await _fetch_inat_photo_bytes(photo_url)
+                if photo_bytes:
+                    payload.photo_data_uri = _photo_to_data_uri(photo_bytes)
         payload.wiki_url = taxon.get("wikipedia_url")
         # iNat embeds a wiki summary on the taxon itself sometimes.
         if taxon.get("wikipedia_summary"):

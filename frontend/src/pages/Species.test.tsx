@@ -18,6 +18,7 @@ describe("Species page", () => {
             name: "Wolf",
             speciesId: "WolfSpecies",
             photoDataUri: null,
+            photoUrl: null,
             photoAttribution: null,
             wikiExtract: "A social predator.",
             wikiUrl: "https://example.test/wolf",
@@ -48,8 +49,10 @@ describe("Species page", () => {
     await waitFor(() => {
       expect(screen.getByTestId("species-population-curve")).toBeInTheDocument()
     })
+    // The SPA opts in to the inlined photo; MCP callers do not, because the
+    // base64 blows their response cap (eco-app#230).
     expect(fetchMock).toHaveBeenCalledWith(
-      "/preview/get_species.json?name=WolfSpecies",
+      "/preview/get_species.json?name=WolfSpecies&include_image=1",
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
     expect(screen.getByRole("heading", { name: "Wolf" })).toBeInTheDocument()

@@ -1729,7 +1729,13 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                     content=[TextContent(type="text", text=err)],
                     isError=True,
                 )
-            card = await build_ecopedia_card(item_name, category)
+            # Default off for the same reason as get_species: the inlined image
+            # dwarfs the text and blows the MCP response cap (#230).
+            card = await build_ecopedia_card(
+                item_name,
+                category,
+                include_image=bool((arguments or {}).get("include_image", False)),
+            )
             card_dict = card.to_dict()
             md_lines = [f"**{card.title or card.name}**"]
             if card.category:
@@ -2023,8 +2029,13 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
         if name == "get_species":
             species_arg = (arguments or {}).get("name") or ""
             species_id = _resolve_species_id(species_arg)
+            # Default off: the inlined photo is ~285 KB against a 150-character
+            # extract and blows the MCP response cap on its own (#230).
+            include_image = bool((arguments or {}).get("include_image", False))
             try:
-                species_payload_obj = await species_mod.build_species_payload(species_id)
+                species_payload_obj = await species_mod.build_species_payload(
+                    species_id, include_image=include_image
+                )
             except httpx.HTTPError as e:
                 failure = _fetch_failure(e)
                 err_payload = {

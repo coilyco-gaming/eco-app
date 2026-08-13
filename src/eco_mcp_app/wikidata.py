@@ -130,7 +130,11 @@ class EcopediaCard:
     category: str | None
     title: str = ""
     description: str = ""
+    # The inlined image. ~100 KB of base64 around a three-sentence description
+    # blew the MCP response budget, so it is opt-in for MCP callers and
+    # `image_url` is populated either way (#230).
     image_data_uri: str | None = None
+    image_url: str | None = None
     image_credit: str | None = None
     facts: list[tuple[str, str]] = field(default_factory=list)
     source: str = ""
@@ -313,12 +317,19 @@ def _build_card_from_wikipedia(name: str, data: dict[str, Any]) -> EcopediaCard:
     )
 
 
-async def build_ecopedia_card(name: str, category: str | None = None) -> EcopediaCard:
+async def build_ecopedia_card(
+    name: str, category: str | None = None, *, include_image: bool = True
+) -> EcopediaCard:
     """Main entry point. Returns an EcopediaCard, with `not_found=True` on total miss.
 
     Shape of the flow matches the spec in #15:
       - category given -> SPARQL first, Wikipedia as fallback for description
       - no category -> Wikipedia first (cheap), SPARQL only if disambiguation
+
+    ``include_image`` controls whether the Wikimedia image is downloaded and
+    inlined as a base64 ``data:`` URI. The web surfaces want it; MCP callers do
+    not, because the inlined bytes dwarf the text and blow the response cap
+    (#230). ``image_url`` is set either way.
     """
     name = name.strip()
     if not name:
@@ -385,6 +396,8 @@ async def build_ecopedia_card(name: str, category: str | None = None) -> Ecopedi
                 if isinstance(thumb, dict):
                     image_url = thumb.get("source")
         if image_url:
-            card.image_data_uri = await _inline_image(client, image_url)
+            card.image_url = image_url
+            if include_image:
+                card.image_data_uri = await _inline_image(client, image_url)
 
         return card

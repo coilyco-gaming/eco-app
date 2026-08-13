@@ -19,8 +19,11 @@ WAVE2_ARGUMENTS: dict[str, dict[str, Any]] = {
     "get_economy": {"server": "eco.test:3001"},
     "get_map": {"server": "eco.test:3001"},
     "get_milestones": {"server": "eco.test:3001"},
-    "get_species": {"name": "Bison"},
-    "explain_item": {"name": "Iron", "category": "material"},
+    # include_image is spelled out because it defaults to False and the
+    # registry passes the resolved model through — inlined images are opt-in so
+    # an MCP caller stays under its response cap (eco-app#230).
+    "get_species": {"name": "Bison", "include_image": False},
+    "explain_item": {"name": "Iron", "category": "material", "include_image": False},
     "get_crafting_atlas": {"server": "eco.test:3001"},
     "get_trades": {"server": "eco.test:3001"},
     "fair_price": {
