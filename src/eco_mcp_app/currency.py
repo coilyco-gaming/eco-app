@@ -46,6 +46,7 @@ import asyncio
 import csv
 import difflib
 import os
+import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
@@ -92,6 +93,10 @@ _AMOUNT_KEYS: tuple[str, ...] = (
     "Count",
 )
 _CREATOR_KEYS: tuple[str, ...] = ("Citizen", "Creator", "Founder", "Player", "User")
+
+# A CurrencyTrade row's currency cell holds the Currency object's id, not its
+# name (eco-app#217). A bare integer in a name column is that id.
+_NUMERIC_ID_RE = re.compile(r"^\d+$")
 
 # The stores/economy exporter mod (mods/stores, eco-app#58) serves per-account
 # currency balances live from CurrencyManager at this path, under the same
@@ -145,6 +150,12 @@ class CurrencyRecord:
     trade_count: int = 0
     trade_volume: float = 0.0
     created_by: str | None = None
+    # The in-game Currency id, from the exporter mod's holdings surface. The
+    # action exporter keys CurrencyTrade rows by this, not by name (eco-app#217).
+    currency_id: str | None = None
+    # True while this record exists only because a trade row named an id no
+    # roster entry claims — an id, not a currency name, and labelled as such.
+    unresolved_id: bool = False
     # Top-holder balances from the exporter mod (eco-app#58). ``holders_reachable``
     # stays False until the endpoint answers for this currency, so the report can
     # tell "no holders yet" apart from "mod not deployed".
@@ -170,6 +181,9 @@ class CurrencySnapshot:
     government_holdings_series: list[tuple[float, float]] = field(default_factory=list)
     # Per-currency roster, keyed by currency name.
     currencies: dict[str, CurrencyRecord] = field(default_factory=dict)
+    # Currency id -> display name, from the exporter mod's holdings surface.
+    # The action exporter keys CurrencyTrade rows by id (eco-app#217).
+    currency_id_to_name: dict[str, str] = field(default_factory=dict)
     # Whether each action's currency column was present (so an empty roster can
     # be explained: "the exporter didn't carry a Currency column" vs "no events").
     trade_rows_total: int = 0
@@ -518,6 +532,13 @@ async def _fetch_currency_holdings(
         if not name:
             continue
         rec = snapshot.record(str(name))
+        # The join key CurrencyTrade rows carry (eco-app#217). Recording it here
+        # is what lets `_resolve_currency_ids` fold id-keyed trade totals onto
+        # the named currency after every action has folded.
+        currency_id = entry.get("id")
+        if currency_id not in (None, ""):
+            rec.currency_id = str(currency_id)
+            snapshot.currency_id_to_name[str(currency_id)] = rec.name
         rec.holders_reachable = True
         rec.accounts_counted = _as_int(entry.get("accountsCounted"))
         rec.total_holdings = _as_float(entry.get("totalHoldings"))
@@ -538,6 +559,85 @@ async def _fetch_currency_holdings(
             )
         holders.sort(key=lambda x: x.balance, reverse=True)
         rec.top_holders = holders[:_MAX_HOLDERS]
+
+
+async def fetch_currency_id_map(
+    client: httpx.AsyncClient, base: str, headers: dict[str, str]
+) -> dict[str, str]:
+    """Currency id -> display name, from the exporter mod's holdings surface.
+
+    The one source that pairs the id the action exporter writes into
+    CurrencyTrade rows with the name a player recognises (eco-app#217).
+    Best-effort by design: an absent or older mod yields an empty map, and the
+    ledger keeps raw ids rather than inventing names.
+    """
+    url = f"{base}{CURRENCY_HOLDINGS_PATH}"
+    try:
+        r = await client.get(url, headers=headers)
+        if r.status_code != 200:
+            return {}
+        data = r.json()
+    except (httpx.HTTPError, ValueError):
+        return {}
+    if not isinstance(data, list):
+        return {}
+    out: dict[str, str] = {}
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        cid, name = entry.get("id"), entry.get("currency")
+        if cid not in (None, "") and name:
+            out[str(cid)] = str(name)
+    return out
+
+
+def _resolve_currency_ids(snapshot: CurrencySnapshot) -> None:
+    """Fold id-keyed trade totals onto the currency they belong to (#217).
+
+    The action exporter writes CurrencyTrade rows keyed by the Currency
+    object's id, while CreateCurrency writes names, so the two never joined:
+    18 id-named phantom currencies carried all 3,668 trades and the 167 real
+    ones reported zero. The exporter mod's holdings surface supplies the
+    id -> name map (see ``CurrencyHoldingsDto.Id``); this merges on it.
+
+    An id with no mapping is kept rather than dropped — the volume is real —
+    but flagged ``unresolved_id`` so nothing presents a bare number as a
+    currency name, and a warning says how much of the ledger is affected.
+    """
+    id_to_name = snapshot.currency_id_to_name
+    unresolved_trades = 0
+    unresolved_ids: list[str] = []
+
+    for key in list(snapshot.currencies):
+        rec = snapshot.currencies.get(key)
+        if rec is None or not _NUMERIC_ID_RE.match(rec.name):
+            continue
+        target_name = id_to_name.get(rec.name)
+        if target_name is None or target_name == rec.name:
+            if rec.trade_count:
+                unresolved_trades += rec.trade_count
+                unresolved_ids.append(rec.name)
+            rec.unresolved_id = True
+            continue
+        target = snapshot.record(target_name)
+        target.trade_count += rec.trade_count
+        target.trade_volume += rec.trade_volume
+        target.mint_events += rec.mint_events
+        target.minted_amount += rec.minted_amount
+        target.is_minted = target.is_minted or rec.is_minted
+        if target.created_by is None:
+            target.created_by = rec.created_by
+        del snapshot.currencies[key]
+
+    if unresolved_trades:
+        shown = ", ".join(sorted(unresolved_ids)[:5])
+        more = "" if len(unresolved_ids) <= 5 else f" (+{len(unresolved_ids) - 5} more)"
+        snapshot.warnings.append(
+            f"{unresolved_trades:,} trade(s) are attributed to currency ids no roster entry "
+            f"claims ({shown}{more}). The exporter keys trades by id; names come from the "
+            "stores/economy exporter mod (eco-app#58), so an old or absent mod leaves these "
+            "unresolved. They are listed with unresolvedId set, not as currency names."
+        )
 
 
 def _as_int(value: Any) -> int:
@@ -627,6 +727,11 @@ async def fetch_currency(
         # currency). Best-effort - an undeployed mod leaves holders unreachable.
         await _fetch_currency_holdings(client, base, headers, snapshot)
 
+    # The holdings surface is also where the currency id -> name map comes
+    # from, so id-keyed trade totals can only be folded onto their real
+    # currency once it has answered (eco-app#217).
+    _resolve_currency_ids(snapshot)
+
     _currency_cache[cache_key] = snapshot
     return snapshot
 
@@ -659,6 +764,10 @@ def _classify(rec: CurrencyRecord) -> str:
 def _currency_view(rec: CurrencyRecord) -> dict[str, Any]:
     return {
         "name": rec.name,
+        # A trade-only record whose "name" is really an unjoined Currency id
+        # (eco-app#217). Consumers must not caption these as currencies.
+        "currencyId": rec.currency_id or (rec.name if rec.unresolved_id else None),
+        "unresolvedId": rec.unresolved_id,
         "type": _classify(rec),
         "isMinted": rec.is_minted,
         "mintedAmount": round(rec.minted_amount, 2),

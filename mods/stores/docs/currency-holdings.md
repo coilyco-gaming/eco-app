@@ -18,6 +18,12 @@ piece history cannot reconstruct is the **top-holders list**:
 - `CurrencyTrade` rows give buyer/seller **flows**, not balances, and the
   numeric ids still hit the id-to-name join blocker ([#5](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/5)).
 
+It is also the only place a Currency's **id** and its **name** appear
+together, which is what makes trade attribution possible at all: the action
+exporter keys `CurrencyTrade` rows by id, so without this map every trade lands
+on an id-named phantom currency and every real one reports zero
+([#217](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/217)).
+
 Only the in-process `CurrencyManager` carries per-account, per-currency
 balances. This endpoint reads them live and joins account owners to citizen
 names via the same `UserManager` access `mods/jobs` uses for
@@ -39,6 +45,7 @@ route). Returns a JSON array, one entry per currency.
 [
   {
     "currency": "Sirens Credit",   // currency display name
+    "id": "2533707",               // in-game Currency id, or null (unread)
     "backed": true,                // minted/backed vs personal/credit, or null (unread)
     "accountsCounted": 4,          // accounts holding this currency (ALL, not just topHolders)
     "totalHoldings": 18250.0,      // sum of every holding (ALL accounts)

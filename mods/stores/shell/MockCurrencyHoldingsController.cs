@@ -21,6 +21,9 @@ public class MockCurrencyHoldingsController : ControllerBase
         {
             new CurrencyHoldingsDto(
                 Currency: "Sirens Credit",
+                // The id the action exporter writes into CurrencyTrade rows —
+                // the join key eco-app#217 needs to attribute trades by name.
+                Id: "2533707",
                 Backed: true,
                 AccountsCounted: 4,
                 TotalHoldings: 18250.0,
@@ -33,6 +36,7 @@ public class MockCurrencyHoldingsController : ControllerBase
                 }),
             new CurrencyHoldingsDto(
                 Currency: "redwood Credit",
+                Id: "2967954",
                 Backed: false,
                 AccountsCounted: 2,
                 TotalHoldings: 640.0,

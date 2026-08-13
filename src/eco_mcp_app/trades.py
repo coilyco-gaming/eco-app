@@ -54,6 +54,7 @@ from __future__ import annotations
 import hashlib
 import math
 import os
+import re
 import statistics
 from collections import defaultdict
 from collections.abc import Iterable
@@ -235,6 +236,48 @@ def _clean_name(value: str | None) -> str:
     return v
 
 
+# A CurrencyTrade row's currency cell holds the Currency object's id, not its
+# name (eco-app#217).
+_NUMERIC_ID_RE = re.compile(r"^\d+$")
+
+
+def _currency_cell(value: str) -> str:
+    """Keep a trade row's currency cell, id or name.
+
+    Unlike item / store columns, a bare number here is the real value: the
+    exporter keys CurrencyTrade rows by the Currency object's id. Blanking it
+    as a misalignment artifact dropped the currency from every detailed row
+    (eco-app#217). Positions (``"1,2,3"``) are still artifacts and go.
+    """
+    v = (value or "").strip()
+    if not v or ("," in v and _NONSENSE_KEY_RE.match(v)):
+        return ""
+    return v
+
+
+def resolve_parsed_currencies(parsed: list[_ParsedTrade], id_to_name: dict[str, str]) -> int:
+    """Rewrite id-valued currency cells to display names, in place (#217).
+
+    Applied to the shared parsed rows before anything folds them, so the
+    ledger, the store directory, and the market boards all inherit the fix from
+    one pass. The map comes from the stores/economy exporter mod's holdings
+    surface, the only source pairing a Currency id with its name.
+
+    Returns the number of rows left unresolved. Those keep their raw id — the
+    volume is real — rather than being blanked or renamed to a guess.
+    """
+    unresolved = 0
+    for trade in parsed:
+        if not trade.currency:
+            continue
+        name = id_to_name.get(trade.currency)
+        if name:
+            trade.currency = name
+        elif _NUMERIC_ID_RE.match(trade.currency):
+            unresolved += 1
+    return unresolved
+
+
 def parse_trade_rows(
     action_name: str,
     rows: Iterable[list[str]],
@@ -307,7 +350,14 @@ def parse_trade_rows(
                 shop_owner_id=pick(row, idx, "ShopOwner"),
                 item=_clean_name(pick(row, idx, "ItemUsed")),
                 quantity=quantity,
-                currency=_clean_name(pick(row, idx, "Currency")),
+                # The exporter writes the Currency object's *id* here, not its
+                # name. `_clean_name` treats a bare number as a misalignment
+                # artifact and blanks it, which is why every one of the 526
+                # detailed rows reported `currency: ""` while the payload also
+                # said the currency column was present (eco-app#217). Keep the
+                # raw value; `resolve_currency_names` turns it into a name once
+                # the id map is available.
+                currency=_currency_cell(pick(row, idx, "Currency")),
                 currency_amount=currency_amount,
                 unit_price=unit_price,
                 store=_clean_name(pick(row, idx, "WorldObjectItem")),
@@ -444,6 +494,9 @@ class ParsedTradeFetch:
     name_map: dict[str, str] = field(default_factory=dict)
     per_type_counts: dict[str, int] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    # Currency ids left unresolved because the exporter mod is absent or older
+    # than the id field. Reported, never guessed at. See eco-app#217.
+    unresolved_currency_rows: int = 0
 
 
 async def fetch_parsed_trades(
@@ -499,8 +552,25 @@ async def fetch_parsed_trades(
                 scratch.warnings.append(f"{action}: {type(e).__name__}: {e}")
 
         name_map: dict[str, str] = {}
+        unresolved_currency_rows = 0
         if parsed:
             name_map = await fetch_citizen_name_map(http, normalized, headers, scratch.warnings)
+        # The exporter keys trades by Currency id; only the stores/economy
+        # exporter mod knows the names (eco-app#217). Resolve here, on the
+        # shared rows, so the ledger, the store directory and the market boards
+        # all inherit one join. Skipped entirely when no row carries an id —
+        # a server whose export already names currencies costs no extra call.
+        if any(_NUMERIC_ID_RE.match(t.currency) for t in parsed if t.currency):
+            from .currency import fetch_currency_id_map
+
+            id_map = await fetch_currency_id_map(http, normalized, headers)
+            unresolved_currency_rows = resolve_parsed_currencies(parsed, id_map)
+            if unresolved_currency_rows:
+                scratch.warnings.append(
+                    f"{unresolved_currency_rows:,} trade row(s) name a currency id the "
+                    "stores/economy exporter mod (eco-app#58) did not resolve to a name; "
+                    "they keep the raw id rather than being dropped or guessed at"
+                )
     finally:
         if owns_client:
             await http.aclose()
@@ -511,6 +581,7 @@ async def fetch_parsed_trades(
         name_map=name_map,
         per_type_counts=scratch.per_type_counts,
         warnings=scratch.warnings,
+        unresolved_currency_rows=unresolved_currency_rows,
     )
 
 

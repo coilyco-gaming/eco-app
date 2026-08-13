@@ -113,6 +113,9 @@ public static class CurrencyHoldingsScanner
         {
             acc = new CurrencyAcc(
                 name: AsString(GetMember(currency, "Name", "MarkupName", "DisplayName")) ?? "Unknown Currency",
+                // The join key the action exporter writes into CurrencyTrade
+                // rows. See CurrencyHoldingsDto.Id and eco-app#217.
+                id: AsString(GetMember(currency, "Id", "CurrencyId", "ObjectId")),
                 backed: ReadBacked(currency));
             map[currency] = acc;
         }
@@ -252,14 +255,16 @@ public static class CurrencyHoldingsScanner
     private sealed class CurrencyAcc
     {
         private readonly string name;
+        private readonly string? id;
         private readonly bool? backed;
         private readonly List<HolderDto> holders = new();
         private int accountsCounted;
         private double totalHoldings;
 
-        public CurrencyAcc(string name, bool? backed)
+        public CurrencyAcc(string name, string? id, bool? backed)
         {
             this.name = name;
+            this.id = id;
             this.backed = backed;
         }
 
@@ -276,6 +281,7 @@ public static class CurrencyHoldingsScanner
             var top = this.holders.Count > cap ? this.holders.GetRange(0, cap) : this.holders;
             return new CurrencyHoldingsDto(
                 this.name,
+                this.id,
                 this.backed,
                 this.accountsCounted,
                 this.totalHoldings,

@@ -60,6 +60,12 @@ public record HolderDto(
 // reconstruct, read live from CurrencyManager in-process.
 public record CurrencyHoldingsDto(
     [property: JsonPropertyName("currency"), JsonProperty("currency")] string Currency,
+    // The Currency object's in-game id, as a string. The action exporter keys
+    // CurrencyTrade rows by this id rather than by name, so without it eco-app
+    // cannot join a trade to the currency it was denominated in: every trade
+    // landed on an id-named phantom currency and all 167 real ones read zero
+    // (eco-app#217). Null when the id member could not be read.
+    [property: JsonPropertyName("id"), JsonProperty("id")] string? Id,
     [property: JsonPropertyName("backed"), JsonProperty("backed")] bool? Backed,
     [property: JsonPropertyName("accountsCounted"), JsonProperty("accountsCounted")] int AccountsCounted,
     [property: JsonPropertyName("totalHoldings"), JsonProperty("totalHoldings")] double TotalHoldings,
