@@ -13,6 +13,8 @@ probes from the metrics that would show them.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from starlette.testclient import TestClient
 
@@ -20,7 +22,13 @@ from eco_mcp_app.http_app import create_app
 
 
 @pytest.fixture
-def client() -> TestClient:
+def client(dist: Path) -> TestClient:
+    """A client over an app that has a shell to serve.
+
+    The `dist` fixture (tests/mcp/conftest.py) is load-bearing, not decoration.
+    Without a build the catch-all 404s everything as the no-build hint, which
+    turns the probe assertions below into tautologies and fails the SPA ones.
+    """
     return TestClient(create_app())
 
 

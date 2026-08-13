@@ -9,15 +9,8 @@ from fastapi.testclient import TestClient
 
 from eco_mcp_app.http_app import create_app
 
-
-@pytest.fixture
-def dist(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    dist = tmp_path / "dist"
-    (dist / "assets").mkdir(parents=True)
-    (dist / "index.html").write_text("<html>spa-shell</html>")
-    (dist / "robots.txt").write_text("crawl away")
-    monkeypatch.setenv("FRONTEND_DIST", str(dist))
-    return dist
+# The `dist` fixture lives in tests/mcp/conftest.py - test_scanner_paths.py
+# needs the same stand-in build.
 
 
 @pytest.mark.usefixtures("dist")
