@@ -314,3 +314,55 @@ def test_preview_recipes_cost_degrades_when_market_unreachable(
     payload = r.json()
     assert any("market unreachable" in w for w in payload["warnings"])
     assert "cost" in payload["recipes"][0]
+
+
+def test_an_incomplete_rollup_reports_no_total_rather_than_zero() -> None:
+    """A partial sum is not a cost. Reporting 0 made the recipe where nothing
+    priced look 7x cheaper than the ones that did. See #266."""
+    from eco_mcp_app.cost import RecipeCost
+
+    rollup = RecipeCost(
+        recipe="RecycledIronBar",
+        product="IronBarItem",
+        yield_qty=1,
+        per_unit_cost=None,
+        total_cost=0.22,
+        ingredient_cost=0.0,
+        labor_cost=0.22,
+        time_cost=0.0,
+        labor_calories=0.0,
+        craft_minutes=0.0,
+        complete=False,
+        unpriced_inputs=["ScrapIronItem", "CharcoalItem"],
+        ingredients=[],
+    )
+    payload = rollup.to_dict()
+    assert payload["totalCost"] is None
+    assert payload["ingredientCost"] is None
+    # The evidence a caller needs to act is still there.
+    assert payload["unpricedInputs"] == ["ScrapIronItem", "CharcoalItem"]
+    assert payload["complete"] is False
+
+
+def test_a_complete_rollup_still_reports_its_numbers() -> None:
+    """The distinction that must survive: unpriced is not the same as free."""
+    from eco_mcp_app.cost import RecipeCost
+
+    rollup = RecipeCost(
+        recipe="SmeltIron",
+        product="IronBarItem",
+        yield_qty=1,
+        per_unit_cost=3.18,
+        total_cost=3.18,
+        ingredient_cost=2.56,
+        labor_cost=0.62,
+        time_cost=0.0,
+        labor_calories=0.0,
+        craft_minutes=0.0,
+        complete=True,
+        unpriced_inputs=[],
+        ingredients=[],
+    )
+    payload = rollup.to_dict()
+    assert payload["totalCost"] == 3.18
+    assert payload["ingredientCost"] == 2.56

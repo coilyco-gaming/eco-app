@@ -313,8 +313,11 @@ class RecipeCost:
             "product": self.product,
             "yield": self.yield_qty,
             "perUnitCost": self.per_unit_cost,
-            "totalCost": self.total_cost,
-            "ingredientCost": self.ingredient_cost,
+            # None when a leaf did not price, matching perUnitCost. A partial
+            # sum is not a cost: it made the least-known recipe look cheapest.
+            # The priced part survives in ingredients[]. See #266.
+            "totalCost": self.total_cost if self.complete else None,
+            "ingredientCost": self.ingredient_cost if self.complete else None,
             "laborCost": self.labor_cost,
             "timeCost": self.time_cost,
             "laborCalories": self.labor_calories,

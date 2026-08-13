@@ -105,8 +105,8 @@ export interface RecipeCost {
   product: string
   yield: number
   perUnitCost: number | null
-  totalCost: number
-  ingredientCost: number
+  totalCost: number | null
+  ingredientCost: number | null
   laborCost: number
   timeCost: number
   laborCalories: number
