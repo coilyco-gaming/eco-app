@@ -85,6 +85,60 @@ def test_parse_and_fold_shapes() -> None:
     assert "totalChat" not in surface.to_dict()
 
 
+def test_live_exporter_reputation_columns_light_up_the_graph() -> None:
+    """The header the live exporter actually emits must populate the graph (#260)."""
+    csv_text = (
+        "ReputationReceiver,ReputationSender,ReputationTransferredSign,"
+        "ReputationSource,ReputationAmountTransferred,TargetType,"
+        "ActionLocation,Count,Time\n"
+        "130409,129312,1,Praise,5.0,Player,0 0 0,1,250000\n"
+        "130409,129580,1,Praise,3.0,Player,0 0 0,1,150000\n"
+    )
+    surface = SocialSurface(fetched_at_iso="t", source_base_url="b")
+    edges: list = []
+    parse_reputation_rows(_rows(csv_text), surface, edges)
+    build_surface(surface, edges, [], NAME_MAP, show_names=True)
+
+    assert surface.total_reputation_transfers == 2
+    assert surface.top_reputation_receivers[0] == ("ekans", pytest.approx(8.0))
+    edge = next(edge for edge in surface.reputation_edges if edge["source"] == "coilysiren")
+    assert edge["target"] == "ekans"
+    assert edge["amount"] == pytest.approx(5.0)
+    # A recognised header must not emit the "extend the candidate list" warning.
+    assert not any("was not recognized" in warning for warning in surface.warnings)
+
+
+def test_negative_reputation_sign_is_applied_to_magnitude() -> None:
+    """`ReputationAmountTransferred` is unsigned; direction lives in its own column."""
+    csv_text = (
+        "ReputationReceiver,ReputationSender,ReputationTransferredSign,"
+        "ReputationAmountTransferred,Count,Time\n"
+        "130409,129312,-1,4.0,1,250000\n"
+        "130409,129580,1,1.0,1,150000\n"
+    )
+    surface = SocialSurface(fetched_at_iso="t", source_base_url="b")
+    edges: list = []
+    parse_reputation_rows(_rows(csv_text), surface, edges)
+    build_surface(surface, edges, [], NAME_MAP, show_names=True)
+
+    assert surface.top_reputation_receivers[0] == ("ekans", pytest.approx(-3.0))
+    negative = next(edge for edge in surface.reputation_edges if edge["source"] == "coilysiren")
+    assert negative["amount"] == pytest.approx(-4.0)
+
+
+def test_already_signed_amount_is_not_negated_twice() -> None:
+    csv_text = (
+        "ReputationReceiver,ReputationSender,ReputationTransferredSign,"
+        "ReputationAmountTransferred,Count,Time\n"
+        "130409,129312,-1,-4.0,1,250000\n"
+    )
+    surface = SocialSurface(fetched_at_iso="t", source_base_url="b")
+    edges: list = []
+    parse_reputation_rows(_rows(csv_text), surface, edges)
+
+    assert edges[0].amount == pytest.approx(-4.0)
+
+
 def test_empty_reputation_graph_is_diagnosed() -> None:
     csv_text = "Citizen,Beneficiary,Amount,Count,Time\n129312,130409,5.0,1,250000\n"
     surface = SocialSurface(fetched_at_iso="t", source_base_url="b")

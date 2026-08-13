@@ -52,8 +52,21 @@ SECONDS_PER_DAY = 86400.0
 NAMES_ALLOW_ENV = "ECO_SOCIAL_ALLOW_NAMES"
 
 _ACTIVITY_CITIZEN = ("Citizen", "Player", "User")
-_REP_GIVER = ("Citizen", "Giver", "GiverCitizen", "FromCitizen", "Sender", "Player")
+# The live exporter emits the `Reputation*`-prefixed names first in each tuple;
+# the bare names behind them are older/other shapes kept for compatibility. The
+# prefixed names lead because a generic `Citizen` / `Player` column in this
+# export need not be the giver (#260).
+_REP_GIVER = (
+    "ReputationSender",
+    "Citizen",
+    "Giver",
+    "GiverCitizen",
+    "FromCitizen",
+    "Sender",
+    "Player",
+)
 _REP_RECEIVER = (
+    "ReputationReceiver",
     "ReceiverCitizen",
     "Receiver",
     "TargetCitizen",
@@ -61,7 +74,18 @@ _REP_RECEIVER = (
     "ToCitizen",
     "ReceiverPlayer",
 )
-_REP_AMOUNT = ("Amount", "Reputation", "ReputationAmount", "Value", "Delta")
+_REP_AMOUNT = (
+    "ReputationAmountTransferred",
+    "Amount",
+    "Reputation",
+    "ReputationAmount",
+    "Value",
+    "Delta",
+)
+# Eco records the magnitude and the direction of a reputation transfer in two
+# columns. Without the sign, praise and dogpiling both read as positive weight.
+_REP_SIGN = ("ReputationTransferredSign", "ReputationSign", "Sign")
+_NEGATIVE_SIGNS = frozenset({"-", "-1", "-1.0", "negative", "neg", "down", "false"})
 
 _social_cache: TTLCache[str, dict[str, Any]] = TTLCache(maxsize=64, ttl=DEFAULT_CACHE_TTL_S)
 
@@ -174,6 +198,22 @@ def _clean_id(value: str) -> str:
     return cleaned
 
 
+def _apply_sign(amount: float, sign: str) -> float:
+    """Apply a separate direction column to a magnitude-only amount.
+
+    The exporter splits a reputation transfer into an unsigned
+    ``ReputationAmountTransferred`` and a ``ReputationTransferredSign``. An
+    amount that already carries its own sign is left alone, so a future export
+    that folds the two together does not get negated twice.
+    """
+    token = (sign or "").strip().lower()
+    if not token or amount < 0:
+        return amount
+    if token in _NEGATIVE_SIGNS or token.startswith("-"):
+        return -amount
+    return amount
+
+
 def parse_reputation_rows(
     rows: Iterable[list[str]],
     surface: SocialSurface,
@@ -211,6 +251,7 @@ def parse_reputation_rows(
             amount = float(pick(row, idx, *_REP_AMOUNT) or "0")
         except ValueError:
             amount = 0.0
+        amount = _apply_sign(amount, pick(row, idx, *_REP_SIGN))
         edges.append(
             _RepEdge(
                 time_s=time_s,
