@@ -25,12 +25,13 @@ import respx
 from eco_mcp_app import stores as stores_mod
 from eco_mcp_app.server import build_server
 from eco_mcp_app.stores import (
+    StoreDirectory,
     build_directory,
     directory_markdown,
     directory_template_context,
     fetch_directory,
 )
-from eco_mcp_app.trades import fetch_parsed_trades
+from eco_mcp_app.trades import ParsedTradeFetch, _ParsedTrade, fetch_parsed_trades
 
 CURRENCY_URL = "http://eco.example.com:3001/api/v1/exporter/actions?actionName=CurrencyTrade"
 BARTER_URL = "http://eco.example.com:3001/api/v1/exporter/actions?actionName=BarterTrade"
@@ -307,3 +308,73 @@ async def test_list_tools_includes_get_stores() -> None:
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {tool.name for tool in result.root.tools}
     assert "get_stores" in names
+
+
+# ---------------------------------------------------------------------------
+# Currency attribution on store profiles (eco-app#236)
+# ---------------------------------------------------------------------------
+
+
+def _currency_trade(owner: str, currency: str, amount: float) -> _ParsedTrade:
+    return _ParsedTrade(
+        trade_type="CurrencyTrade",
+        time_s=1000.0,
+        day=0.01,
+        buyer_id="9",
+        seller_id=owner,
+        shop_owner_id=owner,
+        item="ReinforcedConcreteItem",
+        quantity=1.0,
+        currency=currency,
+        currency_amount=amount,
+        unit_price=amount,
+        store="StoreItem",
+        location="237,68,962",
+        direction="sell",
+        event_count=1,
+        is_rollup=False,
+    )
+
+
+def _directory_for(trades: list[_ParsedTrade]) -> StoreDirectory:
+    return build_directory(
+        ParsedTradeFetch(
+            normalized_base_url=BASE,
+            parsed=trades,
+            name_map={"7": "Upgrade", "9": "buyer"},
+        )
+    )
+
+
+def test_store_currencies_populate_once_the_ledger_names_them() -> None:
+    """The busiest store came back denominated in nothing (eco-app#236).
+
+    `currencies: []` next to `totalVolume: 4615.47` was the currency-id join
+    failure (eco-app#217) showing through: every trade row's currency had been
+    blanked, so there was nothing to group by.
+    """
+    directory = _directory_for(
+        [
+            _currency_trade("7", "Spectres", 100.0),
+            _currency_trade("7", "Spectres", 50.0),
+            _currency_trade("7", "Racines", 25.0),
+        ]
+    )
+    store = directory.stores[0].to_dict()
+    assert dict(store["currencies"]) == {"Spectres": 150.0, "Racines": 25.0}
+    # Two currencies, so the single scalar adds unlike units and says so.
+    assert store["mixedCurrencyVolume"] is True
+    assert store["totalVolume"] == 175.0
+
+
+def test_a_single_currency_store_is_not_flagged_as_mixed() -> None:
+    directory = _directory_for(
+        [
+            _currency_trade("7", "Spectres", 100.0),
+            _currency_trade("7", "Spectres", 50.0),
+        ]
+    )
+    store = directory.stores[0].to_dict()
+    assert store["mixedCurrencyVolume"] is False
+    assert store["totalVolume"] == 150.0
+    assert "per-currency breakout" in directory.to_dict()["volumeNote"]

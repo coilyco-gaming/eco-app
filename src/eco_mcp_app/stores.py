@@ -129,10 +129,15 @@ class StoreProfile:
             ),
             "tradeCount": self.trade_count,
             "totalVolume": round(self.total_volume, 2),
+            # 185 currencies exist on Sirens, so a single volume scalar is only
+            # meaningful when the store trades in one of them. Say which case
+            # this is rather than leaving the reader to add unlike units (#236).
+            "mixedCurrencyVolume": len(self.currencies) > 1,
             "sellCount": self.sell_count,
             "buyCount": self.buy_count,
             "uniqueCounterparties": self.unique_counterparties,
             "lastDay": round(self.last_day, 2),
+            # The per-currency breakout `totalVolume` flattens.
             "currencies": [[c, round(v, 2)] for c, v in self.currencies],
             "topItems": list(self.top_items),
             "topCounterparties": list(self.top_counterparties),
@@ -210,6 +215,13 @@ class StoreDirectory:
                     "population again and will not match."
                 ),
             },
+            # Reading a store's totalVolume requires knowing whether it mixes
+            # currencies; the per-store flag says so, this names the rule (#236).
+            "volumeNote": (
+                "totalVolume sums currency amounts across every currency a store traded in. "
+                "Where mixedCurrencyVolume is true it adds unlike units — read `currencies` "
+                "for the per-currency breakout instead."
+            ),
             "stores": [s.to_dict() for s in self.stores],
             "traders": [t.to_dict() for t in self.traders],
             "totalStores": self.total_stores,
