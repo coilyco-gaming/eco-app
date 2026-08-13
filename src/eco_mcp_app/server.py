@@ -2165,7 +2165,19 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
             except httpx.HTTPError as e:
                 return _unreachable_result("Eco exporter", e)
             ledger_payload = ledger.to_dict()
-            _bound_rows(ledger_payload, _resolve_limit(arguments or {}), "trades")
+            # Every one of these grows with the world: byItem with the item
+            # catalogue, byCurrency with the currency roster, and topBuyers /
+            # topSellers hold one row per trading citizen despite the name.
+            # counts and totalCurrencyVolume stay whole. See #267.
+            _bound_rows(
+                ledger_payload,
+                _resolve_limit(arguments or {}),
+                "trades",
+                "byItem",
+                "byCurrency",
+                "topBuyers",
+                "topSellers",
+            )
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=ledger_markdown(ledger)),

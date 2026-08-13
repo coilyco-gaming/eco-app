@@ -409,3 +409,45 @@ async def test_get_trades_bounds_its_ledger_rows(monkeypatch: pytest.MonkeyPatch
 
     unbounded = await call({"limit": 0})
     assert len(unbounded["trades"]) == 528
+
+
+@pytest.mark.asyncio
+async def test_limit_reaches_every_growing_array(monkeypatch) -> None:
+    """limit bounded only the trades array. byItem grows with the catalogue,
+    byCurrency with the roster, and topBuyers/topSellers hold one row per
+    trading citizen despite the name. See #267."""
+    import json
+
+    import mcp.types as mt
+
+    from eco_mcp_app import server
+    from eco_mcp_app.trades import TradesLedger
+
+    ledger = TradesLedger(fetched_at_iso="2026-01-01T00:00:00Z", source_base_url="http://e")
+    ledger.trades = [{"item": f"i{i}"} for i in range(40)]
+    ledger.by_item = [(f"item{i}", i, float(i)) for i in range(40)]
+    ledger.by_currency = [(f"cur{i}", float(i)) for i in range(40)]
+    ledger.top_buyers = [(f"buyer{i}", float(i)) for i in range(40)]
+    ledger.top_sellers = [(f"seller{i}", float(i)) for i in range(40)]
+    ledger.total_currency_volume = 9999.0
+
+    async def stub(**_):
+        return ledger
+
+    monkeypatch.setattr(server, "fetch_ledger", stub)
+    mcp_server = server.build_server()
+    handler = mcp_server.request_handlers[mt.CallToolRequest]
+    result = await handler(
+        mt.CallToolRequest(
+            method="tools/call",
+            params=mt.CallToolRequestParams(name="get_trades", arguments={"limit": 5}),
+        )
+    )
+    payload = json.loads(result.root.content[-1].text)
+
+    for key in ("trades", "byItem", "byCurrency", "topBuyers", "topSellers"):
+        assert len(payload[key]) == 5, f"{key} ignored limit"
+        assert any(w.startswith(f"{key}:") for w in payload["warnings"]), (
+            f"{key} truncated without saying so"
+        )
+    assert payload["totalCurrencyVolume"] == 9999.0
