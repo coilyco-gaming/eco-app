@@ -25,10 +25,13 @@ WAVE2_ARGUMENTS: dict[str, dict[str, Any]] = {
     # include_image is spelled out because it defaults to False and the
     # registry passes the resolved model through — inlined images are opt-in so
     # an MCP caller stays under its response cap (eco-app#230).
-    "get_species": {"name": "Bison", "include_image": False},
+    "get_species": {"name": "Bison", "include_image": False, "limit": 120},
     "explain_item": {"name": "Iron", "category": "material", "include_image": False},
-    "get_crafting_atlas": {"server": "eco.test:3001"},
-    "get_trades": {"server": "eco.test:3001"},
+    # limit is spelled out because it defaults to a bounded slice and the
+    # registry passes the resolved model through — detail arrays are capped so
+    # an MCP caller stays under its response cap (eco-app#256).
+    "get_crafting_atlas": {"server": "eco.test:3001", "limit": 50},
+    "get_trades": {"server": "eco.test:3001", "limit": 50},
     "fair_price": {
         "item": "Copper",
         "cycle_id": "cycle-test",

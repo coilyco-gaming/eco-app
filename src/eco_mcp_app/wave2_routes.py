@@ -7,7 +7,12 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from .dual_routes import DualRouteRegistry
-from .public_routes import ServerInput, ToolInvoker, register_json_route
+from .public_routes import (
+    BoundedServerInput,
+    ServerInput,
+    ToolInvoker,
+    register_json_route,
+)
 
 
 class SpeciesInput(BaseModel):
@@ -24,6 +29,16 @@ class SpeciesInput(BaseModel):
             "Inline the species photo as a base64 data URI. Off by default: the image runs "
             "to ~285 KB and will exceed an MCP client's response cap on its own. `photoUrl` "
             "is always returned, so fetch that instead unless you need the bytes inline."
+        ),
+    )
+    limit: int = Field(
+        default=120,
+        ge=0,
+        description=(
+            "Maximum population samples to return. The raw curve runs to ~219 KB - far more "
+            "than the image this tool already gates - so it is thinned to evenly-spaced "
+            "samples with the endpoints preserved. populationFirst / populationLatest / "
+            "populationDelta always describe the whole series. 0 means every sample."
         ),
     )
 
@@ -178,7 +193,7 @@ def register_wave2_routes(registry: DualRouteRegistry, invoke: ToolInvoker) -> N
             "action exporter. Requires the server-side admin API key."
         ),
         rest_path=WAVE2_PATHS["get_crafting_atlas"],
-        input_model=ServerInput,
+        input_model=BoundedServerInput,
     )
     register_json_route(
         registry,
@@ -190,7 +205,7 @@ def register_wave2_routes(registry: DualRouteRegistry, invoke: ToolInvoker) -> N
             "and price-history aggregates. Requires the server-side admin API key."
         ),
         rest_path=WAVE2_PATHS["get_trades"],
-        input_model=ServerInput,
+        input_model=BoundedServerInput,
     )
     register_json_route(
         registry,

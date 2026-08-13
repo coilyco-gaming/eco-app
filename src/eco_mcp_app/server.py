@@ -1367,6 +1367,69 @@ def _fmt_pct(value: float | None) -> str:
     return _UNREPORTED if value is None else f"{value}%"
 
 
+# How many detail rows a tool ships before it needs asking. Sized so a
+# no-argument call over MCP stays inside a client's response cap: six tools
+# returned 60-220 KB of unbounded detail arrays and were truncated by the
+# client with no parameter available to bound them (#256).
+MCP_ROW_LIMIT = 50
+
+# A population curve keeps more points than a detail list: 120 evenly-spaced
+# samples still draw a readable shape and cost a few KB.
+MCP_POPULATION_SAMPLES = 120
+
+
+def _resolve_limit(args: dict[str, Any], default: int = MCP_ROW_LIMIT) -> int:
+    """Read the caller's `limit`. 0 means no limit — the SPA uses that."""
+    raw = args.get("limit")
+    if raw is None or raw == "":
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return max(value, 0)
+
+
+def _bound_rows(payload: dict[str, Any], limit: int, *keys: str) -> None:
+    """Truncate unbounded detail arrays, and say what was dropped.
+
+    Follows the `get_progression` pattern the rest of the surface already
+    uses: a rich summary always survives, the detail rows are bounded, and the
+    truncation announces itself rather than looking like the whole population.
+    Silent truncation reads as "covered everything" when it did not.
+    """
+    if limit <= 0:
+        return
+    for key in keys:
+        rows = payload.get(key)
+        if not isinstance(rows, list) or len(rows) <= limit:
+            continue
+        total = len(rows)
+        payload[key] = rows[:limit]
+        payload.setdefault("warnings", []).append(
+            f"{key}: showing {limit:,} of {total:,} rows; pass limit=0 for all of them "
+            "(the summary fields above already cover every row)"
+        )
+
+
+def _downsample(points: list[Any], limit: int) -> tuple[list[Any], bool]:
+    """Thin a time series to at most `limit` evenly-spaced samples.
+
+    A curve is better served by even spacing than by a head slice: taking the
+    first N samples of a 2,000-point population series would report the shape
+    of day one and call it the trend.
+    """
+    if limit <= 0 or len(points) <= limit:
+        return points, False
+    if limit == 1:
+        return [points[-1]], True
+    step = (len(points) - 1) / (limit - 1)
+    thinned = [points[round(i * step)] for i in range(limit)]
+    # Always keep the true endpoints so first/latest stay honest.
+    thinned[0], thinned[-1] = points[0], points[-1]
+    return thinned, True
+
+
 def _stddev(values: list[float]) -> float:
     if len(values) < 2:
         return 0.0
@@ -2071,10 +2134,12 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 atlas = await fetch_atlas(base_url=server_arg, api_key=api_key)
             except httpx.HTTPError as e:
                 return _unreachable_result("Eco exporter", e)
+            atlas_payload = atlas.to_dict()
+            _bound_rows(atlas_payload, _resolve_limit(arguments or {}), "flows")
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=atlas_markdown(atlas)),
-                    TextContent(type="text", text=json.dumps(atlas.to_dict())),
+                    TextContent(type="text", text=json.dumps(atlas_payload)),
                 ],
             )
 
@@ -2099,10 +2164,12 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 ledger = await fetch_ledger(base_url=server_arg, api_key=api_key)
             except httpx.HTTPError as e:
                 return _unreachable_result("Eco exporter", e)
+            ledger_payload = ledger.to_dict()
+            _bound_rows(ledger_payload, _resolve_limit(arguments or {}), "trades")
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=ledger_markdown(ledger)),
-                    TextContent(type="text", text=json.dumps(ledger.to_dict())),
+                    TextContent(type="text", text=json.dumps(ledger_payload)),
                 ],
             )
 
@@ -2113,10 +2180,20 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 civics_report = await fetch_civics(base_url=server_arg, api_key=api_key)
             except httpx.HTTPError as e:
                 return _unreachable_result("Eco exporter", e)
+            civics_payload = civics_report.to_dict()
+            _bound_rows(
+                civics_payload,
+                _resolve_limit(arguments or {}),
+                "recentDemographics",
+                "recentSettlements",
+                "recentElections",
+                "recentOutcomes",
+                "topVoters",
+            )
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=civics_markdown(civics_report)),
-                    TextContent(type="text", text=json.dumps(civics_report.to_dict())),
+                    TextContent(type="text", text=json.dumps(civics_payload)),
                 ],
             )
 
@@ -2253,10 +2330,13 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 directory = await fetch_directory(base_url=server_arg, api_key=api_key)
             except httpx.HTTPError as e:
                 return _unreachable_result("Eco exporter", e)
+            # `stores` (91 KB) + `traders` (79 KB) were 99% of the response.
+            directory_payload = directory.to_dict()
+            _bound_rows(directory_payload, _resolve_limit(arguments or {}), "stores", "traders")
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=directory_markdown(directory)),
-                    TextContent(type="text", text=json.dumps(directory.to_dict())),
+                    TextContent(type="text", text=json.dumps(directory_payload)),
                 ],
             )
 
@@ -2480,6 +2560,23 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                     isError=True,
                 )
             species_payload = species_payload_obj.to_dict()
+            # `include_image` was documented as the reason this tool is large,
+            # but with it off the response was still 220 KB - `population`
+            # alone is 219 KB of it, against 412 bytes for everything else. The
+            # image was never the problem (#256). Thin the curve rather than
+            # truncating it: a head slice would report day one and call it the
+            # trend, and populationFirst / Latest / Delta already summarise.
+            population_limit = _resolve_limit(arguments or {}, default=MCP_POPULATION_SAMPLES)
+            samples = species_payload.get("population") or []
+            thinned, was_thinned = _downsample(samples, population_limit)
+            if was_thinned:
+                species_payload["population"] = thinned
+                species_payload["populationSampled"] = True
+                species_payload["populationTotalSamples"] = len(samples)
+                species_payload.setdefault("warnings", []).append(
+                    f"population: thinned to {len(thinned):,} evenly-spaced samples of "
+                    f"{len(samples):,} (endpoints preserved); pass limit=0 for every sample"
+                )
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=_format_species_markdown(species_payload)),
@@ -2560,6 +2657,17 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
             )
             payload = currency_mod.compute_currency_payload(
                 currency_snapshot, currency=currency_arg
+            )
+            # `currencies` (71 KB) + `personal` (70 KB) were 97% of the
+            # response, and the only filter path led to notFound on every
+            # value because no currency on that server resolves to a name
+            # (#256). A bounded roster is the workaround that actually works.
+            _bound_rows(
+                payload,
+                _resolve_limit(arguments or {}),
+                "currencies",
+                "personal",
+                "minted",
             )
             return CallToolResult(
                 content=[

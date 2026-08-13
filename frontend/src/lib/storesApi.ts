@@ -66,7 +66,12 @@ export interface StoreDirectory {
 }
 
 export async function fetchStores(signal?: AbortSignal): Promise<StoreDirectory | null> {
-  const body = await fetchJsonOrNull<StoreDirectory>("/preview/stores.json", signal)
+  // limit=0: the SPA renders the full set; the bounded default exists for
+  // MCP callers, who have a response cap the browser does not (eco-app#256).
+  const body = await fetchJsonOrNull<StoreDirectory>(
+    "/preview/stores.json?limit=0",
+    signal,
+  )
   if (!body || !Array.isArray(body.stores)) return null
   return body
 }

@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .dual_routes import DualRouteRegistry, DualRouteResult
 from .public_routes import (
     CURATED_SERVERS_ANNOTATIONS,
+    BoundedServerInput,
     CurrencyInput,
     EmptyInput,
     ServerInput,
@@ -134,7 +135,7 @@ def register_wave1_routes(registry: DualRouteRegistry, invoke: ToolInvoker) -> N
             "the server-side admin API key."
         ),
         rest_path="/preview/stores.json",
-        input_model=ServerInput,
+        input_model=BoundedServerInput,
     )
     register_json_route(
         registry,
@@ -160,7 +161,7 @@ def register_wave1_routes(registry: DualRouteRegistry, invoke: ToolInvoker) -> N
             "admin API key."
         ),
         rest_path="/preview/civics.json",
-        input_model=ServerInput,
+        input_model=BoundedServerInput,
     )
     register_json_route(
         registry,

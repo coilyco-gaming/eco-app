@@ -52,7 +52,7 @@ describe("Species page", () => {
     // The SPA opts in to the inlined photo; MCP callers do not, because the
     // base64 blows their response cap (eco-app#230).
     expect(fetchMock).toHaveBeenCalledWith(
-      "/preview/get_species.json?name=WolfSpecies&include_image=1",
+      "/preview/get_species.json?name=WolfSpecies&include_image=1&limit=0",
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
     expect(screen.getByRole("heading", { name: "Wolf" })).toBeInTheDocument()

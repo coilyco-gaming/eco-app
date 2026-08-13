@@ -49,7 +49,9 @@ export interface TradesLedger {
 }
 
 export async function fetchTradesLedger(signal?: AbortSignal): Promise<TradesLedger> {
-  const resp = await fetch("/preview/get_trades.json", { signal })
+  // limit=0: the SPA renders the full set; the bounded default exists for
+  // MCP callers, who have a response cap the browser does not (eco-app#256).
+  const resp = await fetch("/preview/get_trades.json?limit=0", { signal })
   if (!resp.ok) {
     throw new Error(`trades ledger fetch failed: HTTP ${resp.status}`)
   }

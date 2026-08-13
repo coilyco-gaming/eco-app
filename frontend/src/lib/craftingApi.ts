@@ -35,7 +35,9 @@ export interface CraftingAtlas {
 }
 
 export async function fetchCraftingAtlas(signal?: AbortSignal): Promise<CraftingAtlas> {
-  const resp = await fetch("/preview/get_crafting_atlas.json", { signal })
+  // limit=0: the SPA renders the full set; the bounded default exists for
+  // MCP callers, who have a response cap the browser does not (eco-app#256).
+  const resp = await fetch("/preview/get_crafting_atlas.json?limit=0", { signal })
   if (!resp.ok) {
     throw new Error(`crafting atlas fetch failed: HTTP ${resp.status}`)
   }

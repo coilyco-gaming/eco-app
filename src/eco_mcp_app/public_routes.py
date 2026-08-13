@@ -45,7 +45,26 @@ class ServerInput(BaseModel):
     )
 
 
-class CurrencyInput(ServerInput):
+LIMIT_DESCRIPTION = (
+    "Maximum detail rows to return per unbounded list. Defaults to a slice that "
+    "keeps a no-argument call inside an MCP client's response cap; the summary and "
+    "aggregate fields always cover every row regardless. 0 means no limit - the SPA "
+    "uses that, an MCP caller should not."
+)
+
+
+class BoundedServerInput(ServerInput):
+    """A server selector whose detail arrays are bounded by default.
+
+    Six tools returned 60-220 KB on a no-argument call and were truncated by
+    the client, most with no parameter available to bound the payload, so there
+    was no caller-side workaround at all (#256).
+    """
+
+    limit: int = Field(default=50, ge=0, description=LIMIT_DESCRIPTION)
+
+
+class CurrencyInput(BoundedServerInput):
     """Select an Eco server and optionally one currency."""
 
     currency: str | None = Field(

@@ -17,8 +17,10 @@ Covers:
 
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Iterator
+from typing import Any
 
 import httpx
 import mcp.types as mt
@@ -361,3 +363,49 @@ def test_ledger_markdown_names_both_units() -> None:
     headline = ledger_markdown(ledger).splitlines()[0]
     assert "22,891 trade events" in headline
     assert "3,672 exporter rows" in headline
+
+
+# --- response-cap bounding reaches the tool handler (#256) -------------------
+
+
+@pytest.mark.asyncio
+async def test_get_trades_bounds_its_ledger_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """528 trade rows were 93% of a 187 KB response, with no way to bound it."""
+    import mcp.types as mt
+
+    from eco_mcp_app import server as eco_server
+
+    ledger = TradesLedger(fetched_at_iso="t", source_base_url="b")
+    ledger.total_trades = 528
+    ledger.trades = [{"item": f"Item{i}", "price": float(i)} for i in range(528)]
+
+    async def _fake_fetch(**_kwargs: object) -> TradesLedger:
+        return ledger
+
+    monkeypatch.setattr(eco_server, "fetch_ledger", _fake_fetch)
+    handler = eco_server.build_server().request_handlers[mt.CallToolRequest]
+
+    async def call(arguments: dict[str, object]) -> dict[str, Any]:
+        result = await handler(
+            mt.CallToolRequest(
+                method="tools/call",
+                params=mt.CallToolRequestParams(name="get_trades", arguments=arguments),
+            )
+        )
+        for block in result.root.content:
+            try:
+                parsed = json.loads(getattr(block, "text", "") or "")
+            except ValueError:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+        raise AssertionError("no JSON block")
+
+    bounded = await call({})
+    assert len(bounded["trades"]) == 50
+    assert any("showing 50 of 528 rows" in w for w in bounded["warnings"])
+    # The aggregate layer still describes every row.
+    assert bounded["totalTrades"] == 528
+
+    unbounded = await call({"limit": 0})
+    assert len(unbounded["trades"]) == 528

@@ -27,7 +27,9 @@ export interface SpeciesProfile {
 
 export async function fetchSpecies(name: string, signal?: AbortSignal): Promise<SpeciesProfile> {
   const response = await fetch(
-    `/preview/get_species.json?name=${encodeURIComponent(name)}&include_image=1`,
+    // limit=0: the species page charts the whole population curve; the
+    // bounded default thins it for MCP callers (eco-app#256).
+    `/preview/get_species.json?name=${encodeURIComponent(name)}&include_image=1&limit=0`,
     { signal },
   )
   if (!response.ok) throw new Error(`species fetch failed: HTTP ${response.status}`)

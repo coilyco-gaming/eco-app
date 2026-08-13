@@ -92,7 +92,9 @@ export interface CivicsReport {
 }
 
 export async function fetchCivics(signal?: AbortSignal): Promise<CivicsReport> {
-  const resp = await fetch("/preview/civics.json", { signal })
+  // limit=0: the SPA renders the full set; the bounded default exists for
+  // MCP callers, who have a response cap the browser does not (eco-app#256).
+  const resp = await fetch("/preview/civics.json?limit=0", { signal })
   if (!resp.ok) {
     throw new Error(`civics report fetch failed: HTTP ${resp.status}`)
   }
