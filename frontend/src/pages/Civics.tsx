@@ -172,7 +172,10 @@ export default function Civics() {
             <div className="stat">
               <p className="stat-value">{formatCount(report.settlementsFounded)}</p>
               <p className="stat-label">Settlements</p>
-              <p className="stat-detail">{formatCount(report.homesteadsStarted)} homesteads</p>
+              <p className="stat-detail">
+                {formatCount(report.settlementFoundationsPlaced)} foundations staked ·{" "}
+                {formatCount(report.homesteadsStarted)} homesteads
+              </p>
             </div>
           </section>
 

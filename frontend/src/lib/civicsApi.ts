@@ -57,6 +57,9 @@ export interface CivicsReport {
   demographicChanges: number
   recentDemographics: DemographicEvent[]
   settlementsFounded: number
+  // Staked foundations, which may never become settlements. Counted apart from
+  // foundings, which used to be summed into one number (eco-app#225).
+  settlementFoundationsPlaced: number
   homesteadsStarted: number
   recentSettlements: SettlementEvent[]
   // series name -> [[day, value], ...]

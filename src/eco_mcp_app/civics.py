@@ -213,7 +213,11 @@ class CivicsReport:
     recent_demographics: list[dict[str, Any]] = field(default_factory=list)
 
     # --- Settlements ---
+    # A founding and a foundation placement are different events: the stake is
+    # a precursor that may never become a settlement. Summing them reported 17
+    # settlements on a server with 5 (#225), so they are counted separately.
     settlements_founded: int = 0
+    settlement_foundations_placed: int = 0
     homesteads_started: int = 0
     # Recent settlement / homestead events: {subject, founder, day, kind}.
     recent_settlements: list[dict[str, Any]] = field(default_factory=list)
@@ -258,6 +262,7 @@ class CivicsReport:
             "demographicChanges": self.demographic_changes,
             "recentDemographics": list(self.recent_demographics),
             "settlementsFounded": self.settlements_founded,
+            "settlementFoundationsPlaced": self.settlement_foundations_placed,
             "homesteadsStarted": self.homesteads_started,
             "recentSettlements": list(self.recent_settlements),
             "trend": {name: [[d, v] for d, v in points] for name, points in self.trend.items()},
@@ -384,11 +389,18 @@ def build_report(
             report.residency_moves += 1
         elif e.action == "DemographicChange":
             report.demographic_changes += 1
-        elif e.action in ("SettlementFounded", "PlaceNewSettlementFoundation"):
+        elif e.action == "SettlementFounded":
             report.settlements_founded += 1
             if len(report.recent_settlements) < MAX_EVENTS:
                 report.recent_settlements.append(
                     {"subject": e.subject, "founder": name, "day": day, "kind": "settlement"}
+                )
+        elif e.action == "PlaceNewSettlementFoundation":
+            # A staked foundation, not a settlement. It may never become one.
+            report.settlement_foundations_placed += 1
+            if len(report.recent_settlements) < MAX_EVENTS:
+                report.recent_settlements.append(
+                    {"subject": e.subject, "founder": name, "day": day, "kind": "foundation"}
                 )
         elif e.action == "StartHomestead":
             report.homesteads_started += 1
@@ -603,6 +615,7 @@ def _report_from_dict(data: dict[str, Any]) -> CivicsReport:
         demographic_changes=int(data.get("demographicChanges", 0)),
         recent_demographics=list(data.get("recentDemographics", [])),
         settlements_founded=int(data.get("settlementsFounded", 0)),
+        settlement_foundations_placed=int(data.get("settlementFoundationsPlaced", 0)),
         homesteads_started=int(data.get("homesteadsStarted", 0)),
         recent_settlements=list(data.get("recentSettlements", [])),
         trend={
@@ -638,6 +651,7 @@ def civics_template_context(
         "net_citizens": report.net_citizens,
         "residency_moves": report.residency_moves,
         "settlements_founded": report.settlements_founded,
+        "settlement_foundations_placed": report.settlement_foundations_placed,
         "homesteads_started": report.homesteads_started,
         "recent_elections": report.recent_elections[:recent],
         "recent_outcomes": report.recent_outcomes[:recent],
@@ -675,9 +689,14 @@ def civics_markdown(report: CivicsReport) -> str:
             f"- Demographics: +{report.citizens_gained:,} / -{report.citizens_lost:,} citizens "
             f"(net {report.net_citizens:+,}), {report.residency_moves:,} residency moves"
         )
-    if report.settlements_founded or report.homesteads_started:
+    if (
+        report.settlements_founded
+        or report.settlement_foundations_placed
+        or report.homesteads_started
+    ):
         lines.append(
             f"- Settlements: {report.settlements_founded:,} founded, "
+            f"{report.settlement_foundations_placed:,} foundations staked, "
             f"{report.homesteads_started:,} homesteads"
         )
     for w in report.warnings:

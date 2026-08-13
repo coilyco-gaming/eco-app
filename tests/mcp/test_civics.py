@@ -253,6 +253,57 @@ def test_build_report_settlements() -> None:
     assert settlement["subject"] == "Rivertown"
 
 
+def test_foundation_placements_are_counted_apart_from_foundings() -> None:
+    """A staked foundation is not a settlement (#225).
+
+    Both actions incremented `settlementsFounded`, so Sirens reported 17 on a
+    server with 5 — and the `SettlementFounded` trend series, which sums to 5,
+    contradicted the headline inside the same response.
+    """
+
+    def event(action: str, citizen_id: str, subject: str, day: float) -> _CivicEvent:
+        return _CivicEvent(
+            action=action,
+            time_s=day * SECONDS_PER_DAY,
+            day=day,
+            citizen_id=citizen_id,
+            subject=subject,
+            location="",
+        )
+
+    parsed = [
+        event("SettlementFounded", "101", "Rivertown", 1.0),
+        event("PlaceNewSettlementFoundation", "101", "Stakeville", 2.0),
+        event("PlaceNewSettlementFoundation", "102", "Postville", 3.0),
+    ]
+    report = CivicsReport(fetched_at_iso="t", source_base_url="b")
+    build_report(parsed, report, {"101": "alice", "102": "bob"})
+
+    assert report.settlements_founded == 1
+    assert report.settlement_foundations_placed == 2
+    payload = report.to_dict()
+    assert payload["settlementsFounded"] == 1
+    assert payload["settlementFoundationsPlaced"] == 2
+    # The two kinds stay distinguishable in the event list too.
+    kinds = [s["kind"] for s in report.recent_settlements]
+    assert kinds.count("settlement") == 1
+    assert kinds.count("foundation") == 2
+
+
+def test_settlements_markdown_separates_the_two_counts() -> None:
+    report = CivicsReport(fetched_at_iso="t", source_base_url="b")
+    report.total_events = 17
+    report.settlements_founded = 5
+    report.settlement_foundations_placed = 12
+    settlements_line = next(
+        line for line in civics_markdown(report).splitlines() if line.startswith("- Settlements:")
+    )
+    assert "5 founded" in settlements_line
+    assert "12 foundations staked" in settlements_line
+    # The old line summed the two into "17 founded".
+    assert "17" not in settlements_line
+
+
 # --- Integration: fetch_civics ---------------------------------------------
 
 

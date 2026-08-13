@@ -30,6 +30,7 @@ const REPORT = {
     { name: "Citizen #104", day: 2, kind: "left", settlement: "Rivertown" },
   ],
   settlementsFounded: 1,
+  settlementFoundationsPlaced: 3,
   homesteadsStarted: 1,
   recentSettlements: [
     { subject: "Rivertown", founder: "alice", day: 2, kind: "settlement" },
