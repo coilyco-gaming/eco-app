@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 from collections.abc import Iterator
+from typing import Any
 
 import httpx
 import mcp.types as mt
@@ -319,3 +320,43 @@ def test_a_recognised_giver_column_builds_the_graph() -> None:
     build_surface(surface, edges=edges, activity=[], name_map={}, show_names=False)
     assert len(surface.reputation_edges) == 1
     assert not any("not recognized" in w for w in surface.warnings)
+
+
+def _arrival_events(count: int) -> list[Any]:
+    from eco_mcp_app.social import _ActivityEvent
+
+    return [
+        _ActivityEvent(time_s=float(i), day=float(i), citizen_id=f"c{i}", kind="firstlogin")
+        for i in range(count)
+    ]
+
+
+def test_new_arrivals_says_when_it_truncates() -> None:
+    """The one silent truncation in the suite: 60 rows returned, 124 present,
+    warnings empty. A caller had no way to see the cap. See #267."""
+    from eco_mcp_app.social import MAX_NEW_ARRIVALS, SocialSurface, build_surface
+
+    surface = SocialSurface(
+        fetched_at_iso="2026-01-01T00:00:00Z", source_base_url="http://eco.example"
+    )
+    build_surface(surface, [], _arrival_events(MAX_NEW_ARRIVALS + 7), {}, False)
+
+    assert len(surface.new_arrivals) == MAX_NEW_ARRIVALS
+    assert surface.total_first_logins == MAX_NEW_ARRIVALS + 7
+    warning = [w for w in surface.warnings if w.startswith("newArrivals:")]
+    assert warning, "the truncation was silent, so the cap is invisible to a caller"
+    assert str(MAX_NEW_ARRIVALS + 7) in warning[0].replace(",", "")
+
+
+def test_new_arrivals_stays_quiet_when_nothing_is_cut() -> None:
+    """A warning on an untruncated list would make the honest case
+    indistinguishable from the capped one."""
+    from eco_mcp_app.social import SocialSurface, build_surface
+
+    surface = SocialSurface(
+        fetched_at_iso="2026-01-01T00:00:00Z", source_base_url="http://eco.example"
+    )
+    build_surface(surface, [], _arrival_events(3), {}, False)
+
+    assert len(surface.new_arrivals) == 3
+    assert not [w for w in surface.warnings if w.startswith("newArrivals:")]

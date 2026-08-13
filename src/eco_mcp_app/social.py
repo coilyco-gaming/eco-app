@@ -353,7 +353,15 @@ def build_surface(
         (event for event in activity if event.kind == "firstlogin"),
         key=lambda event: event.time_s,
         reverse=True,
-    )[:MAX_NEW_ARRIVALS]
+    )
+    # Say so. This was the one silent truncation in the tool suite: a caller
+    # read 60 rows with no way to know 124 existed. See #267.
+    if len(arrivals) > MAX_NEW_ARRIVALS:
+        surface.warnings.append(
+            f"newArrivals: showing {MAX_NEW_ARRIVALS:,} of {len(arrivals):,} rows, "
+            "most recent first (totalFirstLogins counts every one)"
+        )
+        arrivals = arrivals[:MAX_NEW_ARRIVALS]
     surface.new_arrivals = [
         {"label": redactor.label(event.citizen_id) or "-", "day": int(event.day)}
         for event in arrivals
