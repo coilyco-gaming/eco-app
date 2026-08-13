@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from .dual_routes import DualRouteRegistry, DualRouteResult
 from .public_routes import (
@@ -17,6 +17,26 @@ from .public_routes import (
     extract_result,
     register_json_route,
 )
+
+
+class ProgressionInput(ServerInput):
+    """Select an Eco server, and how much per-citizen detail to return."""
+
+    include_timelines: bool = Field(
+        default=False,
+        description=(
+            "Return the full per-citizen event timelines. Off by default: they run to ~266 KB "
+            "of a 275 KB response on an 80-citizen server and will exceed an MCP client's "
+            "response cap, hiding the summary layer behind them. Use `citizen` for one "
+            "person's timeline instead."
+        ),
+    )
+    citizen: str | None = Field(
+        default=None,
+        description=(
+            "Return only this citizen's timeline. Exact name match preferred, substring otherwise."
+        ),
+    )
 
 
 class PublicEcoServer(BaseModel):
@@ -153,7 +173,7 @@ def register_wave1_routes(registry: DualRouteRegistry, invoke: ToolInvoker) -> N
             "admin API key."
         ),
         rest_path="/preview/progression.json",
-        input_model=ServerInput,
+        input_model=ProgressionInput,
     )
     register_json_route(
         registry,

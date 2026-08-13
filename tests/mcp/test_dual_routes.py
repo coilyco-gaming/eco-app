@@ -201,11 +201,24 @@ async def test_wave1_routes_share_success_payloads(name: str, path: str) -> None
         )
 
     registry = _wave1_registry(invoke)
-    arguments = {} if name == "list_public_servers" else {"server": "eco.test:3001"}
+    # `arguments` is what the caller sends; `resolved` is what the input model
+    # hands the tool once defaults are filled in. They differ wherever a route
+    # has an optional field the request omits.
+    arguments: dict[str, Any]
+    resolved: dict[str, Any]
+    if name == "list_public_servers":
+        arguments = resolved = {}
+    elif name == "get_progression":
+        # Per-citizen timelines are opt-in so the summary layer fits inside an
+        # MCP response (eco-app#232).
+        # `citizen` is left unset, and both transports drop unset optionals.
+        arguments = resolved = {"server": "eco.test:3001", "include_timelines": False}
+    else:
+        arguments = resolved = {"server": "eco.test:3001"}
     expected = (
         {"servers": [{"label": "Test", "host": "eco.test:3001", "notes": "Fixture"}]}
         if name == "list_public_servers"
-        else {"tool": name, "arguments": arguments}
+        else {"tool": name, "arguments": resolved}
     )
 
     rest = TestClient(create_app(registry)).get(path, params=arguments)

@@ -192,13 +192,42 @@ class ProgressionHistory:
     daily_series: dict[str, list[tuple[float, float]]] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> dict[str, Any]:
+    def select_citizens(self, citizen: str | None) -> list[dict[str, Any]]:
+        """The per-citizen cards matching ``citizen``, exact match preferred."""
+        wanted = (citizen or "").strip().lower()
+        if not wanted:
+            return []
+        exact = [c for c in self.citizens if str(c.get("name", "")).lower() == wanted]
+        if exact:
+            return exact
+        return [c for c in self.citizens if wanted in str(c.get("name", "")).lower()]
+
+    def to_dict(
+        self, *, include_citizens: bool = True, citizen: str | None = None
+    ) -> dict[str, Any]:
+        """Serialize the history.
+
+        The per-citizen timelines are 266 KB of a 275 KB response on a
+        80-citizen server, which put the excellent ~8 KB summary layer behind a
+        payload no MCP client can accept (#232). ``include_citizens=False``
+        drops them; ``citizen`` keeps just one person's.
+        """
+        if citizen:
+            citizens = self.select_citizens(citizen)
+        elif include_citizens:
+            citizens = list(self.citizens)
+        else:
+            citizens = []
         return {
             "fetchedAtISO": self.fetched_at_iso,
             "sourceBaseUrl": self.source_base_url,
             "totalEvents": self.total_events,
             "perActionCounts": dict(self.per_action_counts),
-            "citizens": list(self.citizens),
+            "citizens": citizens,
+            # How many are on the server versus how many this response carries,
+            # so a summary answer never reads as "only one citizen levelled".
+            "citizensAvailable": len(self.citizens),
+            "citizensReturned": len(citizens),
             "trends": {kind: [[d, c] for d, c in points] for kind, points in self.trends.items()},
             "bySpecialty": [[n, c] for n, c in self.by_specialty],
             "byProfession": [[n, c] for n, c in self.by_profession],

@@ -19,6 +19,7 @@ Covers:
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 
 import httpx
@@ -362,3 +363,69 @@ async def test_list_tools_includes_get_progression() -> None:
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {tool.name for tool in result.root.tools}
     assert "get_progression" in names
+
+
+# ---------------------------------------------------------------------------
+# Response size — summary-first, timelines opt-in (eco-app#232)
+# ---------------------------------------------------------------------------
+
+
+def _history_with_timelines(citizens: int = 80, events: int = 60) -> ProgressionHistory:
+    """A history shaped like Sirens': a small summary under a huge event log."""
+    history = ProgressionHistory(fetched_at_iso="t", source_base_url=BASE)
+    history.total_events = citizens * events
+    history.by_specialty = [("Logging", 28), ("Mining", 26), ("Gathering", 26)]
+    history.top_levelers = [(f"citizen{i:02d}", events) for i in range(10)]
+    history.citizens = [
+        {
+            "name": f"citizen{i:02d}",
+            "specialties": [],
+            "professions": [],
+            "timeline": [
+                {"kind": "SpecialtyLevelUp", "name": "BlacksmithSkill", "day": float(d)}
+                for d in range(events)
+            ],
+        }
+        for i in range(citizens)
+    ]
+    return history
+
+
+def test_progression_defaults_to_the_summary_layer() -> None:
+    """275 KB of response, 266 KB of it per-citizen timelines (eco-app#232).
+
+    The summary — perActionCounts, bySpecialty, topLevelers, trends — is about
+    8 KB and genuinely good. It was unreachable because the raw event log rode
+    along with it and blew the client's response cap.
+    """
+    history = _history_with_timelines()
+    full = history.to_dict()
+    summary = history.to_dict(include_citizens=False)
+
+    assert summary["citizens"] == []
+    # The summary layer survives intact.
+    assert summary["bySpecialty"] == full["bySpecialty"]
+    assert summary["topLevelers"] == full["topLevelers"]
+    assert summary["totalEvents"] == full["totalEvents"]
+    # A reader can still tell how many citizens exist, so an empty list never
+    # reads as "nobody levelled".
+    assert summary["citizensAvailable"] == 80
+    assert summary["citizensReturned"] == 0
+    assert len(json.dumps(summary)) < len(json.dumps(full)) / 20
+
+
+def test_one_citizen_can_be_requested_by_name() -> None:
+    history = _history_with_timelines()
+    one = history.to_dict(citizen="citizen07")
+    assert one["citizensReturned"] == 1
+    assert one["citizens"][0]["name"] == "citizen07"
+    assert len(one["citizens"][0]["timeline"]) == 60
+    assert one["citizensAvailable"] == 80
+
+
+def test_an_unknown_citizen_returns_no_timelines_rather_than_all_of_them() -> None:
+    history = _history_with_timelines()
+    miss = history.to_dict(citizen="nobody-by-that-name")
+    assert miss["citizens"] == []
+    assert miss["citizensReturned"] == 0
+    assert miss["citizensAvailable"] == 80

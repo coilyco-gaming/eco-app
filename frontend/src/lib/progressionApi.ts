@@ -48,7 +48,12 @@ export interface ProgressionHistory {
   sourceBaseUrl: string
   totalEvents: number
   perActionCounts: Record<string, number>
+  // Only populated when the request asks for it — the timelines run to ~266 KB
+  // and are off by default so MCP callers reach the summary layer instead of a
+  // capped-out error (eco-app#232). The SPA opts in below.
   citizens: CitizenTrajectory[]
+  citizensAvailable: number
+  citizensReturned: number
   // kind -> [[day, count], ...] sorted by day.
   trends: Record<string, Array<[number, number]>>
   // [name, gainedCount] leaderboards.
@@ -95,7 +100,7 @@ export const TREND_ORDER: string[] = [
 export async function fetchProgressionHistory(
   signal?: AbortSignal,
 ): Promise<ProgressionHistory> {
-  const resp = await fetch("/preview/progression.json", { signal })
+  const resp = await fetch("/preview/progression.json?include_timelines=1", { signal })
   if (!resp.ok) {
     throw new Error(`progression history fetch failed: HTTP ${resp.status}`)
   }

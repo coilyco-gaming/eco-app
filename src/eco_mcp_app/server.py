@@ -1822,10 +1822,18 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 history = await fetch_history(base_url=server_arg, api_key=api_key)
             except httpx.HTTPError as e:
                 return _unreachable_result("Eco exporter", e)
+            # Summary-first. The per-citizen timelines are 266 KB of a 275 KB
+            # response and put the small, genuinely good aggregate layer behind
+            # a payload no MCP client can accept (#232).
+            progression_args = arguments or {}
+            progression_payload = history.to_dict(
+                include_citizens=bool(progression_args.get("include_timelines", False)),
+                citizen=progression_args.get("citizen") or None,
+            )
             return CallToolResult(
                 content=[
                     TextContent(type="text", text=history_markdown(history)),
-                    TextContent(type="text", text=json.dumps(history.to_dict())),
+                    TextContent(type="text", text=json.dumps(progression_payload)),
                 ],
             )
 

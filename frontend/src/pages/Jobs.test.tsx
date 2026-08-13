@@ -377,7 +377,9 @@ function stubJobsFetch() {
       else if (url.endsWith("/professions")) body = PROFESSIONS
       else if (url.endsWith("/specialties")) body = SPECIALTIES
       else if (url.endsWith("/players")) body = PLAYERS
-      else if (url.endsWith("/preview/progression.json")) body = PROGRESSION
+      // The SPA opts in to per-citizen timelines; MCP callers get the summary
+      // layer by default (eco-app#232).
+      else if (url.includes("/preview/progression.json")) body = PROGRESSION
       else if (url.includes("/preview/recipes.json?cost=1")) body = VALUE_RECIPES
       else if (url.endsWith("/preview/logistics.json")) body = VALUE_LOGISTICS
       else if (url.endsWith("/preview/market.json")) body = VALUE_MARKET
