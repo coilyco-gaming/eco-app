@@ -586,3 +586,74 @@ def test_preview_logistics_json_route(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = r.json()
     assert payload["view"] == "logistics"
     assert payload["cheapest"][0]["item"] == "IronIngotItem"
+
+
+# ---------------------------------------------------------------------------
+# The item filter meets human phrasing (eco-app#247)
+# ---------------------------------------------------------------------------
+
+
+def _plank_offer(side: str = "sell", price: float = 1.0) -> ShelfOffer:
+    return ShelfOffer(
+        store_key="live:Scuba Steve's Store|scuba",
+        store_label="Scuba Steve's Store",
+        owner="scuba",
+        item="WoodenHullPlanksItem",
+        item_display="Wooden Hull Planks",
+        currency="Spectres",
+        side=side,
+        price=price,
+        quantity=913.0,
+        source="live",
+        last_day=None,
+    )
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Wooden Hull Planks",  # exactly the itemPretty this API emits
+        "Wooden Hull Plank",  # the singular a person types
+        "wooden hull planks",
+        "WoodenHullPlanksItem",  # the internal key
+        "woodenhull",  # a fragment
+    ],
+)
+def test_every_human_phrasing_finds_the_item(query: str) -> None:
+    """Internal keys have no spaces, so every spaced query returned 0 (#247).
+
+    That zero was indistinguishable from "nothing for sale", and a Discord
+    agent relayed it to a member as fact while 913 planks sat on one shelf.
+    """
+    report = build_logistics([_plank_offer()], item=query)
+    assert report.total_offers == 1, f"{query!r} matched nothing"
+
+
+def test_an_unrelated_query_still_matches_nothing() -> None:
+    report = build_logistics([_plank_offer()], item="Iron Ingot")
+    assert report.total_offers == 0
+
+
+def test_an_unmatched_filter_says_lookup_miss_not_empty_market() -> None:
+    """ "No offers exist" and "your filter matched nothing" are different facts."""
+    report = build_logistics([_plank_offer()], item="Nonexistent Widget")
+    assert report.total_offers == 0
+    warning = " ".join(report.warnings)
+    assert "not recognized" in warning
+    assert "not an empty market" in warning
+    # The old text asserted something about the world, not about the query.
+    assert "nothing to route" not in warning
+
+
+def test_a_genuinely_empty_market_still_says_so() -> None:
+    report = build_logistics([], item="Wooden Hull Planks")
+    assert report.total_offers == 0
+    assert "nothing to route" in " ".join(report.warnings)
+
+
+def test_an_unmatched_currency_is_also_a_filter_miss() -> None:
+    report = build_logistics([_plank_offer()], currency="Racines")
+    assert report.total_offers == 0
+    warning = " ".join(report.warnings)
+    assert "filter miss" in warning
+    assert "nothing to route" not in warning

@@ -93,15 +93,33 @@ SUPPLY_GAP_ROWS = int(os.environ.get("ECO_LOGI_GAP_ROWS", "40"))
 
 
 def _norm_item(name: str) -> str:
-    """Fold an item id to a comparison key: lowercase, drop a trailing ``item``.
+    """Fold an item id or display name to a comparison key.
 
-    Mirrors ``market._normalize_item`` so ``Iron`` matches ``IronIngotItem`` the
-    same way across the trade surfaces, without coupling to that private symbol.
+    Lowercase, drop every non-alphanumeric, drop a trailing ``item``. Dropping
+    punctuation and spaces is what lets a human phrasing meet an internal key:
+    the filter used to compare against the key alone, and internal keys have no
+    spaces, so *every* query written the way a person writes it — "Wooden Hull
+    Planks" — returned zero (#247).
     """
-    stem = (name or "").strip().lower()
+    stem = "".join(ch for ch in (name or "").lower() if ch.isalnum())
     if stem.endswith("item") and len(stem) > len("item"):
         stem = stem[: -len("item")]
     return stem
+
+
+def _item_matches(offer: ShelfOffer, want_item: str) -> bool:
+    """True when a normalized query names this offer's item.
+
+    Checks the internal key *and* the display name the same payload returns —
+    matching only the key made `itemPretty` unusable as an input even though it
+    is what the API hands the caller (#247). A trailing "s" is trimmed from the
+    query so a singular phrasing still finds a plural key.
+    """
+    candidates = (_norm_item(offer.item), _norm_item(offer.item_display))
+    if any(want_item in c for c in candidates if c):
+        return True
+    singular = want_item[:-1] if want_item.endswith("s") else want_item
+    return bool(singular) and any(singular in c for c in candidates if c)
 
 
 # ---------------------------------------------------------------------------
@@ -183,7 +201,7 @@ class LogisticsReport:
 
 
 def _passes_filters(offer: ShelfOffer, want_item: str | None, want_currency: str | None) -> bool:
-    if want_item is not None and want_item not in _norm_item(offer.item):
+    if want_item is not None and not _item_matches(offer, want_item):
         return False
     if want_currency is not None and offer.currency.lower() != want_currency:
         return False
@@ -220,7 +238,11 @@ def build_logistics(
     # Keep the last-writer-wins offer per (store, item, currency, side): a live
     # offer overwrites a history one for the same shelf line (see `_merge`), so
     # by here the list is already deduped; we just bucket by market.
-    kept = [o for o in offers if o.price > 0 and _passes_filters(o, want_item, want_currency)]
+    priced = [o for o in offers if o.price > 0]
+    # Kept so an empty filtered result can tell a lookup miss from a dead
+    # market — see the warning below (#247).
+    total_before_filter = len(priced)
+    kept = [o for o in priced if _passes_filters(o, want_item, want_currency)]
 
     # (item, currency) -> {"sell": [...], "buy": [...]}
     markets: dict[tuple[str, str], dict[str, list[ShelfOffer]]] = defaultdict(
@@ -356,7 +378,25 @@ def build_logistics(
 
     # Honest depth note — the whole point of the "single-store" acceptance case.
     if report.total_offers == 0:
-        report.warnings.append("no shelf offers or priced trade history yet — nothing to route")
+        # "Nothing is for sale" and "your filter matched nothing" are different
+        # facts, and only one of them is knowable from an empty result. Saying
+        # the first when the second was true is what let a Discord agent tell a
+        # member, fluently and wrongly, that zero wooden hull planks existed on
+        # a server with 913 of them on one shelf (#247).
+        if want_item is not None and total_before_filter > 0:
+            report.warnings.append(
+                f"no offers matched item={item!r} — the item name was not recognized. "
+                f"{total_before_filter:,} offer(s) exist across the market unfiltered, so "
+                "this is a lookup miss, not an empty market. Try the internal item key "
+                "(e.g. WoodenHullPlanksItem) or a shorter fragment."
+            )
+        elif want_currency is not None and total_before_filter > 0:
+            report.warnings.append(
+                f"no offers matched currency={currency!r}; {total_before_filter:,} offer(s) "
+                "exist in other currencies, so this is a filter miss, not an empty market."
+            )
+        else:
+            report.warnings.append("no shelf offers or priced trade history yet — nothing to route")
     elif report.total_stores < min_depth:
         report.warnings.append(
             f"not enough market depth for arbitrage: need ≥{min_depth} distinct stores, "
