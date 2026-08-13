@@ -33,7 +33,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from eco_mcp_app.autogen import AUTOGEN_SOURCE_TEMPLATE, build_index_from_autogen  # noqa: E402
+from eco_mcp_app.autogen import AUTOGEN_SOURCE_TEMPLATE, build_index_from_autogen
 
 ECO_SERVER_APP_ID = "739590"
 # Relative to the server install root. The Linux depot nests AutoGen under
@@ -54,7 +54,7 @@ def download_server(destination: Path) -> None:
     if shutil.which("steamcmd") is None:
         raise SystemExit("steamcmd not found on PATH; install it or pass --root")
     destination.mkdir(parents=True, exist_ok=True)
-    subprocess.run(  # noqa: S603 - fixed argv, no shell, no caller-supplied words
+    subprocess.run(
         [
             "steamcmd",
             # The server we run is Linux; forcing the platform keeps a macOS or

@@ -1,6 +1,9 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.10
+    # Matches the rev baked into agentic-os:release v0.270.0. The bake keys on
+    # (repo, rev), so drifting off it makes the hook install ruff over the
+    # network instead of reading it from PRE_COMMIT_HOME (eco-app#216).
+    rev: v0.15.20
     hooks:
       - id: ruff
         args: [--fix]
