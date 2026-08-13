@@ -219,3 +219,49 @@ def test_preview_social_json_is_redacted(monkeypatch: pytest.MonkeyPatch) -> Non
     assert "totalChat" not in payload
     for real_name in ("coilysiren", "ekans", "redwood"):
         assert real_name not in json.dumps(payload)
+
+
+def test_unrecognised_giver_column_names_what_the_export_carries() -> None:
+    """The best-behaved failure in the sweep, made actionable (eco-app#227).
+
+    440 transfers parsed and the reputation graph came back empty. The warning
+    already said which columns it tried; it could not say which columns exist,
+    so extending the candidate list needed another live probe. Now the export's
+    own header rides along.
+    """
+    surface = SocialSurface(fetched_at_iso="t", source_base_url=BASE)
+    rows = [
+        ["Time", "ActorCitizen", "ReceiverCitizen", "Amount"],
+        ["100", "101", "102", "5"],
+        ["200", "103", "102", "3"],
+    ]
+    edges: list[social_mod._RepEdge] = []
+    parse_reputation_rows(rows, surface, edges)
+    build_surface(surface, edges=edges, activity=[], name_map={}, show_names=False)
+
+    assert surface.total_reputation_transfers == 2
+    assert surface.reputation_edges == []
+    assert surface.reputation_columns_seen == [
+        "Time",
+        "ActorCitizen",
+        "ReceiverCitizen",
+        "Amount",
+    ]
+    warning = next(w for w in surface.warnings if "not recognized" in w)
+    # Both halves: what we tried, and what is actually there.
+    assert "Giver" in warning
+    assert "ActorCitizen" in warning
+    assert "social.py" in warning
+
+
+def test_a_recognised_giver_column_builds_the_graph() -> None:
+    surface = SocialSurface(fetched_at_iso="t", source_base_url=BASE)
+    rows = [
+        ["Time", "Citizen", "ReceiverCitizen", "Amount"],
+        ["100", "101", "102", "5"],
+    ]
+    edges: list[social_mod._RepEdge] = []
+    parse_reputation_rows(rows, surface, edges)
+    build_surface(surface, edges=edges, activity=[], name_map={}, show_names=False)
+    assert len(surface.reputation_edges) == 1
+    assert not any("not recognized" in w for w in surface.warnings)

@@ -120,6 +120,9 @@ class SocialSurface:
     new_arrivals: list[dict[str, Any]] = field(default_factory=list)
     reputation_edges: list[dict[str, Any]] = field(default_factory=list)
     top_reputation_givers: list[tuple[str, float]] = field(default_factory=list)
+    # Header of the ReputationTransfer export, recorded so an unrecognised
+    # giver / receiver column can be fixed from the warning alone (#227).
+    reputation_columns_seen: list[str] = field(default_factory=list)
     top_reputation_receivers: list[tuple[str, float]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
@@ -137,6 +140,7 @@ class SocialSurface:
             "newArrivals": list(self.new_arrivals),
             "reputationEdges": list(self.reputation_edges),
             "topReputationGivers": [[n, a] for n, a in self.top_reputation_givers],
+            "reputationColumnsSeen": list(self.reputation_columns_seen),
             "topReputationReceivers": [[n, a] for n, a in self.top_reputation_receivers],
             "warnings": list(self.warnings),
         }
@@ -183,6 +187,11 @@ def parse_reputation_rows(
     except StopIteration:
         return 0
     pick = _mk_pick(header)
+    # Remember what the export actually offers. When none of the candidate
+    # giver columns match, naming the columns that *are* there is the whole
+    # difference between "extend the list" and "go probe the live server"
+    # (#227).
+    surface.reputation_columns_seen = [c for c in header if c]
 
     consumed = 0
     for row in iterator:
@@ -329,9 +338,12 @@ def build_surface(
         no_receiver = sum(1 for edge in edges if not edge.receiver_id)
         missing = "giver" if no_giver >= no_receiver else "receiver"
         columns = _REP_GIVER if missing == "giver" else _REP_RECEIVER
+        seen = ", ".join(surface.reputation_columns_seen) or "none"
         surface.warnings.append(
             f"{REPUTATION_ACTION}: {len(edges):,} transfer(s) parsed but the "
-            f"{missing} column was not recognized (tried {', '.join(columns)})"
+            f"{missing} column was not recognized (tried {', '.join(columns)}; "
+            f"the export carries: {seen}). Add the right column to the candidate "
+            "list in social.py to light the reputation graph up."
         )
 
     surface.reputation_edges = sorted(
