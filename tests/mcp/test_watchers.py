@@ -335,6 +335,48 @@ async def test_tool_create_rejects_bad_price() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_summary_uses_the_supplied_label() -> None:
+    """An explicit label wins in the create summary too (eco-app#239).
+
+    `list` and `evaluate` already lead with the stored label; `create` was the
+    odd one out, printing only the generated predicate description.
+    """
+    mcp = build_server()
+    handler = mcp.request_handlers[mt.CallToolRequest]
+    result = await _call(
+        handler,
+        "trade_watchers",
+        {
+            "action": "create",
+            "kind": "price",
+            "value": "CementItem",
+            "op": "under",
+            "threshold": 1,
+            "label": "qa-probe-cement",
+        },
+    )
+    markdown = result.content[0].text
+    assert "qa-probe-cement" in markdown
+    # The predicate stays visible alongside the label.
+    assert "under 1" in markdown
+
+
+@pytest.mark.asyncio
+async def test_create_summary_falls_back_to_the_description() -> None:
+    """With no label supplied, the generated description is not doubled up."""
+    mcp = build_server()
+    handler = mcp.request_handlers[mt.CallToolRequest]
+    result = await _call(
+        handler,
+        "trade_watchers",
+        {"action": "create", "kind": "item", "value": "iron ingot"},
+    )
+    markdown = result.content[0].text
+    assert markdown.count("iron ingot") == 1
+    assert "(" not in markdown.split("watching", 1)[1]
+
+
+@pytest.mark.asyncio
 async def test_list_tools_includes_watchers() -> None:
     mcp = build_server()
     handler = mcp.request_handlers[mt.ListToolsRequest]

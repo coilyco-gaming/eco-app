@@ -1757,7 +1757,16 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                         isError=True,
                     )
                 watcher = create_watcher(query, label=args.get("label"), server=args.get("server"))
-                md = f"**Watcher created** — `{watcher.id}` watching {query.describe()}."
+                # The stored label wins over the generated description (#239):
+                # an explicit label is how the caller will refer to this
+                # watcher, and `list` / `evaluate` already lead with it. Keep
+                # the predicate alongside when the two differ so the summary
+                # still says what is being watched.
+                described = query.describe()
+                subject = (
+                    described if watcher.label == described else f"{watcher.label} ({described})"
+                )
+                md = f"**Watcher created** — `{watcher.id}` watching {subject}."
                 return _watchers_result(
                     md, {"view": "watcher_created", "watcher": watcher.to_dict()}
                 )
