@@ -2373,9 +2373,28 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                         history = await fetch_history(
                             base_url=args.get("server"), api_key=_get_admin_token()
                         )
-                        annotate_skills_coverage(
-                            recipe_payload, [n for n, _ in history.by_specialty]
-                        )
+                        # fetch_history records transport failures rather than
+                        # raising, so an unreachable server arrives here as an
+                        # empty history. per_action_counts is set only when an
+                        # exporter answered, so an empty one means the server
+                        # was never observed and no cross-check happened (#269).
+                        if history.per_action_counts:
+                            annotate_skills_coverage(
+                                recipe_payload, [n for n, _ in history.by_specialty]
+                            )
+                        else:
+                            recipe_payload["skillsCrossChecked"] = False
+                            _recipe_warn(
+                                recipe_payload,
+                                "skills: no exporter on this server answered, so the "
+                                "specialties in use were not cross-checked; the list "
+                                "below is the bundled graph only",
+                            )
+                        # Surface what failed either way. A partially read server
+                        # cross-checks against an incomplete specialty set, and a
+                        # caller cannot see that from the boolean alone.
+                        for detail in history.warnings:
+                            _recipe_warn(recipe_payload, f"skills: {detail}")
                     except (httpx.HTTPError, OSError) as exc:
                         recipe_payload["skillsCrossChecked"] = False
                         _recipe_warn(

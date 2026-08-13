@@ -232,3 +232,71 @@ def test_the_spa_recipe_route_keeps_its_contract() -> None:
     )
     assert filtered.status_code == 200
     assert filtered.json()["recipes"] == []
+
+
+@pytest.mark.asyncio
+async def test_an_unreachable_server_does_not_report_a_cross_check(monkeypatch) -> None:
+    """fetch_history records transport failures rather than raising, so the
+    caller must read the history to know whether anything answered (#269)."""
+    from eco_mcp_app import progression, server
+
+    async def unreachable(**_: Any) -> progression.ProgressionHistory:
+        history = progression.ProgressionHistory(
+            fetched_at_iso="2026-01-01T00:00:00Z", source_base_url="http://nope.invalid"
+        )
+        history.warnings.append("SkillGained: ConnectError: Name or service not known")
+        return history
+
+    monkeypatch.setattr(server, "fetch_history", unreachable)
+    payload = await _call("get_skills", {"server": "nope.invalid:3001"})
+
+    assert payload["skillsCrossChecked"] is False, (
+        "a cross-check was reported against a server that never answered"
+    )
+    assert any("ConnectError" in w for w in payload["warnings"]), (
+        "the transport failure was swallowed, so the caller cannot see why"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_reachable_server_with_no_extra_specialties_still_cross_checks(
+    monkeypatch,
+) -> None:
+    """The distinction the fix must preserve: nothing missing is not the same
+    as nothing checked."""
+    from eco_mcp_app import progression, server
+
+    async def reachable(**_: Any) -> progression.ProgressionHistory:
+        history = progression.ProgressionHistory(
+            fetched_at_iso="2026-01-01T00:00:00Z", source_base_url="http://eco.example"
+        )
+        history.per_action_counts["SkillGained"] = 0
+        return history
+
+    monkeypatch.setattr(server, "fetch_history", reachable)
+    payload = await _call("get_skills", {"server": "eco.example:3001"})
+
+    assert payload["skillsCrossChecked"] is True
+    assert payload["skillsInUseNotInGraph"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_reachable_server_reports_the_specialties_the_graph_omits(
+    monkeypatch,
+) -> None:
+    from eco_mcp_app import progression, server
+
+    async def modded(**_: Any) -> progression.ProgressionHistory:
+        history = progression.ProgressionHistory(
+            fetched_at_iso="2026-01-01T00:00:00Z", source_base_url="http://eco.example"
+        )
+        history.per_action_counts["SkillGained"] = 12
+        history.by_specialty = [("BeekeepingSkill", 1), ("MixologySkill", 2)]
+        return history
+
+    monkeypatch.setattr(server, "fetch_history", modded)
+    payload = await _call("get_skills", {"server": "eco.example:3001"})
+
+    assert payload["skillsCrossChecked"] is True
+    assert "BeekeepingSkill" in payload["skillsInUseNotInGraph"]
+    assert "MixologySkill" in payload["skillsInUseNotInGraph"]
