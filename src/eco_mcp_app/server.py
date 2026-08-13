@@ -1788,7 +1788,17 @@ def _format_currency_markdown(payload: dict[str, Any]) -> str:
         return "\n".join(lines)
 
     lines = [f"**{server} — currency market**", "", payload["narrative"], ""]
-    lines.append(f"- Active currencies: **{money['activeCurrencies']}**")
+    # Name which measurement this is. The two counts disagreed by an order of
+    # magnitude on the live server with nothing reconciling them (#257).
+    if money.get("activeCurrenciesReported"):
+        lines.append(
+            f"- Active currencies: **{money['activeCurrenciesReported']}** "
+            f"(server count) · {money['currencyIdsSeenInLedger']} seen in the trade ledger"
+        )
+    else:
+        lines.append(
+            f"- Currencies seen in the trade ledger: **{money['currencyIdsSeenInLedger']}**"
+        )
     if money["hasSupplyData"]:
         lines.append(
             f"- Money supply: **{money['totalSupply']:,.0f}**"

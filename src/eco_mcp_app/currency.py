@@ -842,7 +842,15 @@ def compute_currency_payload(
     info = snapshot.info or {}
     records = sorted(snapshot.currencies.values(), key=_rank_key, reverse=True)
 
-    active_now = int(_series_last(snapshot.active_currencies_series)) or len(records)
+    # Two different measurements that were both being called "active
+    # currencies", an order of magnitude apart, with nothing reconciling them
+    # (#257). The server's own ActiveCurrencies dataset counts currencies the
+    # game considers live; the ledger count is distinct currency ids that have
+    # ever appeared in a trade. Keep both, name both, and never blend them.
+    reported_active = int(_series_last(snapshot.active_currencies_series))
+    ledger_ids = len(records)
+    active_source = ACTIVE_CURRENCIES_DATASET if reported_active else "trade-ledger"
+    active_now = reported_active or ledger_ids
     personal_wealth = _series_last(snapshot.personal_wealth_series)
     government_holdings = _series_last(snapshot.government_holdings_series)
     trade_value_7d = _series_last(snapshot.trades_7d_series)
@@ -870,6 +878,20 @@ def compute_currency_payload(
 
     money = {
         "activeCurrencies": active_now,
+        "activeCurrenciesSource": active_source,
+        # Named distinctly so a consumer reading `money` and a consumer reading
+        # `counts` stop coming away with different pictures of the economy.
+        "activeCurrenciesReported": reported_active or None,
+        "currencyIdsSeenInLedger": ledger_ids,
+        "activeCurrenciesNote": (
+            f"`activeCurrenciesReported` is the server's own {ACTIVE_CURRENCIES_DATASET} "
+            "reading — currencies the game counts as live. `currencyIdsSeenInLedger` "
+            "(= `counts.total`) is distinct currency ids that have appeared in a trade, "
+            "which includes currencies no longer active. They measure different things "
+            "and are not reconcilable from this tool's data."
+        )
+        if reported_active and reported_active != ledger_ids
+        else "",
         "personalWealth": round(personal_wealth, 2),
         "governmentHoldings": round(government_holdings, 2),
         "totalSupply": round(money_supply, 2),
@@ -990,7 +1012,13 @@ def _narrative(
         return "No currencies created or traded yet - early in the cycle."
     minted = sum(1 for r in records if r.is_minted)
     personal = len(records) - minted
-    bits = [f"{len(records)} active {'currency' if len(records) == 1 else 'currencies'}"]
+    # The roster size is currency ids seen in the ledger, which is not the
+    # server's active-currency count and must not borrow the word (#257).
+    noun = "currency" if len(records) == 1 else "currencies"
+    bits = [f"{len(records)} {noun} in the trade ledger"]
+    reported = money.get("activeCurrenciesReported")
+    if reported and reported != len(records):
+        bits.append(f"{reported} reported active by the server")
     bits.append(f"{minted} minted / {personal} personal")
     if money.get("hasSupplyData"):
         bits.append(f"money supply {money['totalSupply']:,.0f}")

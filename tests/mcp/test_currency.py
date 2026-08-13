@@ -369,7 +369,48 @@ def test_compute_list_view_splits_and_ranks() -> None:
     assert money["totalSupply"] == 10500.0
     assert money["tradeValue7d"] == 1200.0
     assert money["hasSupplyData"] is True
-    assert "3 active" in payload["narrative"] or "3 active currencies" in payload["narrative"]
+    # The ledger roster and the server's own active count agree here (both 3),
+    # so nothing needs reconciling and the note stays empty (#257).
+    assert money["activeCurrenciesReported"] == 3
+    assert money["currencyIdsSeenInLedger"] == 3
+    assert money["activeCurrenciesSource"] == "ActiveCurrencies"
+    assert money["activeCurrenciesNote"] == ""
+    assert "3 currencies in the trade ledger" in payload["narrative"]
+
+
+def test_split_source_currency_counts_are_labelled_not_blended() -> None:
+    """The live server reported 15 active while the ledger held 185 ids (#257).
+
+    Both are probably correct measurements of different things; the response
+    just presented them as the same thing with nothing reconciling them.
+    """
+    records = [
+        CurrencyRecord(f"C{i}", is_minted=i < 2, trade_count=1, trade_volume=float(i))
+        for i in range(6)
+    ]
+    snap = _snapshot_with(records, active=[(0.0, 2.0)])
+    payload = compute_currency_payload(snap)
+    money = payload["money"]
+
+    assert money["activeCurrenciesReported"] == 2
+    assert money["currencyIdsSeenInLedger"] == 6
+    assert payload["counts"]["total"] == 6
+    # The disagreement is stated rather than left for the reader to notice.
+    assert "not reconcilable" in money["activeCurrenciesNote"]
+    # And the narrative no longer calls the ledger roster "active".
+    assert "6 currencies in the trade ledger" in payload["narrative"]
+    assert "2 reported active by the server" in payload["narrative"]
+    assert "6 active" not in payload["narrative"]
+
+
+def test_ledger_count_is_named_as_a_fallback_when_the_dataset_is_absent() -> None:
+    records = [CurrencyRecord("Only", is_minted=True, trade_count=1)]
+    payload = compute_currency_payload(_snapshot_with(records, active=[]))
+    money = payload["money"]
+
+    assert money["activeCurrencies"] == 1
+    assert money["activeCurrenciesSource"] == "trade-ledger"
+    assert money["activeCurrenciesReported"] is None
 
 
 def test_compute_list_view_carries_series_and_holders() -> None:
@@ -691,6 +732,10 @@ def test_preview_currency_json_sanitizes_nested_nonfinite_values(
     )
     assert payload["money"] == {
         "activeCurrencies": 3,
+        "activeCurrenciesSource": "ActiveCurrencies",
+        "activeCurrenciesReported": 3,
+        "currencyIdsSeenInLedger": 3,
+        "activeCurrenciesNote": "",
         "personalWealth": None,
         "governmentHoldings": None,
         "totalSupply": None,
