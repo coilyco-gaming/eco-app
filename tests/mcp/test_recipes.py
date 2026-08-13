@@ -215,8 +215,51 @@ def test_filter_index_narrows_by_facet() -> None:
         "AshlarShaleRecipe",
         "AshlarShaleKilnRecipe",
     }
-    # Lookup maps stay whole even when the recipe list is narrowed.
+    # A filtered payload restricts its lookup maps to the surviving recipes.
+    # Shipping the whole graph beside a one-recipe answer was 99% of the
+    # response and blew the MCP cap on every filtered call (#254).
+    assert "PlankItem" not in by_skill["byProduct"]
+    assert by_skill["byProduct"] == {"AshlarShaleItem": ["AshlarShaleRecipe"]}
+    assert by_skill["indexScope"] == "filtered"
+
+
+def test_filter_index_can_keep_the_whole_graph_for_facet_pickers() -> None:
+    """The recipes page needs every facet value, not just the matching ones."""
+    index = build_recipe_index(_RAW)
+    by_skill = filter_index(index, skill="MasonrySkill", narrow_maps=False)
+    assert {r["name"] for r in by_skill["recipes"]} == {"AshlarShaleRecipe"}
     assert "PlankItem" in by_skill["byProduct"]
+
+
+def test_unfiltered_index_keeps_the_whole_graph() -> None:
+    index = build_recipe_index(_RAW)
+    payload = filter_index(index)
+    assert "PlankItem" in payload["byProduct"]
+    assert "indexScope" not in payload
+
+
+def test_filter_accepts_display_names_and_ids_interchangeably() -> None:
+    """`get_skills` reports displayName "Masonry"; that must filter too (#255)."""
+    index = build_recipe_index(_RAW)
+    by_id = filter_index(index, skill="MasonrySkill")
+    by_display = filter_index(index, skill="Masonry")
+    assert {r["name"] for r in by_display["recipes"]} == {r["name"] for r in by_id["recipes"]}
+    assert any("matched 'Masonry' to 'MasonrySkill'" in w for w in by_display["warnings"])
+
+
+def test_unknown_filter_value_warns_instead_of_matching_nothing_silently() -> None:
+    """A silent empty result cannot be told from "this skill gates no recipes"."""
+    index = build_recipe_index(_RAW)
+    payload = filter_index(index, skill="NotARealSkill")
+    assert payload["recipes"] == []
+    assert any("no skill named 'NotARealSkill' exists" in w for w in payload["warnings"])
+
+
+def test_unknown_filter_value_offers_near_misses() -> None:
+    index = build_recipe_index(_RAW)
+    payload = filter_index(index, skill="Masonrey")
+    assert payload["recipes"] == []
+    assert any("Did you mean" in w and "MasonrySkill" in w for w in payload["warnings"])
 
 
 # ---------- the real vendored graph ----------

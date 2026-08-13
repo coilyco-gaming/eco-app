@@ -17,6 +17,7 @@ a ``limit`` from day one. The SPA asks for the whole graph explicitly.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -35,14 +36,25 @@ class RecipesInput(BaseModel):
 
     product: str | None = Field(
         default=None,
-        description="Only recipes producing this item id, e.g. SteelAxeItem.",
+        description=(
+            "Only recipes producing this item. Accepts the id or the display "
+            'name, e.g. SteelAxeItem or "Steel Axe".'
+        ),
     )
     skill: str | None = Field(
-        default=None, description="Only recipes requiring this skill, e.g. Smelting."
+        default=None,
+        description=(
+            "Only recipes requiring this skill. Accepts the id or the display "
+            'name, e.g. SmeltingSkill or "Smelting". A value matching no known '
+            "skill returns a warning naming near misses, not a silent empty result."
+        ),
     )
     station: str | None = Field(
         default=None,
-        description="Only recipes crafted at this station, e.g. AnvilItem.",
+        description=(
+            "Only recipes crafted at this station. Accepts the id or the display "
+            'name, e.g. AnvilItem or "Anvil".'
+        ),
     )
     # The SPA's existing query params. `/preview/recipes.json` kept its path
     # when the bespoke handler was replaced, so it keeps its contract too
@@ -101,9 +113,19 @@ class PriceRecipeInput(BaseModel):
 
 
 class SkillsInput(BaseModel):
-    """No arguments: the whole skill axis is small."""
+    """The skill axis, optionally checked against a running server."""
 
     model_config = ConfigDict(extra="forbid")
+
+    server: str | None = Field(
+        default=None,
+        description=(
+            "Eco server to check the skill roster against. The recipe graph is "
+            "bundled (or operator-supplied), so a modded server can hold "
+            "specialties the graph does not list. Passing a server cross-checks "
+            "the specialties actually in use and reports any this graph omits."
+        ),
+    )
 
 
 WAVE3_TOOL_NAMES = frozenset({"get_recipes", "price_recipe", "get_skills"})
@@ -183,13 +205,49 @@ def skills_payload(index: Any) -> dict[str, Any]:
         for skill in index.skills
     ]
     skills.sort(key=lambda s: (-int(s["recipeCount"]), str(s.get("name", ""))))
-    return {
+    server_specific = index.source_kind == "modded-export"
+    payload = {
         "view": "eco_skills",
         "fetchedAtISO": index.fetched_at_iso,
         "source": index.source,
         "sourceKind": index.source_kind,
-        "serverSpecific": index.source_kind == "modded-export",
+        "serverSpecific": server_specific,
         "skills": skills,
         "counts": {"skills": len(skills), "recipesCovered": sum(coverage.values())},
         "warnings": list(index.warnings),
     }
+    if not server_specific:
+        # State the limit of the roster on the tool whose entire product *is*
+        # the roster. A modded server holds specialties this graph never lists,
+        # and a caller otherwise has to cross-reference get_progression to find
+        # that out (#263).
+        payload["coverageNote"] = (
+            "This is the bundled recipe graph, not the running server's. A modded "
+            "server can hold specialties absent from this list. Pass `server` to "
+            "cross-check the specialties actually in use."
+        )
+    return payload
+
+
+def annotate_skills_coverage(
+    payload: dict[str, Any], specialties_in_use: Iterable[str]
+) -> dict[str, Any]:
+    """Report specialties a server actually uses that the graph does not list.
+
+    Turns "this graph may be incomplete" into the specific set of skills it is
+    missing, so the omission is stated rather than inferred (#263). Mutates and
+    returns `payload`.
+    """
+    listed = {str(skill.get("name") or "") for skill in payload.get("skills") or []}
+    missing = sorted({name for name in specialties_in_use if name and name not in listed})
+    payload["skillsInUseNotInGraph"] = missing
+    payload["skillsCrossChecked"] = True
+    if missing:
+        payload.setdefault("warnings", []).append(
+            f"{len(missing)} specialt{'y' if len(missing) == 1 else 'ies'} in use on this "
+            f"server {'is' if len(missing) == 1 else 'are'} absent from the recipe graph: "
+            f"{', '.join(missing)}. The graph is "
+            f"{'an operator export' if payload.get('serverSpecific') else 'the bundled seed'}, "
+            "so recipes and costs for those specialties are not represented."
+        )
+    return payload

@@ -38,6 +38,7 @@ counts, version, source, fetchedAtISO, warnings }.
 
 from __future__ import annotations
 
+import difflib
 import gzip
 import json
 import os
@@ -606,33 +607,168 @@ def _clear_cache() -> None:
     _INDEX_CACHE.clear()
 
 
+def _norm_key(value: str) -> str:
+    """Collapse an id or display name to a comparable key.
+
+    `SmeltingSkill`, `Smelting` and `smelting` all fold together, so a caller
+    who grounded themselves with `get_skills` and reached for the display name
+    matches the same rows as one who passed the raw id (#255).
+    """
+    text = (value or "").strip().lower()
+    for suffix in ("skill", "item", "recipe"):
+        if len(text) > len(suffix) and text.endswith(suffix):
+            text = text[: -len(suffix)]
+            break
+    return "".join(ch for ch in text if ch.isalnum())
+
+
+def _match_options(index: RecipeIndex, axis: str) -> dict[str, str]:
+    """Map every accepted spelling on one filter axis to its canonical id."""
+    options: dict[str, str] = {}
+
+    def _offer(spelling: str, canonical: str) -> None:
+        key = _norm_key(spelling)
+        if key:
+            options.setdefault(key, canonical)
+
+    if axis == "skill":
+        for name in index.by_skill:
+            _offer(name, name)
+        for skill in index.skills:
+            name = str(skill.get("name") or "")
+            if name:
+                _offer(name, name)
+                _offer(str(skill.get("displayName") or ""), name)
+    elif axis == "station":
+        for name in index.by_station:
+            _offer(name, name)
+            _offer(prettify_eco_name(name), name)
+    else:
+        for name in index.by_product:
+            _offer(name, name)
+            _offer(prettify_eco_name(name), name)
+    return options
+
+
+def resolve_filter(index: RecipeIndex, axis: str, value: str) -> tuple[str | None, list[str]]:
+    """Resolve one filter value to a canonical id, with near-miss suggestions.
+
+    Returns `(canonical_id, suggestions)`. A `None` id means the value matched
+    no known key on that axis — the caller should say so rather than return a
+    silent empty result the caller cannot distinguish from "this skill gates no
+    recipes" (#255).
+    """
+    options = _match_options(index, axis)
+    key = _norm_key(value)
+    if key in options:
+        return options[key], []
+    near = difflib.get_close_matches(key, list(options), n=5, cutoff=0.6)
+    return None, [options[k] for k in near]
+
+
+def narrow_index_maps(payload: dict[str, Any]) -> dict[str, Any]:
+    """Restrict the graph index maps to the recipes still in `payload`.
+
+    `byProduct` / `bySkill` / `byStation` / `tags` / `skills` describe the whole
+    ~1,450-recipe graph. Shipping them beside a one-recipe answer put the signal
+    at 0.34% of the response and blew the MCP response cap on every filtered
+    call (#254). Mutates and returns `payload`.
+    """
+    recipes: list[dict[str, Any]] = list(payload.get("recipes") or [])
+    kept = {r["name"] for r in recipes}
+
+    def _narrow_map(source: Any) -> dict[str, list[str]]:
+        narrowed: dict[str, list[str]] = {}
+        for key, names in (source or {}).items():
+            surviving = [n for n in names if n in kept]
+            if surviving:
+                narrowed[key] = surviving
+        return narrowed
+
+    payload["byProduct"] = _narrow_map(payload.get("byProduct"))
+    payload["bySkill"] = _narrow_map(payload.get("bySkill"))
+    payload["byStation"] = _narrow_map(payload.get("byStation"))
+
+    # Tags only matter here as ingredient expansions for the recipes shown.
+    referenced: set[str] = set()
+    for recipe in recipes:
+        for component in list(recipe.get("ingredients") or []) + list(
+            recipe.get("byproducts") or []
+        ):
+            if component.get("isTag"):
+                referenced.add(component["item"])
+    payload["tags"] = {k: v for k, v in (payload.get("tags") or {}).items() if k in referenced}
+
+    used_skills = {
+        (r.get("skill") or {}).get("name") for r in recipes if (r.get("skill") or {}).get("name")
+    }
+    payload["skills"] = [s for s in (payload.get("skills") or []) if s.get("name") in used_skills]
+
+    payload["indexScope"] = "filtered"
+    payload["indexScopeNote"] = (
+        "byProduct, bySkill, byStation, tags and skills are restricted to the "
+        "recipes in this response. Call without a filter for the whole graph."
+    )
+    return payload
+
+
 def filter_index(
     index: RecipeIndex,
     *,
     product: str | None = None,
     skill: str | None = None,
     station: str | None = None,
+    narrow_maps: bool = True,
 ) -> dict[str, Any]:
     """Serialize the index, optionally narrowed to one product / skill / station.
 
     The full graph is ~1,450 recipes; the recipes page (eco-app#98 B) will often
     want a slice. Filtering happens on the already-parsed index so the memo is
-    reused. An unmatched filter returns an empty `recipes` list with the lookup
-    maps intact (so the page can still populate its facet pickers).
+    reused.
+
+    Filter values accept ids or display names. An unresolvable value is reported
+    as a warning with near-miss suggestions instead of silently matching nothing.
+
+    With `narrow_maps` (the default) a filtered payload also restricts its lookup
+    maps to the surviving recipes. Pass `narrow_maps=False` to keep the whole
+    graph index — the recipes page needs it to populate its facet pickers.
     """
     payload = index.to_dict()
     if not (product or skill or station):
         return payload
 
+    warnings: list[str] = list(payload.get("warnings") or [])
+    resolved: dict[str, str | None] = {}
+    for axis, value in (("product", product), ("skill", skill), ("station", station)):
+        if not value:
+            resolved[axis] = None
+            continue
+        canonical, suggestions = resolve_filter(index, axis, value)
+        if canonical is None:
+            hint = f" Did you mean: {', '.join(suggestions)}?" if suggestions else ""
+            warnings.append(
+                f"{axis}: no {axis} named {value!r} exists in this recipe graph, so "
+                f"the filter matched nothing.{hint}"
+            )
+            # An unknown value must match nothing rather than everything.
+            resolved[axis] = value
+        else:
+            resolved[axis] = canonical
+            if canonical != value:
+                warnings.append(f"{axis}: matched {value!r} to {canonical!r}.")
+
     def _keep(r: dict[str, Any]) -> bool:
-        if product and r["product"]["item"] != product:
+        if resolved["product"] and r["product"]["item"] != resolved["product"]:
             return False
-        if skill and (r["skill"] or {}).get("name") != skill:
+        if resolved["skill"] and (r["skill"] or {}).get("name") != resolved["skill"]:
             return False
-        if station and r["station"] != station:
+        if resolved["station"] and r["station"] != resolved["station"]:
             return False
         return True
 
     payload["recipes"] = [r for r in payload["recipes"] if _keep(r)]
     payload["counts"] = dict(payload["counts"], recipes=len(payload["recipes"]))
+    payload["warnings"] = warnings
+    if narrow_maps:
+        narrow_index_maps(payload)
     return payload

@@ -2238,7 +2238,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
 
         if name in ("get_recipes", "price_recipe", "get_skills"):
             from .cost import CostParams, annotate_payload
-            from .recipes import filter_index, load_recipe_index
+            from .recipes import filter_index, load_recipe_index, narrow_index_maps
             from .wave3_routes import skills_payload
 
             args = arguments or {}
@@ -2246,6 +2246,28 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
 
             if name == "get_skills":
                 recipe_payload: dict[str, Any] = skills_payload(index)
+                # The recipe graph is bundled, so on a modded server it omits
+                # the specialties players actually hold. Given a server, name
+                # exactly which ones are missing instead of leaving the caller
+                # to cross-reference get_progression (#263).
+                if args.get("server"):
+                    from .wave3_routes import annotate_skills_coverage
+
+                    try:
+                        history = await fetch_history(
+                            base_url=args.get("server"), api_key=_get_admin_token()
+                        )
+                        annotate_skills_coverage(
+                            recipe_payload, [n for n, _ in history.by_specialty]
+                        )
+                    except (httpx.HTTPError, OSError) as exc:
+                        recipe_payload["skillsCrossChecked"] = False
+                        _recipe_warn(
+                            recipe_payload,
+                            "skills: could not reach the server to cross-check which "
+                            f"specialties are in use ({type(exc).__name__}); the list "
+                            "below is the bundled graph only",
+                        )
                 return CallToolResult(
                     content=[
                         TextContent(type="text", text=_format_skills_markdown(recipe_payload)),
@@ -2290,7 +2312,18 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                         ),
                     ),
                 )
-            if name != "price_recipe":
+            if name == "price_recipe":
+                # price_recipe has exactly one job — cost one product — and the
+                # recipe-graph schema around that answer was 99% of its
+                # response (#254). Drop the index maps outright.
+                for graph_key in ("byProduct", "bySkill", "byStation", "tags", "skills"):
+                    recipe_payload.pop(graph_key, None)
+                recipe_payload["indexScope"] = "omitted"
+                recipe_payload["indexScopeNote"] = (
+                    "price_recipe returns costed recipes only. Call get_recipes for "
+                    "the byProduct / bySkill / byStation / tags graph index."
+                )
+            else:
                 # Summary-first: the full graph is ~1,450 recipes and blows the
                 # response cap, so bound it unless the caller opts out (#242,
                 # and the #240 family-3 lesson).
@@ -2304,6 +2337,9 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                         f"showing {limit} of {total:,} matching recipes; filter by product, "
                         "skill or station, or raise `limit`",
                     )
+                    # The maps have to follow the truncation, or a 25-recipe
+                    # answer still carries the whole 1,450-recipe index.
+                    narrow_index_maps(recipe_payload)
                 recipe_payload["recipesMatched"] = total
                 recipe_payload["recipesReturned"] = len(list(recipe_payload.get("recipes") or []))
 
