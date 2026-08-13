@@ -7,6 +7,21 @@ import { formatCount } from "../lib/format"
 const TOP_N = 12
 const RECENT = 12
 
+const SETTLEMENT_KIND_LABEL: Record<"settlement" | "foundation" | "homestead", string> = {
+  settlement: "Settlement",
+  foundation: "Foundation staked",
+  homestead: "Homestead",
+}
+
+// Render a resolved name, or the raw id when the citizens join missed it.
+// Never "Citizen #<id>": some of those ids are election titles, not people
+// (eco-app#223). Showing "#456767" keeps the information without asserting
+// that a player by that name exists.
+function entity(name: string | null, id: string | null): string {
+  if (name) return name
+  return id ? `#${id}` : "—"
+}
+
 type Series = Array<[number, number]>
 
 // Two-line turnout chart: votes cast vs abstentions per in-game day. Same
@@ -220,8 +235,8 @@ export default function Civics() {
                   {report.recentElections.slice(0, RECENT).map((e, i) => (
                     <tr key={`${e.day}-${i}`} data-testid="election-row">
                       <td>{e.day}</td>
-                      <td>{e.subject || "Election"}</td>
-                      <td>{e.proposer || "—"}</td>
+                      <td>{entity(e.subject, e.subjectId) || "Election"}</td>
+                      <td>{entity(e.proposer, e.proposerId)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -242,10 +257,12 @@ export default function Civics() {
                     <li key={`${s.day}-${i}`}>
                       <div className="rank-row" data-testid="settlement-row">
                         <span className="rank-name">
-                          {s.subject || (s.kind === "homestead" ? "Homestead" : "Settlement")}
+                          {entity(s.subject, s.subjectId) === "—"
+                            ? SETTLEMENT_KIND_LABEL[s.kind]
+                            : entity(s.subject, s.subjectId)}
                         </span>
                         <span className="rank-count">
-                          {s.founder || "—"} · day {s.day}
+                          {entity(s.founder, s.founderId)} · day {s.day}
                         </span>
                       </div>
                     </li>
@@ -273,7 +290,7 @@ export default function Civics() {
                   {report.recentDemographics.slice(0, RECENT).map((d, i) => (
                     <tr key={`${d.day}-${i}`} data-testid="demographic-row">
                       <td>{d.day}</td>
-                      <td>{d.name || "—"}</td>
+                      <td>{entity(d.name, d.nameId)}</td>
                       <td>{d.kind === "joined" ? "🟢 joined" : "⚪ left"}</td>
                     </tr>
                   ))}

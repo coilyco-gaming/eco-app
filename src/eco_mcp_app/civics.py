@@ -173,14 +173,6 @@ class _CivicEvent:
     location: str
 
 
-def _clean_name(value: str | None) -> str:
-    """Drop values that are really positions / bare numbers where a name belongs."""
-    v = (value or "").strip()
-    if not v or _NONSENSE_KEY_RE.match(v):
-        return ""
-    return v
-
-
 @dataclass
 class CivicsReport:
     """Civic history + trend surface. JSON-serializable (camelCase `to_dict`)."""
@@ -197,6 +189,9 @@ class CivicsReport:
     elections_lost: int = 0
     votes_cast: int = 0
     abstentions: int = 0
+    # Votes whose actor id the citizens join could not name. Counted, never
+    # ranked — an unresolved id on the voter roll was an invented player (#223).
+    unresolved_voter_ids: int = 0
     # Recent StartElection events: {subject, proposer, day}.
     recent_elections: list[dict[str, Any]] = field(default_factory=list)
     # Recent WonElection events: {subject, winner, day}.
@@ -322,7 +317,10 @@ def parse_civic_rows(
                 time_s=time_s,
                 day=time_s / SECONDS_PER_DAY,
                 citizen_id=pick(row, idx, *_CITIZEN_CANDIDATES),
-                subject=_clean_name(pick(row, idx, *subject_cols)),
+                # Kept raw: these columns key by id on the live exports, and
+                # `_clean_name` blanked every one of them (#223). `_subject`
+                # resolves or reports the id at build time.
+                subject=pick(row, idx, *subject_cols),
                 location=pick(row, idx, "ActionLocation", "Position"),
             )
         )
@@ -332,14 +330,41 @@ def parse_civic_rows(
     return consumed
 
 
-def _label(cid: str, name_map: dict[str, str]) -> str:
-    """id -> display name, `Citizen #<id>` fallback, blank stays blank."""
+def _actor(cid: str, name_map: dict[str, str]) -> tuple[str | None, str | None]:
+    """Resolve an actor id to ``(display name, unresolved id)``.
+
+    Exactly one of the two is ever set. An id the citizens join does not know
+    is **not** a person, and formatting it as ``Citizen #<id>`` invented one:
+    on Sirens the unresolved ids turned out to be *election title* ids
+    (456767 = "La Croisée des Bois Mayor"), so the proposer list and the voter
+    roll gained players who do not exist (#223). An id we cannot name is
+    reported as an id.
+    """
     if not cid:
-        return ""
+        return None, None
     if not _INT_RE.match(cid):
-        return cid  # already a name, or an artifact we leave verbatim
+        return cid, None  # already a name, or an artifact we leave verbatim
     name = name_map.get(cid)
-    return name if name is not None else f"Citizen #{cid}"
+    if name is not None:
+        return name, None
+    return None, cid
+
+
+def _subject(raw: str, name_map: dict[str, str]) -> tuple[str | None, str | None]:
+    """Resolve an event's subject the same way, ``(name, unresolved id)``.
+
+    Every `subject` / `settlement` field came back as an empty string because
+    `_clean_name` blanks a bare number and the civic exports key these columns
+    by id. Blank told the reader "no subject"; the truth was "an id we did not
+    resolve" (#223).
+    """
+    value = (raw or "").strip()
+    if not value:
+        return None, None
+    # A position triple is a genuine misalignment artifact; drop it.
+    if "," in value and _NONSENSE_KEY_RE.match(value):
+        return None, None
+    return _actor(value, name_map)
 
 
 def build_report(
@@ -355,61 +380,109 @@ def build_report(
     ordered = sorted(parsed, key=lambda e: e.time_s, reverse=True)
 
     for e in ordered:
-        name = _label(e.citizen_id, name_map)
+        # An id the citizens join cannot name is reported as an id, never as a
+        # "Citizen #<id>" person (#223).
+        name, actor_id = _actor(e.citizen_id, name_map)
+        subject, subject_id = _subject(e.subject, name_map)
         day = int(e.day)
         if e.action == "StartElection":
             report.elections_started += 1
             if len(report.recent_elections) < MAX_EVENTS:
-                report.recent_elections.append({"subject": e.subject, "proposer": name, "day": day})
+                report.recent_elections.append(
+                    {
+                        "subject": subject,
+                        "subjectId": subject_id,
+                        "proposer": name,
+                        "proposerId": actor_id,
+                        "day": day,
+                    }
+                )
         elif e.action == "WonElection":
             report.elections_won += 1
             if len(report.recent_outcomes) < MAX_EVENTS:
-                report.recent_outcomes.append({"subject": e.subject, "winner": name, "day": day})
+                report.recent_outcomes.append(
+                    {
+                        "subject": subject,
+                        "subjectId": subject_id,
+                        "winner": name,
+                        "winnerId": actor_id,
+                        "day": day,
+                    }
+                )
         elif e.action == "LostElection":
             report.elections_lost += 1
         elif e.action == "Vote":
             report.votes_cast += 1
             if name:
                 voter_counts[name] += 1
+            elif actor_id:
+                # Counted, but never ranked as a person — an unresolved id on
+                # the voter roll inflated turnout with a non-existent player.
+                report.unresolved_voter_ids += 1
         elif e.action == "DidntVote":
             report.abstentions += 1
         elif e.action == "BecomeCitizen":
             report.citizens_gained += 1
             if len(report.recent_demographics) < MAX_EVENTS:
                 report.recent_demographics.append(
-                    {"name": name, "day": day, "kind": "joined", "settlement": e.subject}
+                    {
+                        "name": name,
+                        "nameId": actor_id,
+                        "day": day,
+                        "kind": "joined",
+                        "settlement": subject,
+                        "settlementId": subject_id,
+                    }
                 )
         elif e.action == "LeaveCitizenship":
             report.citizens_lost += 1
             if len(report.recent_demographics) < MAX_EVENTS:
                 report.recent_demographics.append(
-                    {"name": name, "day": day, "kind": "left", "settlement": e.subject}
+                    {
+                        "name": name,
+                        "nameId": actor_id,
+                        "day": day,
+                        "kind": "left",
+                        "settlement": subject,
+                        "settlementId": subject_id,
+                    }
                 )
         elif e.action == "ResidencyChanged":
             report.residency_moves += 1
         elif e.action == "DemographicChange":
             report.demographic_changes += 1
-        elif e.action == "SettlementFounded":
-            report.settlements_founded += 1
+        elif e.action in ("SettlementFounded", "PlaceNewSettlementFoundation", "StartHomestead"):
+            kind = {
+                "SettlementFounded": "settlement",
+                # A staked foundation, not a settlement. It may never become one.
+                "PlaceNewSettlementFoundation": "foundation",
+                "StartHomestead": "homestead",
+            }[e.action]
+            if e.action == "SettlementFounded":
+                report.settlements_founded += 1
+            elif e.action == "PlaceNewSettlementFoundation":
+                report.settlement_foundations_placed += 1
+            else:
+                report.homesteads_started += 1
             if len(report.recent_settlements) < MAX_EVENTS:
                 report.recent_settlements.append(
-                    {"subject": e.subject, "founder": name, "day": day, "kind": "settlement"}
-                )
-        elif e.action == "PlaceNewSettlementFoundation":
-            # A staked foundation, not a settlement. It may never become one.
-            report.settlement_foundations_placed += 1
-            if len(report.recent_settlements) < MAX_EVENTS:
-                report.recent_settlements.append(
-                    {"subject": e.subject, "founder": name, "day": day, "kind": "foundation"}
-                )
-        elif e.action == "StartHomestead":
-            report.homesteads_started += 1
-            if len(report.recent_settlements) < MAX_EVENTS:
-                report.recent_settlements.append(
-                    {"subject": e.subject, "founder": name, "day": day, "kind": "homestead"}
+                    {
+                        "subject": subject,
+                        "subjectId": subject_id,
+                        "founder": name,
+                        "founderId": actor_id,
+                        "day": day,
+                        "kind": kind,
+                    }
                 )
 
     report.top_voters = sorted(voter_counts.items(), key=lambda kv: kv[1], reverse=True)
+    if report.unresolved_voter_ids:
+        report.warnings.append(
+            f"{report.unresolved_voter_ids} vote(s) name an actor id the citizens join could "
+            "not resolve; they are counted in votesCast but excluded from topVoters rather "
+            "than listed as a 'Citizen #<id>' player (eco-app#223)."
+        )
 
 
 @dataclass

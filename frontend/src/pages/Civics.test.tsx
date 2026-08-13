@@ -14,8 +14,12 @@ const REPORT = {
   votesCast: 3,
   abstentions: 1,
   turnoutRate: 0.75,
-  recentElections: [{ subject: "MayorRace", proposer: "alice", day: 3 }],
-  recentOutcomes: [{ subject: "MayorRace", winner: "alice", day: 3 }],
+  recentElections: [
+    { subject: "MayorRace", subjectId: null, proposer: "alice", proposerId: null, day: 3 },
+  ],
+  recentOutcomes: [
+    { subject: "MayorRace", subjectId: null, winner: "alice", winnerId: null, day: 3 },
+  ],
   topVoters: [
     ["alice", 2],
     ["bob", 1],
@@ -26,15 +30,16 @@ const REPORT = {
   residencyMoves: 1,
   demographicChanges: 0,
   recentDemographics: [
-    { name: "bob", day: 2, kind: "joined", settlement: "Rivertown" },
-    { name: "Citizen #104", day: 2, kind: "left", settlement: "Rivertown" },
+    { name: "bob", nameId: null, day: 2, kind: "joined", settlement: "Rivertown", settlementId: null },
+    // An id the citizens join missed: null name, raw id alongside (eco-app#223).
+    { name: null, nameId: "104", day: 2, kind: "left", settlement: "Rivertown", settlementId: null },
   ],
   settlementsFounded: 1,
   settlementFoundationsPlaced: 3,
   homesteadsStarted: 1,
   recentSettlements: [
-    { subject: "Rivertown", founder: "alice", day: 2, kind: "settlement" },
-    { subject: "BobsFarm", founder: "bob", day: 2, kind: "homestead" },
+    { subject: "Rivertown", subjectId: null, founder: "alice", founderId: null, day: 2, kind: "settlement" },
+    { subject: "BobsFarm", subjectId: null, founder: "bob", founderId: null, day: 2, kind: "homestead" },
   ],
   trend: {
     Vote: [
@@ -129,8 +134,10 @@ describe("Civics", () => {
       expect(screen.getByTestId("demographics-table")).toBeInTheDocument()
     })
     expect(screen.getAllByTestId("demographic-row")).toHaveLength(2)
-    // Unmapped id keeps its "Citizen #<id>" label verbatim.
-    expect(screen.getByText("Citizen #104")).toBeInTheDocument()
+    // An id the citizens join missed shows as an id, not as a person named
+    // "Citizen #104" — some of those ids are election titles (eco-app#223).
+    expect(screen.getByText("#104")).toBeInTheDocument()
+    expect(screen.queryByText("Citizen #104")).toBeNull()
   })
 
   it("shows an empty state when no civic events are recorded", async () => {

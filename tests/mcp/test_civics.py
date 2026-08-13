@@ -6,8 +6,9 @@ Covers:
   - Turnout: Vote vs DidntVote counts, participation rate, most-active voters.
   - Demographics: citizens gained / lost, net, residency moves.
   - Settlements: founded + homesteads, founder resolved to a name.
-  - Numeric actor ids joined to names via /api/v1/citizens, `Citizen #<id>`
-    fallback for a missing id (eco-app#5).
+  - Numeric actor ids joined to names via /api/v1/citizens; an id the join
+    misses is reported as an id, never as a `Citizen #<id>` person, because
+    some of those ids are election titles rather than people (eco-app#223).
   - Daily-count series folded into the trend map (seconds -> day x-axis).
   - Defensive realignment of a row carrying an undeclared extra column.
   - Missing-endpoint (401 / connect error) becomes a non-fatal warning.
@@ -19,6 +20,7 @@ Covers:
 from __future__ import annotations
 
 import csv
+import json
 from collections.abc import Iterator
 
 import httpx
@@ -237,9 +239,11 @@ def test_build_report_demographics_and_fallback() -> None:
     assert report.citizens_lost == 1
     assert report.net_citizens == 1
     assert report.residency_moves == 1
-    # Unmapped id 104 falls back rather than dropping.
+    # Unmapped id 104 is kept rather than dropped, but reported as an id
+    # rather than as a "Citizen #104" person (eco-app#223).
     left = [d for d in report.recent_demographics if d["kind"] == "left"]
-    assert left[0]["name"] == "Citizen #104"
+    assert left[0]["name"] is None
+    assert left[0]["nameId"] == "104"
 
 
 def test_build_report_settlements() -> None:
@@ -398,3 +402,78 @@ async def test_list_tools_includes_get_civics() -> None:
     result = await handler(mt.ListToolsRequest(method="tools/list"))
     names = {tool.name for tool in result.root.tools}
     assert "get_civics" in names
+
+
+# ---------------------------------------------------------------------------
+# Entity resolution (eco-app#223)
+# ---------------------------------------------------------------------------
+
+
+def _civic(action: str, citizen_id: str, subject: str, day: float = 1.0) -> _CivicEvent:
+    return _CivicEvent(
+        action=action,
+        time_s=day * SECONDS_PER_DAY,
+        day=day,
+        citizen_id=citizen_id,
+        subject=subject,
+        location="",
+    )
+
+
+def test_an_unresolved_id_is_never_rendered_as_a_person() -> None:
+    """456767 is an election *title* id, not a citizen (eco-app#223).
+
+    Formatting it as "Citizen #456767" invented a player who does not exist
+    and put them on the proposer list and the voter roll.
+    """
+    parsed = [
+        _civic("StartElection", "456767", "1298404"),
+        _civic("Vote", "60", "1298404"),
+        _civic("Vote", "101", "1298404"),
+    ]
+    report = CivicsReport(fetched_at_iso="t", source_base_url="b")
+    build_report(parsed, report, {"101": "alice"})
+
+    election = report.recent_elections[0]
+    assert election["proposer"] is None
+    assert election["proposerId"] == "456767"
+    # No invented person anywhere in the data. The warning prose is allowed to
+    # name the old format, so it is excluded from the sweep.
+    data_only = {k: v for k, v in report.to_dict().items() if k != "warnings"}
+    assert "Citizen #" not in json.dumps(data_only)
+
+    # The unresolved voter is counted but not ranked as a player.
+    assert report.votes_cast == 2
+    assert dict(report.top_voters) == {"alice": 1}
+    assert report.unresolved_voter_ids == 1
+    assert any("eco-app#223" in w for w in report.warnings)
+
+
+def test_a_numeric_subject_is_reported_as_an_id_not_blanked() -> None:
+    """Every subject / settlement field came back as an empty string.
+
+    `_clean_name` blanks a bare number, and these columns key by id, so blank
+    told the reader "no subject" when the truth was "an id we did not resolve".
+    """
+    parsed = [_civic("BecomeCitizen", "101", "1298404")]
+    report = CivicsReport(fetched_at_iso="t", source_base_url="b")
+    build_report(parsed, report, {"101": "alice", "1298404": "Costa Del Sol"})
+    joined = report.recent_demographics[0]
+    assert joined["settlement"] == "Costa Del Sol"
+    assert joined["settlementId"] is None
+
+    # And when the id cannot be resolved, it surfaces as an id.
+    report2 = CivicsReport(fetched_at_iso="t", source_base_url="b")
+    build_report(parsed, report2, {"101": "alice"})
+    joined2 = report2.recent_demographics[0]
+    assert joined2["settlement"] is None
+    assert joined2["settlementId"] == "1298404"
+
+
+def test_a_position_triple_subject_is_still_dropped() -> None:
+    parsed = [_civic("SettlementFounded", "101", "419,75,458")]
+    report = CivicsReport(fetched_at_iso="t", source_base_url="b")
+    build_report(parsed, report, {"101": "alice"})
+    entry = report.recent_settlements[0]
+    assert entry["subject"] is None
+    assert entry["subjectId"] is None

@@ -4,35 +4,45 @@
 // history + trend half of the governance surface, folded from the civic action
 // exporters (elections, votes, citizenships, settlements) and a handful of
 // civics/people daily-count series. Acting citizens are already joined to names
-// (proposer / winner / founder / voter), falling back to "Citizen #<id>" when
-// the jobs-mod citizens join misses one (eco-app#5). Current-state titles and
+// (proposer / winner / founder / voter). An id the jobs-mod citizens join
+// misses comes back as null with the raw id in the matching `*Id` field, never
+// as a "Citizen #<id>" person — some of those ids turned out to be election
+// titles rather than people (eco-app#223). Current-state titles and
 // active laws live on the sibling get_government / /server surface — the
 // action stream can't derive laws-in-effect.
 
 export interface ElectionEvent {
-  subject: string
-  proposer: string
+  subject: string | null
+  subjectId: string | null
+  proposer: string | null
+  proposerId: string | null
   day: number
 }
 
 export interface OutcomeEvent {
-  subject: string
-  winner: string
+  subject: string | null
+  subjectId: string | null
+  winner: string | null
+  winnerId: string | null
   day: number
 }
 
 export interface DemographicEvent {
-  name: string
+  name: string | null
+  nameId: string | null
   day: number
   kind: "joined" | "left"
-  settlement: string
+  settlement: string | null
+  settlementId: string | null
 }
 
 export interface SettlementEvent {
-  subject: string
-  founder: string
+  subject: string | null
+  subjectId: string | null
+  founder: string | null
+  founderId: string | null
   day: number
-  kind: "settlement" | "homestead"
+  kind: "settlement" | "foundation" | "homestead"
 }
 
 export interface CivicsReport {
