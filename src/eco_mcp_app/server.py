@@ -1211,7 +1211,12 @@ async def _fetch_dataset(
     # /datasets/get returns either a list of {Time, Value} dicts or a list of
     # two-item [time, value] pairs — tolerate both shapes defensively.
     out: list[tuple[float, float]] = []
+    # Rows the body offered, against rows we understood. A 200 carrying a shape
+    # this parser does not know yields nothing, and returning [] for that says
+    # "measured zero" about a dataset never read. See #266.
+    offered = 0
     if isinstance(data, list):
+        offered = len(data)
         for pt in data:
             if isinstance(pt, dict):
                 t = pt.get("Time", pt.get("time"))
@@ -1227,11 +1232,18 @@ async def _fetch_dataset(
     elif isinstance(data, dict):
         # Sometimes the endpoint wraps points under a "Values" / "Points" key.
         points = data.get("Values") or data.get("Points") or []
+        # A non-empty envelope under neither key is a shape we cannot read.
+        offered = len(points) if points else (1 if data else 0)
         for pt in points:
             try:
                 out.append((float(pt["Time"]), float(pt["Value"])))
             except (KeyError, TypeError, ValueError):
                 continue
+    else:
+        # Neither a list nor a dict: answered, and unreadable.
+        offered = 1
+    if offered and not out:
+        return None
     return out
 
 
