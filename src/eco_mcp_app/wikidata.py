@@ -143,6 +143,12 @@ class EcopediaCard:
     source: str = ""
     source_url: str | None = None
     not_found: bool = False
+    # Set when a canonical Eco id (`SteelAxeItem`) was resolved to the common
+    # name that actually matched (`Steel Axe`), so the swap is visible (#262).
+    resolved_from: str | None = None
+    # Every spelling tried, on a total miss. Turns "not_found" into something
+    # a caller can act on.
+    tried_names: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -166,7 +172,14 @@ def _sparql_query(name: str, category: str) -> str:
     optional_clauses = "\n".join(
         f"  OPTIONAL {{ ?item wdt:{pid} ?{label.replace(' ', '_')}. }}" for label, pid in facts
     )
-    select_vars = " ".join(f"?{label.replace(' ', '_')}" for label, _pid in facts)
+    # Select the label service's companion `?xLabel` alongside each raw value.
+    # A property whose value is an entity comes back as a Q-id, and shipping
+    # that through as a "fact" rendered "Taxon rank: Q34740" (#262). The label
+    # service resolves it in the same request, so this costs no extra round
+    # trip; a literal-valued property just labels to itself.
+    select_vars = " ".join(
+        f"?{label.replace(' ', '_')} ?{label.replace(' ', '_')}Label" for label, _pid in facts
+    )
     name_escaped = name.replace('"', '\\"')
     return f"""
 SELECT ?item ?itemLabel ?itemDescription ?image {select_vars} WHERE {{
@@ -279,7 +292,11 @@ def _build_card_from_sparql(name: str, category: str, binding: dict[str, Any]) -
     entity = _extract_sparql_value(binding, "item")
     facts: list[tuple[str, str]] = []
     for label, _pid in CATEGORY_FACTS.get(category, []):
-        value = _extract_sparql_value(binding, label.replace(" ", "_"))
+        var = label.replace(" ", "_")
+        # Prefer the resolved label. Falling back to the bare Q-id keeps the
+        # fact rather than dropping it, but a readable value always wins: a
+        # consumer rendering this showed the user "Taxon rank: Q34740" (#262).
+        value = _extract_sparql_value(binding, f"{var}Label") or _extract_sparql_value(binding, var)
         if value:
             # Wikidata returns URIs for linked entities; surface the trailing
             # segment rather than the full `http://www.wikidata.org/entity/Q...`.
@@ -329,10 +346,82 @@ def _build_card_from_wikipedia(
     )
 
 
+def _looks_like_eco_id(name: str) -> bool:
+    """Whether `name` looks like a canonical Eco item id rather than a word.
+
+    Eco ids are PascalCase and space-free (`SteelAxeItem`, `IronOreItem`). A
+    single capitalised word like `Iron` is ambiguous, but it costs nothing to
+    treat it as a real-world name first and only fall back.
+    """
+    return bool(name) and " " not in name and name[:1].isupper()
+
+
+def eco_name_candidates(name: str) -> list[str]:
+    """Ordered lookup names for a possibly-canonical Eco item id.
+
+    `explain_item` rejected the exact ids every other tool speaks: a caller who
+    found an interesting item via get_recipes / price_recipe / find_trade /
+    get_market and passed the id straight here got `not_found` with no hint
+    that it needed de-suffixing first (#262).
+    """
+    candidates = [name]
+
+    def _add(value: str) -> None:
+        if value and value not in candidates:
+            candidates.append(value)
+
+    if not _looks_like_eco_id(name):
+        return candidates
+
+    from .crafting import prettify_eco_name
+
+    _add(prettify_eco_name(name))
+
+    # The recipe graph's own display name covers ids the heuristic cannot,
+    # where the pretty form still is not what the thing is called.
+    try:
+        from .recipes import load_recipe_index
+
+        index = load_recipe_index()
+        for recipe in index.recipes:
+            if recipe.product.item == name:
+                _add(recipe.display_name)
+                break
+    except Exception:
+        pass
+    return candidates
+
+
 async def build_ecopedia_card(
     name: str, category: str | None = None, *, include_image: bool = True
 ) -> EcopediaCard:
-    """Main entry point. Returns an EcopediaCard, with `not_found=True` on total miss.
+    """Resolve `name` to a card, retrying canonical Eco ids as common names.
+
+    Delegates to :func:`_build_ecopedia_card_exact` for each candidate spelling
+    and returns the first hit, so `SteelAxeItem` resolves the same way
+    `Steel Axe` does (#262).
+    """
+    candidates = eco_name_candidates(name.strip())
+    card: EcopediaCard | None = None
+    for candidate in candidates:
+        card = await _build_ecopedia_card_exact(candidate, category, include_image=include_image)
+        if not card.not_found:
+            if candidate != name:
+                # Answer under the id the caller asked about, and say how it
+                # was resolved rather than silently swapping the name.
+                card.name = name
+                card.resolved_from = candidate
+            return card
+    if card is not None and len(candidates) > 1:
+        card.name = name
+        card.tried_names = candidates
+    return card or EcopediaCard(name=name, category=category, title=name, not_found=True)
+
+
+async def _build_ecopedia_card_exact(
+    name: str, category: str | None = None, *, include_image: bool = True
+) -> EcopediaCard:
+    """Look one exact name up. Returns `not_found=True` on total miss.
 
     Shape of the flow matches the spec in #15:
       - category given -> SPARQL first, Wikipedia as fallback for description

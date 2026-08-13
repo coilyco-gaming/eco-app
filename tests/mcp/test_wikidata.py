@@ -286,3 +286,102 @@ async def test_a_returned_image_carries_a_credit() -> None:
     card = await build_ecopedia_card("Wheat", include_image=False)
     assert card.image_url == "https://upload.wikimedia.org/wheat.jpg"
     assert card.image_credit == "https://upload.wikimedia.org/wheat.jpg"
+
+
+# --- Q-id resolution + canonical Eco ids (#262) -----------------------------
+
+_BISON_SPARQL = {
+    "head": {"vars": ["item", "itemLabel", "itemDescription", "Taxon_rank"]},
+    "results": {
+        "bindings": [
+            {
+                "item": {"type": "uri", "value": "http://www.wikidata.org/entity/Q1146279"},
+                "itemLabel": {"type": "literal", "value": "Bison"},
+                "itemDescription": {"type": "literal", "value": "genus of bovines"},
+                "Taxon_rank": {
+                    "type": "uri",
+                    "value": "http://www.wikidata.org/entity/Q34740",
+                },
+                "Taxon_rankLabel": {"type": "literal", "value": "genus"},
+            }
+        ]
+    },
+}
+
+
+def test_sparql_query_requests_labels_for_entity_valued_facts() -> None:
+    """Without the label companion the fact renders as a raw Q-id (#262)."""
+    from eco_mcp_app.wikidata import _sparql_query
+
+    query = _sparql_query("Bison", "animal")
+    assert "?Taxon_rankLabel" in query
+    assert "?Conservation_statusLabel" in query
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_entity_valued_fact_resolves_to_its_label() -> None:
+    """`Taxon rank: Q34740` is unreadable; it must read `genus`."""
+    respx.get(WIKIDATA_SPARQL_URL).mock(return_value=httpx.Response(200, json=_BISON_SPARQL))
+    respx.get("https://en.wikipedia.org/api/rest_v1/page/summary/Bison").mock(
+        return_value=httpx.Response(404, json={})
+    )
+
+    card = await build_ecopedia_card("Bison", category="animal", include_image=False)
+    assert ("Taxon rank", "genus") in card.facts
+    assert all(not value.startswith("Q") or not value[1:].isdigit() for _, value in card.facts)
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_falls_back_to_the_raw_qid_when_no_label_comes_back() -> None:
+    """A missing label keeps the fact rather than dropping it."""
+    unlabelled = json.loads(json.dumps(_BISON_SPARQL))
+    del unlabelled["results"]["bindings"][0]["Taxon_rankLabel"]
+    respx.get(WIKIDATA_SPARQL_URL).mock(return_value=httpx.Response(200, json=unlabelled))
+    respx.get("https://en.wikipedia.org/api/rest_v1/page/summary/Bison").mock(
+        return_value=httpx.Response(404, json={})
+    )
+
+    card = await build_ecopedia_card("Bison", category="animal", include_image=False)
+    assert ("Taxon rank", "Q34740") in card.facts
+
+
+def test_eco_item_ids_produce_common_name_candidates() -> None:
+    """The id every other tool speaks must be a usable input here (#262)."""
+    from eco_mcp_app.wikidata import eco_name_candidates
+
+    assert eco_name_candidates("SteelAxeItem")[:2] == ["SteelAxeItem", "Steel Axe"]
+    assert eco_name_candidates("IronOreItem")[:2] == ["IronOreItem", "Iron Ore"]
+    # A real-world name is passed through untouched — no wasted lookups.
+    assert eco_name_candidates("Iron Ore") == ["Iron Ore"]
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_canonical_eco_id_resolves_via_its_common_name() -> None:
+    """`SteelAxeItem` used to return not_found with no hint why."""
+    respx.get("https://en.wikipedia.org/api/rest_v1/page/summary/SteelAxeItem").mock(
+        return_value=httpx.Response(404, json={})
+    )
+    respx.get("https://en.wikipedia.org/api/rest_v1/page/summary/Steel_Axe").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "title": "Steel Axe",
+                "extract": "An axe with a steel head.",
+                "type": "standard",
+                "content_urls": {"desktop": {"page": "https://en.wikipedia.org/wiki/Axe"}},
+            },
+        )
+    )
+    respx.get(WIKIDATA_SPARQL_URL).mock(
+        return_value=httpx.Response(200, json={"results": {"bindings": []}})
+    )
+
+    card = await build_ecopedia_card("SteelAxeItem", include_image=False)
+    assert card.not_found is False
+    # Answers under the id the caller asked about, and says how it got there.
+    assert card.name == "SteelAxeItem"
+    assert card.resolved_from == "Steel Axe"
+    assert "steel head" in card.description.lower()
