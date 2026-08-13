@@ -59,8 +59,19 @@ plane that never refetches.
 
 ## Wiring status
 
-Contracts are declared for every plane. Pages are being migrated to the shared
-hook; `status` (site-wide, via `useEcoStatus`) and the `/map` page's climate,
-region and map planes are done. The rest still fetch on mount only — their
-contract is declared and honest, but the Refresh control and the ageing caption
-are not on the page yet. Remaining wiring is tracked on eco-app#201.
+Contracts are declared for every plane. Pages are migrated to the shared hook
+in batches.
+
+**Wired:** `status` (site-wide, via `useEcoStatus`), `/map` (climate, region,
+map), `/civics`, `/crafting`, `/social`.
+
+**Not yet wired** — contract declared, but the page still fetches on mount only
+and shows no caption or Refresh control: `/items`, `/item`, `/species`,
+`/replay`, `/recipes`, `/recipe`, `/trade`, `/user`, `/jobs`, and the seven
+`/uses/*` pages.
+
+The unwired set is mostly `manual` and `static` planes, where a mount-only
+fetch is closer to correct than it was for the live ones. The parameterised
+pages (`/item`, `/species`, `/user`, `/uses/*`) need the hook's `deps`
+argument so a changed query re-fetches, which is why they were not swept in
+with the simple single-plane pages. Tracked on eco-app#201.

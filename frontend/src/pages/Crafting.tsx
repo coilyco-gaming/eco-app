@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import ItemLink from "../components/ItemLink"
+import FreshnessNote from "../components/FreshnessNote"
 import Layout from "../components/Layout"
-import { fetchCraftingAtlas, type CraftingAtlas } from "../lib/craftingApi"
+import { fetchCraftingAtlas } from "../lib/craftingApi"
 import { formatCount, prettifyEcoName } from "../lib/format"
+import { useFreshData } from "../lib/useFreshData"
 
 const ACTION_LABELS: Record<string, string> = {
   ItemCraftedAction: "crafted",
@@ -83,20 +84,13 @@ function CrafterList({ rows }: { rows: Array<[string, number]> }) {
 }
 
 export default function Crafting() {
-  const [atlas, setAtlas] = useState<CraftingAtlas | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // Refresh contract lives in freshness.ts, not here (eco-app#201).
+  const craftingPlane = useFreshData("crafting", fetchCraftingAtlas)
+  const atlas = craftingPlane.data
+  const error = craftingPlane.error
   const [params, setParams] = useSearchParams()
   const q = params.get("q") ?? ""
 
-  useEffect(() => {
-    const controller = new AbortController()
-    fetchCraftingAtlas(controller.signal)
-      .then(setAtlas)
-      .catch((err) => {
-        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : String(err))
-      })
-    return () => controller.abort()
-  }, [])
 
   const setQuery = (value: string) => {
     setParams(value ? { q: value } : {}, { replace: false })
@@ -129,6 +123,13 @@ export default function Crafting() {
             crafter board covers all history
           </p>
         )}
+        <FreshnessNote
+          plane="crafting"
+          loadedAt={craftingPlane.loadedAt}
+          refreshing={craftingPlane.refreshing}
+          refreshError={craftingPlane.refreshError}
+          onRefresh={craftingPlane.refresh}
+        />
       </section>
 
       {atlas && (

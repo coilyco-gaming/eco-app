@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
+import FreshnessNote from "../components/FreshnessNote"
 import Layout from "../components/Layout"
-import { fetchCivics, type CivicsReport } from "../lib/civicsApi"
+import { fetchCivics } from "../lib/civicsApi"
 import { formatCount } from "../lib/format"
+import { useFreshData } from "../lib/useFreshData"
 
 const TOP_N = 12
 const RECENT = 12
@@ -110,18 +111,11 @@ function RankList({ rows, label }: RankProps) {
 }
 
 export default function Civics() {
-  const [report, setReport] = useState<CivicsReport | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // Refresh contract lives in freshness.ts, not here (eco-app#201).
+  const civicsPlane = useFreshData("civics", fetchCivics)
+  const report = civicsPlane.data
+  const error = civicsPlane.error
 
-  useEffect(() => {
-    const controller = new AbortController()
-    fetchCivics(controller.signal)
-      .then(setReport)
-      .catch((err) => {
-        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : String(err))
-      })
-    return () => controller.abort()
-  }, [])
 
   const turnoutPct =
     report && report.turnoutRate !== null ? Math.round(report.turnoutRate * 100) : null
@@ -144,6 +138,13 @@ export default function Civics() {
             civics report unavailable right now
           </p>
         )}
+        <FreshnessNote
+          plane="civics"
+          loadedAt={civicsPlane.loadedAt}
+          refreshing={civicsPlane.refreshing}
+          refreshError={civicsPlane.refreshError}
+          onRefresh={civicsPlane.refresh}
+        />
       </section>
 
       {report && report.totalEvents === 0 && (

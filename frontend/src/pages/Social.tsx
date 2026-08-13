@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
 import { Link } from "react-router-dom"
+import FreshnessNote from "../components/FreshnessNote"
 import Layout from "../components/Layout"
 import Loading from "../components/Loading"
-import { fetchSocial, type ReputationEdge, type SocialSurface } from "../lib/socialApi"
+import { fetchSocial, type ReputationEdge } from "../lib/socialApi"
 import { formatCount } from "../lib/format"
+import { useFreshData } from "../lib/useFreshData"
 
 const TOP_N = 12
 // Cap the reputation graph to the busiest nodes so the circular layout stays
@@ -229,18 +231,11 @@ function RankList({ rows, emptyNote }: RankListProps) {
 }
 
 export default function Social() {
-  const [surface, setSurface] = useState<SocialSurface | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // Refresh contract lives in freshness.ts, not here (eco-app#201).
+  const socialPlane = useFreshData("social", fetchSocial)
+  const surface = socialPlane.data
+  const error = socialPlane.error
 
-  useEffect(() => {
-    const controller = new AbortController()
-    fetchSocial(controller.signal)
-      .then(setSurface)
-      .catch((err) => {
-        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : String(err))
-      })
-    return () => controller.abort()
-  }, [])
 
   const isEmpty =
     surface !== null &&
@@ -273,6 +268,13 @@ export default function Social() {
             social surface unavailable right now
           </p>
         )}
+        <FreshnessNote
+          plane="social"
+          loadedAt={socialPlane.loadedAt}
+          refreshing={socialPlane.refreshing}
+          refreshError={socialPlane.refreshError}
+          onRefresh={socialPlane.refresh}
+        />
       </section>
 
       {!surface && !error && <Loading label="Reading community activity..." testid="social-loading" />}
