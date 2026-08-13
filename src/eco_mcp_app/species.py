@@ -165,6 +165,17 @@ def _get_admin_api_key() -> str | None:
     env = os.environ.get("ECO_ADMIN_API_KEY")
     if env:
         return env
+    # Every other admin-backed tool also accepts ECO_ADMIN_TOKEN and reads the
+    # same SSM parameter through server._get_admin_token(). This module had its
+    # own resolution path and missed that route entirely, so on a deploy that
+    # sets ECO_ADMIN_TOKEN get_species reported "admin API key missing" while
+    # get_region, get_economy and get_climate all had access (#219). Imported
+    # locally because server imports this module.
+    from .server import _get_admin_token
+
+    shared = _get_admin_token()
+    if shared:
+        return shared
     global _ADMIN_KEY_CACHE, _ADMIN_KEY_LOOKED_UP
     if _ADMIN_KEY_LOOKED_UP:
         return _ADMIN_KEY_CACHE
@@ -463,7 +474,13 @@ async def build_species_payload(species_id: str, *, include_image: bool = True) 
     except httpx.HTTPStatusError as e:
         code = e.response.status_code
         if code == 401:
-            payload.error = "population data unavailable (admin API key missing)"
+            # "missing" sent operators hunting for a key that was configured
+            # (#219). A 401 with a key attached means it was rejected.
+            payload.error = (
+                "population data unavailable (admin API key rejected by the server)"
+                if _get_admin_api_key()
+                else "population data unavailable (no admin API key configured)"
+            )
         elif code == 404:
             payload.error = "no population data for this species"
         else:

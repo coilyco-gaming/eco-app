@@ -14,6 +14,7 @@ import mcp.types as mt
 import pytest
 import respx
 
+from eco_mcp_app import server as eco_server
 from eco_mcp_app import species as species_mod
 from eco_mcp_app.server import _resolve_species_id, build_server
 from eco_mcp_app.species import (
@@ -286,3 +287,58 @@ async def test_get_species_tool_returns_card_blocks() -> None:
     assert payload["populationLatest"] == 24
     # Just-data per eco-app#87: get_species no longer emits a widget.
     assert result.root.meta is None
+
+
+# ---------------------------------------------------------------------------
+# Admin key resolution (eco-app#219)
+# ---------------------------------------------------------------------------
+
+
+def test_species_accepts_the_shared_admin_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """get_species had its own credential path and missed the shared one.
+
+    On a deploy that sets ECO_ADMIN_TOKEN, get_region reported
+    adminAvailable: true and get_economy / get_climate reported admin_ok: true,
+    while get_species alone said "admin API key missing" (eco-app#219).
+    """
+    monkeypatch.delenv("ECO_ADMIN_API_KEY", raising=False)
+    # Patch the shared resolver rather than its env var: it memoizes across the
+    # session, so asserting on the wiring is what actually pins the fix.
+    monkeypatch.setattr(eco_server, "_get_admin_token", lambda: "shared-token")
+    monkeypatch.setattr(species_mod, "_ADMIN_KEY_LOOKED_UP", False)
+    monkeypatch.setattr(species_mod, "_ADMIN_KEY_CACHE", None)
+
+    assert species_mod._get_admin_api_key() == "shared-token"
+
+
+def test_the_module_env_var_still_wins(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ECO_ADMIN_API_KEY", "own-key")
+    monkeypatch.setenv("ECO_ADMIN_TOKEN", "shared-token")
+    assert species_mod._get_admin_api_key() == "own-key"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_a_401_with_a_key_says_rejected_not_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ "Missing" sent operators hunting for a key that was configured (#219)."""
+    monkeypatch.setenv("ECO_ADMIN_API_KEY", "present")
+    respx.get(f"{species_mod.ECO_BASE_URL}/api/v1/exporter/species").mock(
+        return_value=httpx.Response(401)
+    )
+
+    async def _no_taxon(name: str) -> None:
+        return None
+
+    monkeypatch.setattr(species_mod, "_fetch_inat_taxon", _no_taxon)
+
+    async def _no_wiki(name: str) -> None:
+        return None
+
+    monkeypatch.setattr(species_mod, "_fetch_wikipedia_summary", _no_wiki)
+
+    payload = await species_mod.build_species_payload("WolfSpecies", include_image=False)
+    assert payload.error is not None
+    assert "rejected" in payload.error
+    assert "missing" not in payload.error
