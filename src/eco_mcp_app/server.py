@@ -260,22 +260,41 @@ def _row_value(table: list[list[str]], label: str) -> str | None:
     return None
 
 
-def _extract_scope(titles: list[dict[str, Any]]) -> str:
-    """Derive the settlement/federation name from title scopes.
+def _extract_settlements(titles: list[dict[str, Any]]) -> list[str]:
+    """List the distinct settlement/federation names the titles cover.
 
     Title names are shaped like `"<Scope> Mayor"` / `"<Scope> Governor"` /
-    `"<Scope> Sheriff"`. We take the first title and strip the trailing role
-    word. Returns `"Unknown settlement"` if we can't parse it — callers
-    render that string directly in the header.
+    `"<Scope> Sheriff"`, so the scope is the name minus its trailing role
+    word. Players name their own titles, so the last token is stripped
+    unconditionally rather than matched against a role allowlist.
+
+    Order follows first appearance in the payload, which keeps the caption
+    stable across calls.
     """
-    if not titles:
+    names: list[str] = []
+    for title in titles:
+        raw = title.get("Name", "") or ""
+        parts = raw.rsplit(" ", 1)
+        scope = parts[0] if len(parts) == 2 and parts[1] else raw
+        if scope and scope not in names:
+            names.append(scope)
+    return names
+
+
+def _government_scope(settlements: list[str]) -> str:
+    """Name what the payload actually covers (#238).
+
+    This used to read the first title's settlement, so a server-wide answer
+    covering five settlements was captioned as one of them — a consumer would
+    reasonably filter or headline the whole government as Costa Del Sol's.
+    A multi-settlement payload is server-scoped; `settlements` carries the
+    detail.
+    """
+    if not settlements:
         return "Unknown settlement"
-    first = titles[0].get("Name", "") or ""
-    # Strip the last token (role word) — "Foo Bar Mayor" → "Foo Bar".
-    parts = first.rsplit(" ", 1)
-    if len(parts) == 2 and parts[1]:
-        return parts[0]
-    return first or "Unknown settlement"
+    if len(settlements) == 1:
+        return settlements[0]
+    return "server"
 
 
 def to_government_payload(
@@ -304,11 +323,10 @@ def to_government_payload(
             }
         )
 
-    # Elections — server claims to filter `byStates=Active` on laws but
-    # doesn't always honour the filter. We don't pass a filter for elections
-    # (endpoint accepts no args) — just defensively keep only ones that look
-    # open. `EndTime` / `TimeLeft` field naming drifts across Eco versions,
-    # so we check a few likely shapes.
+    # Elections — the endpoint accepts no arguments, so whatever it returns is
+    # what is open; an empty list means the server reported no open elections,
+    # not that the query was skipped. `EndTime` / `TimeLeft` field naming
+    # drifts across Eco versions, so we check a few likely shapes.
     elections: list[dict[str, Any]] = []
     for e in elections_raw:
         ends_in_hours: float | None = None
@@ -357,11 +375,13 @@ def to_government_payload(
             "preview_lines": _law_preview_lines(longest_preview),
         }
 
+    settlements = _extract_settlements(titles_raw)
     return {
         "view": "eco_government",
         "fetchedAtISO": fetched_at_iso,
         "sourceUrl": data.get("_sourceUrl"),
-        "scope": _extract_scope(titles_raw),
+        "scope": _government_scope(settlements),
+        "settlements": settlements,
         "titles": titles,
         "elections": elections,
         "active_laws_count": active_laws_count,
@@ -399,7 +419,15 @@ def _law_preview_lines(text: str) -> list[str]:
 
 
 def _format_government_markdown(payload: dict[str, Any]) -> str:
-    lines = [f"**{payload['scope']} — Government**", ""]
+    # Say what the payload covers. Captioning a five-settlement answer with one
+    # settlement's name invites the reader to filter it as that settlement's
+    # government (#238).
+    settlements = payload.get("settlements") or []
+    if len(settlements) > 1:
+        header = f"**Server government** — {len(settlements)} settlements: {', '.join(settlements)}"
+    else:
+        header = f"**{payload['scope']} — Government**"
+    lines = [header, ""]
     if payload["titles"]:
         for t in payload["titles"]:
             occs = ", ".join(t["occupants"]) if t["occupants"] else "_vacant_"

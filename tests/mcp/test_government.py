@@ -19,6 +19,7 @@ import respx
 
 from eco_mcp_app.server import (
     DEFAULT_ECO_BASE_URL,
+    _format_government_markdown,
     build_server,
     fetch_eco_government,
     strip_law_markup,
@@ -186,9 +187,58 @@ def test_to_government_payload_filters_inactive_laws() -> None:
     assert "Roads" in preview
 
 
+# The five titles observed on Sirens, day 40 of cycle 14 — four settlement
+# mayors plus one federation czar spanning two of them (eco-app#238).
+_MULTI_SETTLEMENT_TITLES: list[dict[str, Any]] = [
+    {"Id": 1298404, "Name": "Costa Del Sol Mayor", "OccupantNames": ["a"], "State": "Active"},
+    {"Id": 456766, "Name": "Phantom Springs Mayor", "OccupantNames": ["b"], "State": "Active"},
+    {"Id": 456768, "Name": "Costa Del Phantom Czar", "OccupantNames": ["c"], "State": "Active"},
+    {"Id": 456767, "Name": "La Croisée des Bois Mayor", "OccupantNames": ["d"], "State": "Active"},
+    {"Id": 456769, "Name": "Oceantide Mayor", "OccupantNames": ["e"], "State": "Active"},
+]
+
+
+def test_multi_settlement_payload_is_server_scoped() -> None:
+    """`scope` describes the query, not the first title (eco-app#238).
+
+    Reading it off `titles[0]` captioned a five-settlement answer as Costa Del
+    Sol's government, so a consumer would filter or headline the whole
+    server's civics as one settlement's.
+    """
+    payload = to_government_payload(
+        {"titles": _MULTI_SETTLEMENT_TITLES, "elections": [], "laws": []}
+    )
+    assert payload["scope"] == "server"
+    assert payload["settlements"] == [
+        "Costa Del Sol",
+        "Phantom Springs",
+        "Costa Del Phantom",
+        "La Croisée des Bois",
+        "Oceantide",
+    ]
+
+
+def test_single_settlement_payload_keeps_the_settlement_scope() -> None:
+    payload = to_government_payload({"titles": _FAKE_TITLES, "elections": [], "laws": []})
+    assert payload["scope"] == "Steamtide Cay Foundation"
+    assert payload["settlements"] == ["Steamtide Cay Foundation"]
+
+
+def test_multi_settlement_markdown_names_every_settlement() -> None:
+    payload = to_government_payload(
+        {"titles": _MULTI_SETTLEMENT_TITLES, "elections": [], "laws": []}
+    )
+    markdown = _format_government_markdown(payload)
+    assert markdown.startswith("**Server government** — 5 settlements:")
+    assert "Oceantide" in markdown
+    # The old header claimed the whole answer belonged to one settlement.
+    assert not markdown.startswith("**Costa Del Sol — Government**")
+
+
 def test_to_government_payload_no_titles_reports_unknown_scope() -> None:
     payload = to_government_payload({"titles": [], "elections": [], "laws": []})
     assert payload["scope"] == "Unknown settlement"
+    assert payload["settlements"] == []
     assert payload["titles"] == []
 
 
