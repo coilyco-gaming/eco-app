@@ -45,8 +45,8 @@ type RecipeCost = {
   product: string
   yield: number
   perUnitCost: number | null
-  totalCost: number
-  ingredientCost: number
+  totalCost: number | null
+  ingredientCost: number | null
   laborCost: number
   timeCost: number
   laborCalories: number
@@ -753,7 +753,9 @@ export default function UsesPrice() {
                       <div className="rank-row">
                         <span className="rank-name">Ingredient cost</span>
                         <span className="rank-count">
-                          {bestRecipe.cost ? `${fmtPrice(bestRecipe.cost.ingredientCost)} ${moneyUnit}` : "—"}
+                          {bestRecipe.cost?.ingredientCost != null
+                            ? `${fmtPrice(bestRecipe.cost.ingredientCost)} ${moneyUnit}`
+                            : "—"}
                         </span>
                       </div>
                     </li>
