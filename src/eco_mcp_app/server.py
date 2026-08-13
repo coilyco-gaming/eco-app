@@ -906,6 +906,61 @@ def _fetch_failure(exc: Exception) -> str:
     return f"{cause} while requesting {url}" if url else cause
 
 
+# Where the same answer lives in full, per tool. An MCP response is a summary
+# by necessity — the response cap is real (#240 family 3) — so every tool
+# points at the page that carries the whole thing (#241). Tools with no page
+# of their own are absent rather than pointed somewhere approximate.
+PUBLIC_SITE_URL = os.environ.get("ECO_PUBLIC_SITE_URL", "https://eco-app.coilysiren.me").rstrip("/")
+
+TOOL_SITE_PATHS: dict[str, str] = {
+    "get_server_status": "/info",
+    "get_milestones": "/info",
+    "get_economy": "/trade",
+    "get_currency": "/trade",
+    "get_market": "/trade",
+    "get_stores": "/trade",
+    "get_trades": "/trade",
+    "find_trade": "/uses/arbitrage",
+    "trade_watchers": "/trade",
+    "fair_price": "/uses/price",
+    "get_crafting_atlas": "/crafting",
+    "get_progression": "/jobs",
+    "get_civics": "/civics",
+    "get_government": "/civics",
+    "get_world": "/map",
+    "get_map": "/map",
+    "get_region": "/map",
+    "get_climate": "/map",
+    "get_species": "/species",
+    "explain_item": "/items",
+    "get_social": "/civics",
+    "list_public_servers": "/info",
+}
+
+
+def site_url_for(tool: str) -> str | None:
+    """The live page carrying this tool's answer in full, if there is one."""
+    path = TOOL_SITE_PATHS.get(tool)
+    return f"{PUBLIC_SITE_URL}{path}" if path else None
+
+
+def _append_site_link(tool: str, result: CallToolResult) -> CallToolResult:
+    """Add a "see the full version here" line to a tool's markdown block.
+
+    Only the human-readable block is touched. The JSON block is a typed
+    contract — several tools validate it against a pydantic output model — so
+    a link is not smuggled into it.
+    """
+    url = site_url_for(tool)
+    if url is None or not result.content:
+        return result
+    first = result.content[0]
+    if not isinstance(first, TextContent) or url in first.text:
+        return result
+    first.text = f"{first.text}\n\nFull detail: {url}"
+    return result
+
+
 def _unreachable_result(subject: str, exc: Exception) -> CallToolResult:
     """The one shape every "could not reach <subject>" tool error takes.
 
@@ -2254,9 +2309,12 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
     @server.call_tool()
     async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
         if dual_routes.has_tool(name):
-            return await dual_routes.call_mcp(name, arguments)
-        result = await _dispatch_call_tool(name, arguments)
-        return result
+            result = await dual_routes.call_mcp(name, arguments)
+        else:
+            result = await _dispatch_call_tool(name, arguments)
+        # One place, every tool: point the caller at the page that shows the
+        # same answer in full (#241).
+        return _append_site_link(name, result)
 
     return instrument_mcp_server(server)
 
