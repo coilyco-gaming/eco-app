@@ -107,11 +107,14 @@ const MAP: MapPayload = {
   pollutionDataUri: null,
   biomeLayers: [{ name: "OceanBiome", display: "Ocean", color: "#4a9cb8", dataUri: _TINY }],
   polygons: [
-    { owner: "alice", deed: "Alice's Homestead", fill: "hsla(1,50%,50%,0.4)", stroke: "hsla(1,60%,35%,0.9)", points: "10,10 20,10 20,20 10,20" },
+    { owner: "alice", deed: "Alice's Homestead", fill: "hsla(1,50%,50%,0.4)", stroke: "hsla(1,60%,35%,0.9)", points: "10,10 20,10 20,20 10,20", seamCopy: false },
   ],
   deedCount: 1,
   ownerCount: 1,
   owners: ["alice"],
+  polygonCount: 1,
+  seamCopyCount: 0,
+  seamNote: "seamCopy: true marks wrap copies.",
   owner_colors: { alice: "hsla(1,50%,50%,0.4)" },
   owner_strokes: { alice: "hsla(1,60%,35%,0.9)" },
 }

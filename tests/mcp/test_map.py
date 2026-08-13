@@ -349,3 +349,80 @@ async def test_get_map_call_tool_handles_upstream_failure() -> None:
     blocks = result.root.content
     assert isinstance(blocks[0], mt.TextContent)
     assert "unreachable" in blocks[0].text.lower()
+
+
+# ---------------------------------------------------------------------------
+# Seam-crossing deeds (eco-app#229)
+# ---------------------------------------------------------------------------
+
+
+def test_seam_copies_are_flagged_and_counted_apart_from_deeds() -> None:
+    """`Homestead of MooshMan` came back twice, once at negative y (eco-app#229).
+
+    Eco worlds wrap, so a deed spanning the seam is emitted once at its true
+    position and once translated, and the SVG viewBox clips the overflow. The
+    translated copy carries out-of-range coordinates, which a consumer that
+    scales to the data reads as a negative viewport bound — and it was
+    indistinguishable from a second real deed.
+    """
+    world = {"x": 1000, "y": 200, "z": 1000}
+    # A square straddling the z seam: most of it near z=990, a sliver at z=5.
+    property_data = {
+        "Homestead of MooshMan (MooshMan)": [
+            {"x": 100, "y": 985},
+            {"x": 140, "y": 985},
+            {"x": 140, "y": 5},
+            {"x": 100, "y": 5},
+        ]
+    }
+    polygons = build_polygons(property_data, world)
+    assert len(polygons) > 1
+    # Exactly one polygon is the deed where it actually is.
+    primaries = [p for p in polygons if not p["seamCopy"]]
+    assert len(primaries) == 1
+    copies = [p for p in polygons if p["seamCopy"]]
+    assert copies
+    # The copies are the ones carrying out-of-range coordinates.
+    assert any(
+        float(pair.split(",")[1]) < 0 for p in copies for pair in p["points"].split() if pair
+    )
+    # ...and the primary stays inside the render box.
+    for pair in primaries[0]["points"].split():
+        y = float(pair.split(",")[1])
+        assert y >= 0
+
+
+def test_a_non_wrapping_deed_emits_one_unflagged_polygon() -> None:
+    world = {"x": 1000, "y": 200, "z": 1000}
+    property_data = {
+        "Keystone Mines (salt)": [
+            {"x": 100, "y": 100},
+            {"x": 140, "y": 100},
+            {"x": 140, "y": 140},
+            {"x": 100, "y": 140},
+        ]
+    }
+    polygons = build_polygons(property_data, world)
+    assert len(polygons) == 1
+    assert polygons[0]["seamCopy"] is False
+
+
+def test_the_payload_counts_deeds_and_polygons_separately() -> None:
+    world = {"x": 1000, "y": 200, "z": 1000}
+    bundle = {
+        "dimension": world,
+        "property": {
+            "Homestead of MooshMan (MooshMan)": [
+                {"x": 100, "y": 985},
+                {"x": 140, "y": 985},
+                {"x": 140, "y": 5},
+                {"x": 100, "y": 5},
+            ]
+        },
+    }
+    payload = build_map_payload(bundle)
+    # One deed, more than one polygon — the number a reader wants is the deed.
+    assert payload["deedCount"] == 1
+    assert payload["polygonCount"] > payload["deedCount"]
+    assert payload["seamCopyCount"] == payload["polygonCount"] - 1
+    assert "seamCopy: true" in payload["seamNote"]

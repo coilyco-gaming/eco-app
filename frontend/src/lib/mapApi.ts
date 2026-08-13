@@ -14,6 +14,10 @@ export interface MapPolygon {
   stroke: string
   // SVG `points` attribute: space-separated "x,y" pairs in renderSize space.
   points: string
+  // True for a deed translated across the world seam so the viewBox can clip
+  // it. Those carry coordinates outside 0..renderSize, negatives included, so
+  // never fit a viewport to them (eco-app#229).
+  seamCopy: boolean
 }
 
 export interface MapBiomeLayer {
@@ -36,6 +40,9 @@ export interface MapPayload {
   biomeLayers: MapBiomeLayer[]
   polygons: MapPolygon[]
   deedCount: number
+  polygonCount: number
+  seamCopyCount: number
+  seamNote: string
   ownerCount: number
   owners: string[]
   owner_colors: Record<string, string>

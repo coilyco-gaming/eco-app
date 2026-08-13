@@ -272,7 +272,7 @@ def build_polygons(
         if len(pts) < 3:
             continue
         ordered = _order_by_polar_angle(pts)
-        for sub in _split_seam_crossings(ordered, world_x, world_z):
+        for index, sub in enumerate(_split_seam_crossings(ordered, world_x, world_z)):
             if len(sub) < 3:
                 continue
             # Re-order after splitting — bucketing can scramble the angle order.
@@ -286,6 +286,13 @@ def build_polygons(
                     "fill": _owner_color(owner),
                     "stroke": _owner_stroke(owner),
                     "points": pts_attr,
+                    # Index 0 is the deed at its true position; anything after
+                    # it is the same deed translated across the world seam so
+                    # an SVG viewBox can clip it. Those carry deliberately
+                    # out-of-range (often negative) coordinates, so a consumer
+                    # that scales to the data — rather than to renderSize —
+                    # has to know to skip them (#229).
+                    "seamCopy": index > 0,
                 }
             )
     return out
@@ -327,7 +334,17 @@ def build_map_payload(bundle: dict[str, Any]) -> dict[str, Any]:
         "pollutionDataUri": pollution_data_uri,
         "biomeLayers": biome_layers,
         "polygons": polygons,
+        # Distinct deeds, not polygons: a seam-crossing deed emits one polygon
+        # per side of the wrap (#229).
         "deedCount": len({p["deed"] for p in polygons}),
+        "polygonCount": len(polygons),
+        "seamCopyCount": sum(1 for p in polygons if p.get("seamCopy")),
+        "seamNote": (
+            "A deed that crosses the world seam is emitted once at its true position and "
+            "again translated by the world size, so an SVG viewBox clips the overflow. The "
+            "translated copies carry seamCopy: true and coordinates outside 0..renderSize, "
+            "including negatives. Skip them unless you are rendering with clipping."
+        ),
         "ownerCount": len(owners),
         "owners": owners,
         "owner_colors": owner_colors,
