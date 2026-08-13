@@ -26,6 +26,7 @@ export const SAMPLE_STATUS: EcoStatus = {
     size: "0.52km²",
     plants: 64342,
     animals: 0,
+    animalsNote: null,
     laws: 10,
     totalCulture: 2254.76,
     totalCultureSource: "info",

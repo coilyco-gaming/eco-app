@@ -28,6 +28,9 @@ export interface EcoWorld {
   size: string
   plants: number | null
   animals: number | null
+  // Set when the animal count is not trustworthy: /info reports 0 even on
+  // servers with live fauna, so get_region is the real source (eco-app#246).
+  animalsNote: string | null
   laws: number | null
   totalCulture: number | null
   // "milestones" when /info reported 0 culture but the milestone list showed

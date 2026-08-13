@@ -494,6 +494,7 @@ def to_payload(info: dict[str, Any]) -> dict[str, Any]:
     # GreenLeaf Prime returns daysUntilMeteor: -17 with hasMeteor: false (#237).
     has_meteor = bool(info.get("HasMeteor"))
     days_until_meteor = _opt_int(info, "DaysUntilMeteor") if has_meteor else None
+    animals = _opt_int(info, "Animals")
     return {
         "view": "eco_status",
         "fetchedAtISO": info.get("_fetchedAtISO"),
@@ -521,7 +522,18 @@ def to_payload(info: dict[str, Any]) -> dict[str, Any]:
         "world": {
             "size": info.get("WorldSize"),
             "plants": _opt_int(info, "Plants"),
-            "animals": _opt_int(info, "Animals"),
+            "animals": animals,
+            # /info.Animals read 0 on every server tested while get_region
+            # tracked live populations on the same fetch (Deer 248, Wolf 167,
+            # Bison 114). A zero here is not evidence there are no animals, so
+            # it does not get to pass as a count (#246).
+            "animalsNote": (
+                "Upstream /info reports 0 animals on every server observed, including ones "
+                "with live fauna, so this field looks unpopulated rather than accurate. "
+                "Use get_region for tracked animal populations."
+                if animals == 0
+                else None
+            ),
             "laws": _opt_int(info, "Laws"),
             "totalCulture": total_culture,
             "totalCultureSource": culture_source,

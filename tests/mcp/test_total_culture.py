@@ -92,3 +92,22 @@ def test_meteor_countdown_survives_when_a_meteor_is_coming() -> None:
     cycle = to_payload(_SIRENS_INFO)["cycle"]
     assert cycle["hasMeteor"] is True
     assert cycle["daysUntilMeteor"] == 20
+
+
+def test_a_zero_animal_count_is_marked_unreliable() -> None:
+    """/info.Animals reads 0 even on servers with live fauna (eco-app#246).
+
+    Both servers in the 2026-08-12 sweep reported 0 while get_region tracked
+    Deer 248, Wolf 167 and Bison 114 on the same fetch. A zero here is not
+    evidence of no animals, so it does not get to pass as a count.
+    """
+    world = to_payload(dict(_SIRENS_INFO, Animals=0))["world"]
+    assert world["animals"] == 0
+    assert world["animalsNote"]
+    assert "get_region" in world["animalsNote"]
+
+
+def test_a_real_animal_count_carries_no_caveat() -> None:
+    world = to_payload(dict(_SIRENS_INFO, Animals=529))["world"]
+    assert world["animals"] == 529
+    assert world["animalsNote"] is None
