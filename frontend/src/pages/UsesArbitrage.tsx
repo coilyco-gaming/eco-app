@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
 import { Link } from "react-router-dom"
 import EcoRichText from "../components/EcoRichText"
 import ItemLink from "../components/ItemLink"
+import FreshnessNote from "../components/FreshnessNote"
 import Layout from "../components/Layout"
-import { fetchLogistics, type LogisticsBoard } from "../lib/logisticsApi"
+import { fetchLogistics } from "../lib/logisticsApi"
 import { formatCount } from "../lib/format"
+import { useFreshData } from "../lib/useFreshData"
 
 const ROWS = 40
 
@@ -17,18 +19,11 @@ function fmtPrice(n: number): string {
 // volume). Reads the same /preview/logistics.json plane /trade does, which can
 // 404 on a reset-gated shelf, so the page degrades to a clear note.
 export default function UsesArbitrage() {
-  const [logistics, setLogistics] = useState<LogisticsBoard | null>(null)
-  const [loaded, setLoaded] = useState(false)
+  // Refresh contract lives in freshness.ts, not here (eco-app#201).
+  const logisticsPlane = useFreshData("logistics", (signal) => fetchLogistics(signal).catch(() => null))
+  const logistics = logisticsPlane.data
+  const loaded = !logisticsPlane.loading
 
-  useEffect(() => {
-    const controller = new AbortController()
-    fetchLogistics(controller.signal)
-      .then(setLogistics, () => setLogistics(null))
-      .finally(() => {
-        if (!controller.signal.aborted) setLoaded(true)
-      })
-    return () => controller.abort()
-  }, [])
 
   const spreads = useMemo(
     () => (logistics ? [...logistics.arbitrage].sort((a, b) => b.opportunity - a.opportunity) : []),
@@ -58,6 +53,13 @@ export default function UsesArbitrage() {
             hasn't landed yet
           </p>
         )}
+        <FreshnessNote
+          plane="logistics"
+          loadedAt={logisticsPlane.loadedAt}
+          refreshing={logisticsPlane.refreshing}
+          refreshError={logisticsPlane.refreshError}
+          onRefresh={logisticsPlane.refresh}
+        />
       </section>
 
       {!loaded && (

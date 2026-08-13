@@ -1,15 +1,16 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import EcoRichText from "../components/EcoRichText"
 import ItemLink from "../components/ItemLink"
+import FreshnessNote from "../components/FreshnessNote"
 import Layout from "../components/Layout"
 import {
   fetchLogistics,
-  type LogisticsBoard,
   type PricedBoardRow,
   type ShelfOffer,
 } from "../lib/logisticsApi"
 import { formatCount, prettifyEcoName } from "../lib/format"
+import { useFreshData } from "../lib/useFreshData"
 
 const PICK_ROWS = 200
 const OFFER_ROWS = 12
@@ -81,21 +82,14 @@ function OfferTable({
 // price) — both from the same /preview/logistics.json plane /trade reads, which
 // can 404 on a reset-gated shelf, so the page degrades to a clear note.
 export default function UsesBuySell() {
-  const [logistics, setLogistics] = useState<LogisticsBoard | null>(null)
-  const [loaded, setLoaded] = useState(false)
+  // Refresh contract lives in freshness.ts, not here (eco-app#201).
+  const logisticsPlane = useFreshData("logistics", (signal) => fetchLogistics(signal).catch(() => null))
+  const logistics = logisticsPlane.data
+  const loaded = !logisticsPlane.loading
   const [params, setParams] = useSearchParams()
   const item = params.get("item") ?? ""
   const [filter, setFilter] = useState("")
 
-  useEffect(() => {
-    const controller = new AbortController()
-    fetchLogistics(controller.signal)
-      .then(setLogistics, () => setLogistics(null))
-      .finally(() => {
-        if (!controller.signal.aborted) setLoaded(true)
-      })
-    return () => controller.abort()
-  }, [])
 
   const pickItem = (id: string) => {
     setParams(id ? { item: id } : {}, { replace: false })
@@ -175,6 +169,13 @@ export default function UsesBuySell() {
             shelf data unavailable right now — check back once the store shelves have exported
           </p>
         )}
+        <FreshnessNote
+          plane="logistics"
+          loadedAt={logisticsPlane.loadedAt}
+          refreshing={logisticsPlane.refreshing}
+          refreshError={logisticsPlane.refreshError}
+          onRefresh={logisticsPlane.refresh}
+        />
       </section>
 
       {!loaded && (

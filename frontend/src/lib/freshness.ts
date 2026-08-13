@@ -103,6 +103,18 @@ export const REFRESH_CONTRACTS = {
     staleAfterMs: 15 * MINUTE,
     rationale: "Play sessions and reputation transfers accrue slowly.",
   },
+  logistics: {
+    mode: "manual",
+    staleAfterMs: 15 * MINUTE,
+    rationale:
+      "Live shelf offers change with play, but the arbitrage and supply-gap boards are read " +
+      "to make a decision, then acted on — a timer would move the answer mid-read.",
+  },
+  food: {
+    mode: "manual",
+    staleAfterMs: 15 * MINUTE,
+    rationale: "Food and nutrition signals follow crafting output, which accrues slowly.",
+  },
   stores: {
     mode: "manual",
     staleAfterMs: 15 * MINUTE,

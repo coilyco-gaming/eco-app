@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
 import { Link } from "react-router-dom"
 import ItemLink from "../components/ItemLink"
+import FreshnessNote from "../components/FreshnessNote"
 import Layout from "../components/Layout"
 import {
   fetchFoodReport,
-  type FoodReport,
   type FoodSignal,
   type FoodSignalKind,
 } from "../lib/foodApi"
 import { formatCount } from "../lib/format"
+import { useFreshData } from "../lib/useFreshData"
 
 const SIGNALS: Record<FoodSignalKind, { label: string; tone: string }> = {
   restock: { label: "restock", tone: "var(--meteor)" },
@@ -44,18 +45,11 @@ function FoodRow({ row }: { row: FoodSignal }) {
 }
 
 export default function UsesFood() {
-  const [report, setReport] = useState<FoodReport | null>(null)
-  const [loaded, setLoaded] = useState(false)
+  // Refresh contract lives in freshness.ts, not here (eco-app#201).
+  const foodPlane = useFreshData("food", (signal) => fetchFoodReport(signal).catch(() => null))
+  const report = foodPlane.data
+  const loaded = !foodPlane.loading
 
-  useEffect(() => {
-    const controller = new AbortController()
-    fetchFoodReport(controller.signal)
-      .then(setReport)
-      .finally(() => {
-        if (!controller.signal.aborted) setLoaded(true)
-      })
-    return () => controller.abort()
-  }, [])
 
   const rows = useMemo(() => report?.signals ?? [], [report])
   return (
@@ -66,6 +60,13 @@ export default function UsesFood() {
         <p className="hero-tagline">
           Confirmed cooking, baking, and chef recipe products only. Unknown item classes are excluded.
         </p>
+        <FreshnessNote
+          plane="food"
+          loadedAt={foodPlane.loadedAt}
+          refreshing={foodPlane.refreshing}
+          refreshError={foodPlane.refreshError}
+          onRefresh={foodPlane.refresh}
+        />
       </section>
       {!loaded && <p className="empty-note">Reading food shelves and production…</p>}
       {loaded && !report && <p className="empty-note" data-testid="food-unavailable">Food data is unavailable right now.</p>}

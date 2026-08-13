@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
 import { Link } from "react-router-dom"
 import EcoRichText from "../components/EcoRichText"
 import ItemLink from "../components/ItemLink"
+import FreshnessNote from "../components/FreshnessNote"
 import Layout from "../components/Layout"
-import { fetchLogistics, type GapReason, type LogisticsBoard, type SupplyGap } from "../lib/logisticsApi"
+import { fetchLogistics, type GapReason, type SupplyGap } from "../lib/logisticsApi"
 import { formatCount } from "../lib/format"
+import { useFreshData } from "../lib/useFreshData"
 
 const GAP_ROWS = 40
 
@@ -64,18 +66,11 @@ function DemandRow({ gap }: { gap: SupplyGap }) {
 // the sibling can 404 on a reset-gated shelf, so fetchLogistics resolves to null
 // and the page degrades to a clear note.
 export default function UsesDemand() {
-  const [logistics, setLogistics] = useState<LogisticsBoard | null>(null)
-  const [loaded, setLoaded] = useState(false)
+  // Refresh contract lives in freshness.ts, not here (eco-app#201).
+  const logisticsPlane = useFreshData("logistics", (signal) => fetchLogistics(signal).catch(() => null))
+  const logistics = logisticsPlane.data
+  const loaded = !logisticsPlane.loading
 
-  useEffect(() => {
-    const controller = new AbortController()
-    fetchLogistics(controller.signal)
-      .then(setLogistics, () => setLogistics(null))
-      .finally(() => {
-        if (!controller.signal.aborted) setLoaded(true)
-      })
-    return () => controller.abort()
-  }, [])
 
   const gaps = useMemo(
     () => (logistics ? [...logistics.supplyGaps].sort((a, b) => b.demandQty - a.demandQty) : []),
@@ -105,6 +100,13 @@ export default function UsesDemand() {
             landed yet
           </p>
         )}
+        <FreshnessNote
+          plane="logistics"
+          loadedAt={logisticsPlane.loadedAt}
+          refreshing={logisticsPlane.refreshing}
+          refreshError={logisticsPlane.refreshError}
+          onRefresh={logisticsPlane.refresh}
+        />
       </section>
 
       {!loaded && (
