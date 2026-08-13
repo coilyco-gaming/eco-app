@@ -245,6 +245,47 @@ async def _gather_user_sources(server_arg: str | None) -> dict[str, Any]:
     return sources
 
 
+# Server-side script extensions. A request for one of these is never a client
+# route on a Python service — it is a scanner looking for a PHP host.
+# `.json` is here because every real JSON endpoint is a registered route above
+# the catch-all, so anything reaching the fallback with that suffix is a probe
+# — and a real file in dist is served before this check runs either way.
+_NEVER_SPA_SUFFIXES: tuple[str, ...] = (
+    ".php",
+    ".asp",
+    ".aspx",
+    ".jsp",
+    ".cgi",
+    ".env",
+    ".json",
+)
+
+# The one dotted prefix that is a legitimate web path (ACME challenges,
+# security.txt). Everything else starting with a dot is a dotfile probe.
+_ALLOWED_DOT_PREFIX = ".well-known"
+
+
+def _is_never_a_spa_route(path: str) -> bool:
+    """True for paths the SPA router could never own.
+
+    The catch-all answered `/.env`, `/.git/config` and `/.aws/credentials`
+    with 200 and the SPA shell. Nothing sensitive was served — it is
+    index.html, not the file — but "200 for /.env" and "404 for /.env" are
+    very different postures to anyone reading the response, and it is why
+    obvious 404-bait showed `num4XX: 0` in the traces (eco-app#215).
+
+    Only shapes that cannot be a client route are rejected, so a real SPA
+    route is never caught by accident.
+    """
+    lowered = path.lower().strip("/")
+    if not lowered:
+        return False
+    segments = lowered.split("/")
+    if any(seg.startswith(".") for seg in segments) and not lowered.startswith(_ALLOWED_DOT_PREFIX):
+        return True
+    return lowered.endswith(_NEVER_SPA_SUFFIXES)
+
+
 def _sanitize_nonfinite(value: Any) -> Any:
     """Recursively replace non-finite floats (``inf``/``-inf``/``nan``) with
     ``None`` so Starlette's ``JSONResponse`` (which renders with
@@ -346,12 +387,20 @@ def create_app(route_registry: DualRouteRegistry | None = None) -> Starlette:
         files in dist (favicon, robots.txt) serve as themselves; anything
         else gets index.html and the router takes it from there. Without a
         frontend build there's no HTML surface, so return the build hint.
+
+        Paths that can never be a client route 404 instead of collecting the
+        SPA shell — see :func:`_is_never_a_spa_route`.
         """
-        if not frontend_index.is_file():
-            return PlainTextResponse(no_build_msg, status_code=404)
-        candidate = (frontend_dist / request.path_params["path"]).resolve()
+        path = request.path_params["path"]
+        # A real file in dist always wins, so manifest.json and friends keep
+        # serving regardless of the probe rule below.
+        candidate = (frontend_dist / path).resolve()
         if candidate.is_file() and candidate.is_relative_to(frontend_dist.resolve()):
             return FileResponse(candidate)
+        if _is_never_a_spa_route(path):
+            return PlainTextResponse("Not found", status_code=404)
+        if not frontend_index.is_file():
+            return PlainTextResponse(no_build_msg, status_code=404)
         return FileResponse(frontend_index)
 
     async def service_info(_: Request) -> JSONResponse:

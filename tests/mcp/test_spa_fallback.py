@@ -70,11 +70,19 @@ def test_service_discovery_json_lives_under_api() -> None:
 
 
 @pytest.mark.usefixtures("dist")
-def test_traversal_outside_dist_gets_the_shell() -> None:
+def test_traversal_outside_dist_is_refused() -> None:
+    """A traversal path is not a client route, so it 404s now (eco-app#215).
+
+    It used to answer 200 with the SPA shell. Contained either way — the file
+    itself was never served — but a dot-segment path can never be a SPA route,
+    and answering 200 kept obvious probes out of the 4XX metrics.
+    """
     client = TestClient(create_app())
     r = client.get("/%2e%2e/%2e%2e/etc/passwd")
-    assert r.status_code == 200
-    assert "spa-shell" in r.text
+    assert r.status_code == 404
+    # The part that always mattered: no file contents, either way.
+    assert "root:" not in r.text
+    assert "spa-shell" not in r.text
 
 
 @pytest.mark.usefixtures("dist")
