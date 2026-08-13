@@ -12,7 +12,42 @@ follow-up A, [#100](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/
 unblocking the recipes page (B), the cost engine (C), value-per-profession (D),
 and the pricing page (E).
 
-## Why ingest Eco Gnome rather than dump Eco
+## Primary source: Eco's own AutoGen C#
+
+Since [#242](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/242) the
+graph is parsed from **Eco's own generated C#**, and the Eco Gnome ingest below
+is the fallback. Eco's dedicated server ships `Mods/__core__/AutoGen`: one plain
+C# file per recipe, item, skill, and tag, emitted from `RecipeTemplate.tt`. It is
+the only vanilla source that carries every DTO field at once.
+
+- **No credential.** `steamcmd +login anonymous +app_update 739590`. SLG
+  publishes the dedicated server as an anonymous-login depot, so neither a Steam
+  account nor a game licence is involved. ~514 MB.
+- **Carries what Gnome cannot.** A crafting station and a real craft time for
+  every recipe, plus labor in calories, straight from the definitions the server
+  runs. Eco Gnome's export has no table tier and is pinned to whatever vanilla
+  snapshot upstream bundled.
+- **Versioned with the server.** The Steam build id rides in the index's `source`
+  string, so a stale graph is visible in any payload rather than silent.
+
+`src/eco_mcp_app/autogen.py` parses the tree; `scripts/autogen_refresh.py`
+(`ward exec autogen-refresh`) regenerates `data/eco_autogen_data.json.gz`. Parsing
+rather than compiling keeps .NET out of the pipeline entirely — the tree is
+machine-generated, so its grammar is a handful of stable shapes. Provenance and
+the SLG copyright are recorded in `data/eco_autogen_data.SOURCE.txt`.
+
+Two shapes carry recipes, and the second is the subtle one. A
+`class X : RecipeFamily` declares its own labor and craft time. A
+`class X : Recipe` is a **tag-product variant** — `SawHardwoodBoards` and
+`SawSoftwoodBoards` both satisfying `SawBoardsRecipe` — and declares only its
+ingredients, because Eco applies the owning family's cost when it is crafted.
+Left unresolved, 365 of 1,487 recipes would report a free, instant craft, so the
+parser pushes the family's labor, craft time, and skill onto its variants.
+
+From build 24618181 (Eco 0.13.0): **1,487 recipes / 44 skills / 112 tags / 1,323
+products / 68 stations**, zero warnings, every tag ingredient resolvable.
+
+## Fallback: why ingest Eco Gnome rather than dump Eco
 
 **Eco Gnome is itself a recipe exporter**, so eco-app ingests its output instead
 of building a bespoke Eco `RecipeManager` dumper

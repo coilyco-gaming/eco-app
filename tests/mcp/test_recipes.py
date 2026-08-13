@@ -7,13 +7,16 @@ Covers:
   - Baseline quantities come from `BaseValue`, ignoring the per-player modifier
     stack.
   - A no-skill recipe and a recipe with no products degrade gracefully.
-  - load_recipe_index parses the real vendored graph (1,453 recipes) and memoizes.
+  - load_recipe_index serves the vendored AutoGen graph (1,487 recipes, eco-app#242)
+    in preference to the Gnome seed, and memoizes it.
   - filter_index narrows by product / skill / station.
   - The dedicated `/preview/recipes.json` route serves the index and honors
     the filter params.
 """
 
 from __future__ import annotations
+
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -224,20 +227,64 @@ def _clear_recipe_cache() -> None:
     recipes_mod._clear_cache()
 
 
-def test_load_recipe_index_parses_the_vendored_graph() -> None:
+def test_load_recipe_index_serves_the_autogen_graph() -> None:
+    """The loader prefers the AutoGen-derived graph over the Gnome seed (#242).
+
+    Counts are asserted exactly so an Eco version bump shows up as a failing test
+    rather than as a silently changed answer — the vendored file is regenerated
+    by `ward exec autogen-refresh`, and this is what says the regeneration ran.
+    """
     index = load_recipe_index()
-    # The pinned vanilla seed: 1,453 recipes / 43 skills / 142 tags (eco-app#100).
-    assert index.counts()["recipes"] == 1453
-    assert index.counts()["skills"] == 43
-    assert index.counts()["tags"] == 142
+    # Parsed from Steam build 24618181 (Eco 0.13.0).
+    assert index.counts()["recipes"] == 1487
+    assert index.counts()["skills"] == 44
+    assert index.counts()["tags"] == 112
+    assert index.source.startswith("Eco dedicated server AutoGen")
     assert not index.warnings
     # Every recipe has a product and a station; the graph is well-formed.
     assert all(r.product.item for r in index.recipes)
     assert all(r.station for r in index.recipes)
+    # The fields the Gnome seed could not supply are populated for every recipe.
+    assert all(r.craft_minutes > 0 for r in index.recipes)
+    assert all(r.labor_cost > 0 for r in index.recipes)
+    # Tag ingredients are only useful if the tag is resolvable to its members.
+    assert all(
+        component.item in index.tags
+        for recipe in index.recipes
+        for component in recipe.ingredients
+        if component.is_tag
+    )
 
 
 def test_load_recipe_index_is_memoized() -> None:
     assert load_recipe_index() is load_recipe_index()
+
+
+def test_corrupt_autogen_bundle_falls_back_to_the_gnome_seed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A broken AutoGen file must degrade to the seed, and say that it did.
+
+    The whole point of keeping the Gnome graph is that an Eco layout change which
+    breaks the parse still serves recipes. Silently serving the older graph would
+    be worse than failing, so the fallback is announced in `warnings`.
+    """
+    corrupt = tmp_path / recipes_mod._AUTOGEN_DATA_FILENAME
+    corrupt.write_bytes(b"this is not gzip")
+    real_resolver = recipes_mod._bundled_data_path
+
+    def fake_resolver(filename: str = recipes_mod._DATA_FILENAME) -> Path | None:
+        if filename == recipes_mod._AUTOGEN_DATA_FILENAME:
+            return corrupt
+        return real_resolver(filename)
+
+    monkeypatch.setattr(recipes_mod, "_bundled_data_path", fake_resolver)
+    recipes_mod._clear_cache()
+
+    index = load_recipe_index()
+    assert index.counts()["recipes"] == 1453
+    assert index.source.startswith("eco-gnome-website")
+    assert any("fell back to the Eco Gnome seed" in w for w in index.warnings)
 
 
 def test_preview_recipes_route_serves_and_filters() -> None:
@@ -246,8 +293,8 @@ def test_preview_recipes_route_serves_and_filters() -> None:
     r = client.get("/preview/recipes.json")
     assert r.status_code == 200
     payload = r.json()
-    assert payload["counts"]["recipes"] == 1453
-    assert payload["source"].startswith("eco-gnome-website")
+    assert payload["counts"]["recipes"] == 1487
+    assert payload["source"].startswith("Eco dedicated server AutoGen")
 
     # A skill filter narrows the recipes but keeps the lookup maps.
     some_skill = payload["recipes"][0]["skill"]
