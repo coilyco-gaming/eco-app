@@ -147,7 +147,12 @@ def test_build_map_payload_shape() -> None:
     assert len(payload["polygons"]) == 3
     # GIF bytes round-trip into a data URI.
     assert payload["gifDataUri"].startswith("data:image/gif;base64,")
-    assert set(payload["owner_colors"]) == {"alice", "gavin"}
+    # One styling representation, keyed by owner (#264).
+    assert set(payload["ownerStyles"]) == {"alice", "gavin"}
+    assert set(payload["ownerStyles"]["alice"]) == {"fill", "stroke"}
+    # ...and it is not repeated on every polygon.
+    assert "fill" not in payload["polygons"][0]
+    assert "stroke" not in payload["polygons"][0]
 
 
 def test_build_map_payload_handles_no_deeds() -> None:
@@ -426,3 +431,72 @@ def test_the_payload_counts_deeds_and_polygons_separately() -> None:
     assert payload["polygonCount"] > payload["deedCount"]
     assert payload["seamCopyCount"] == payload["polygonCount"] - 1
     assert "seamCopy: true" in payload["seamNote"]
+
+
+# --- deed summaries + opt-in geometry (#264) --------------------------------
+
+
+def test_deed_summaries_replace_coordinates_with_something_readable() -> None:
+    """~150 coordinate pairs per deed mean nothing to a text consumer (#264)."""
+    payload = build_map_payload(
+        {
+            "dimension": _fake_dimension(),
+            "property": _fake_property(),
+            "preview_gif": _TINY_GIF,
+            "base_url": None,
+        }
+    )
+    deeds = payload["deeds"]
+    assert {d["deed"] for d in deeds} == {"Alice's Homestead", "Gavin's Edge Plot"}
+
+    alice = next(d for d in deeds if d["owner"] == "alice")
+    # Centroid and bbox are in world blocks, inside the world extent.
+    assert 0 <= alice["centroid"]["x"] <= 720
+    assert 0 <= alice["centroid"]["z"] <= 720
+    assert alice["bbox"]["minX"] <= alice["centroid"]["x"] <= alice["bbox"]["maxX"]
+    assert alice["areaBlocks"] > 0
+    assert alice["seamCrossing"] is False
+    # Sorted largest-first so a truncated read still sees the notable deeds.
+    assert [d["areaBlocks"] for d in deeds] == sorted(
+        (d["areaBlocks"] for d in deeds), reverse=True
+    )
+
+
+def test_a_seam_crossing_deed_is_measured_unwrapped() -> None:
+    """Measured naively, a wrapping deed's bbox spans the whole world."""
+    payload = build_map_payload(
+        {
+            "dimension": _fake_dimension(),
+            "property": _fake_property(),
+            "preview_gif": _TINY_GIF,
+            "base_url": None,
+        }
+    )
+    gavin = next(d for d in payload["deeds"] if d["owner"] == "gavin")
+    assert gavin["seamCrossing"] is True
+    # The unwrapped span is the deed's real width, not ~720.
+    assert (gavin["bbox"]["maxX"] - gavin["bbox"]["minX"]) < 700
+
+
+def test_geometry_is_opt_in() -> None:
+    """The render payload is 30 KB of coordinates a text consumer cannot use."""
+    bundle = {
+        "dimension": _fake_dimension(),
+        "property": _fake_property(),
+        "preview_gif": _TINY_GIF,
+        "base_url": None,
+    }
+    without = build_map_payload(bundle, include_geometry=False)
+    assert without["geometryIncluded"] is False
+    assert "polygons" not in without
+    assert "ownerStyles" not in without
+    # The summary survives, which is the whole point.
+    assert without["deeds"]
+    assert without["deedCount"] == 2
+    assert without["ownerCount"] == 2
+
+    with_geom = build_map_payload(bundle, include_geometry=True)
+    assert with_geom["geometryIncluded"] is True
+    assert with_geom["polygons"]
+    # Dropping the geometry is a large fraction of the payload.
+    assert len(json.dumps(without)) < len(json.dumps(with_geom))

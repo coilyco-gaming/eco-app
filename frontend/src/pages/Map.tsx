@@ -500,8 +500,8 @@ function WorldMap({
             <polygon
               key={`${p.deed}-${i}`}
               points={p.points}
-              fill={p.fill}
-              stroke={p.stroke}
+              fill={map.ownerStyles[p.owner]?.fill}
+              stroke={map.ownerStyles[p.owner]?.stroke}
               strokeWidth={1.5}
             >
               <title>
@@ -521,7 +521,10 @@ function WorldMap({
             <li key={o}>
               <span
                 className="eco-swatch"
-                style={{ background: map.owner_colors[o], borderColor: map.owner_strokes[o] }}
+                style={{
+                  background: map.ownerStyles[o]?.fill,
+                  borderColor: map.ownerStyles[o]?.stroke,
+                }}
               />
               <span className="map-owner-name">
                 <EcoRichText text={o} />

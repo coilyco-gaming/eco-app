@@ -736,6 +736,20 @@ def _format_map_markdown(payload: dict[str, Any]) -> str:
         shown = ", ".join(owners[:10])
         more = f" (+{len(owners) - 10} more)" if len(owners) > 10 else ""
         lines.append(f"- Owners: {shown}{more}")
+    # The largest deeds, with where they actually are. This is the part of the
+    # map a text consumer can reason about; the SVG coordinates never were.
+    deeds = payload.get("deeds") or []
+    if deeds:
+        lines.append("")
+        lines.append("**Largest deeds:**")
+        for deed in deeds[:10]:
+            centroid = deed["centroid"]
+            lines.append(
+                f"- {deed['deed']} ({deed['owner']}) — "
+                f"~{deed['areaBlocks']:,} blocks at ({centroid['x']:.0f}, {centroid['z']:.0f})"
+            )
+        if len(deeds) > 10:
+            lines.append(f"- _+{len(deeds) - 10} more deeds_")
     if payload.get("sourceUrl"):
         lines.append(f"- Source: `{payload['sourceUrl']}`")
     return "\n".join(lines)
@@ -2412,7 +2426,10 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
                 bundle = await fetch_map_bundle(server_arg)
             except httpx.HTTPError as e:
                 return _unreachable_result("Eco server", e)
-            payload = build_map_payload(bundle)
+            payload = build_map_payload(
+                bundle,
+                include_geometry=_is_truthy_arg((arguments or {}).get("include_geometry")),
+            )
             json_payload = {
                 k: v for k, v in payload.items() if k not in ("gifDataUri", "pollutionDataUri")
             }

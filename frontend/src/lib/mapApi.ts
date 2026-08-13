@@ -10,8 +10,6 @@
 export interface MapPolygon {
   owner: string
   deed: string
-  fill: string
-  stroke: string
   // SVG `points` attribute: space-separated "x,y" pairs in renderSize space.
   points: string
   // True for a deed translated across the world seam so the viewBox can clip
@@ -29,6 +27,16 @@ export interface MapBiomeLayer {
   dataUri: string
 }
 
+export interface MapDeed {
+  deed: string
+  owner: string
+  centroid: { x: number; z: number }
+  bbox: { minX: number; minZ: number; maxX: number; maxZ: number }
+  areaBlocks: number
+  vertexCount: number
+  seamCrossing: boolean
+}
+
 export interface MapPayload {
   view: "eco_map"
   sourceUrl: string | null
@@ -38,15 +46,22 @@ export interface MapPayload {
   gifDataUri: string
   pollutionDataUri: string | null
   biomeLayers: MapBiomeLayer[]
+  // Present when the payload was built with geometry (the SPA route always is;
+  // the MCP tool makes it opt-in via include_geometry, eco-app#264).
   polygons: MapPolygon[]
+  geometryIncluded: boolean
+  // One styling representation, keyed by owner. Polygons reference it by
+  // `owner` rather than repeating fill/stroke on every entry.
+  ownerStyles: Record<string, { fill: string; stroke: string }>
   deedCount: number
   polygonCount: number
+  // Per-deed centroid / bounding box / approximate area, in world blocks.
+  deeds: MapDeed[]
+  deedsNote: string
   seamCopyCount: number
   seamNote: string
   ownerCount: number
   owners: string[]
-  owner_colors: Record<string, string>
-  owner_strokes: Record<string, string>
 }
 
 export async function fetchMap(signal?: AbortSignal): Promise<MapPayload> {

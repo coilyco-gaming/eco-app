@@ -283,8 +283,8 @@ def build_polygons(
                 {
                     "owner": owner,
                     "deed": deed,
-                    "fill": _owner_color(owner),
-                    "stroke": _owner_stroke(owner),
+                    # Fill and stroke live once in `ownerStyles`, keyed by
+                    # owner, rather than repeated on every polygon (#264).
                     "points": pts_attr,
                     # Index 0 is the deed at its true position; anything after
                     # it is the same deed translated across the world seam so
@@ -298,18 +298,91 @@ def build_polygons(
     return out
 
 
+def _polygon_area(pts: list[tuple[float, float]]) -> float:
+    """Shoelace area of a polygon in world units (blocks²)."""
+    total = 0.0
+    for i, (x1, z1) in enumerate(pts):
+        x2, z2 = pts[(i + 1) % len(pts)]
+        total += x1 * z2 - x2 * z1
+    return abs(total) / 2.0
+
+
+def build_deed_summaries(
+    property_data: dict[str, list[dict[str, Any]]],
+    dimension: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Per-deed centroid, bounding box and approximate area, in world coords.
+
+    This is what a text consumer asked "who owns the land near Phantom
+    Springs" can actually reason about. The SVG `points` strings it replaces
+    ran to ~150 coordinate pairs per deed and meant nothing to a language
+    model (#264).
+
+    Coordinates are world blocks, not the scaled render coordinates, because a
+    render-space number is only meaningful next to the SVG it was scaled for.
+    """
+    world_x = float(dimension.get("x") or 720)
+    world_z = float(dimension.get("z") or 720)
+    summaries: list[dict[str, Any]] = []
+    for key, verts in (property_data or {}).items():
+        if not verts:
+            continue
+        deed, owner = _parse_deed_key(key)
+        pts = [(float(v["x"]), float(v["y"])) for v in verts if "x" in v and "y" in v]
+        if len(pts) < 3:
+            continue
+        crosses_x, crosses_z = _seam_crosses(pts, world_x, world_z)
+        # Measure the unwrapped shape: a deed straddling the seam has a
+        # bounding box spanning the whole world if measured naively.
+        measured = _order_by_polar_angle(_unwrap_for_seam(pts, world_x, world_z))
+        xs = [x for x, _ in measured]
+        zs = [z for _, z in measured]
+        summaries.append(
+            {
+                "deed": deed,
+                "owner": owner,
+                # Wrapped back into world range so the point names a real place.
+                "centroid": {
+                    "x": round((sum(xs) / len(xs)) % world_x, 1),
+                    "z": round((sum(zs) / len(zs)) % world_z, 1),
+                },
+                "bbox": {
+                    "minX": round(min(xs), 1),
+                    "minZ": round(min(zs), 1),
+                    "maxX": round(max(xs), 1),
+                    "maxZ": round(max(zs), 1),
+                },
+                "areaBlocks": round(_polygon_area(measured)),
+                "vertexCount": len(pts),
+                "seamCrossing": bool(crosses_x or crosses_z),
+            }
+        )
+    summaries.sort(key=lambda d: (-d["areaBlocks"], d["deed"]))
+    return summaries
+
+
 def gif_to_data_uri(gif_bytes: bytes) -> str:
     return f"data:image/gif;base64,{base64.b64encode(gif_bytes).decode()}"
 
 
-def build_map_payload(bundle: dict[str, Any]) -> dict[str, Any]:
-    """Shape the payload the map partial consumes."""
+def build_map_payload(
+    bundle: dict[str, Any],
+    *,
+    include_geometry: bool = True,
+) -> dict[str, Any]:
+    """Shape the payload the map partial consumes.
+
+    ``include_geometry`` controls the SVG rendering half — the per-polygon
+    `points` strings and the per-owner styling maps. The browser overlay needs
+    them; a text consumer cannot interpret a coordinate list, and they ran to
+    ~30 KB against ~2 KB of actual information (#264). `deeds` carries the
+    centroid / bounding box / area summary either way.
+    """
     dim = bundle.get("dimension") or {}
     prop = bundle.get("property") or {}
     polygons = build_polygons(prop, dim)
+    deeds = build_deed_summaries(prop, dim)
     owners = sorted({p["owner"] for p in polygons})
-    owner_colors = {o: _owner_color(o) for o in owners}
-    owner_strokes = {o: _owner_stroke(o) for o in owners}
     pollution_bytes = bundle.get("pollution_gif")
     pollution_data_uri = gif_to_data_uri(cast(bytes, pollution_bytes)) if pollution_bytes else None
     # Biome rasters (SPA hover-highlight) — one entry per layer that came back,
@@ -325,7 +398,7 @@ def build_map_payload(bundle: dict[str, Any]) -> dict[str, Any]:
         for layer in BIOME_LAYERS
         if layer in biome_rasters
     ]
-    return {
+    payload: dict[str, Any] = {
         "view": "eco_map",
         "sourceUrl": bundle.get("base_url"),
         "worldDim": {"x": dim.get("x"), "y": dim.get("y"), "z": dim.get("z")},
@@ -333,11 +406,18 @@ def build_map_payload(bundle: dict[str, Any]) -> dict[str, Any]:
         "gifDataUri": gif_to_data_uri(cast(bytes, bundle.get("preview_gif") or b"")),
         "pollutionDataUri": pollution_data_uri,
         "biomeLayers": biome_layers,
-        "polygons": polygons,
         # Distinct deeds, not polygons: a seam-crossing deed emits one polygon
         # per side of the wrap (#229).
         "deedCount": len({p["deed"] for p in polygons}),
         "polygonCount": len(polygons),
+        # Centroid / bbox / area per deed, in world blocks. Present whether or
+        # not the render geometry is.
+        "deeds": deeds,
+        "deedsNote": (
+            "Centroid, bounding box and approximate area are in world blocks. Area is "
+            "the shoelace area of the deed's vertex hull, so it approximates the claimed "
+            "footprint rather than counting plots."
+        ),
         "seamCopyCount": sum(1 for p in polygons if p.get("seamCopy")),
         "seamNote": (
             "A deed that crosses the world seam is emitted once at its true position and "
@@ -347,6 +427,22 @@ def build_map_payload(bundle: dict[str, Any]) -> dict[str, Any]:
         ),
         "ownerCount": len(owners),
         "owners": owners,
-        "owner_colors": owner_colors,
-        "owner_strokes": owner_strokes,
     }
+    if include_geometry:
+        payload["polygons"] = polygons
+        # One styling representation, keyed by owner. The fill and stroke used
+        # to be repeated on every polygon *and* in two parallel per-owner maps
+        # — three copies of the same data, none of which a text consumer can
+        # use (#264). Polygons reference it by `owner`.
+        payload["ownerStyles"] = {
+            o: {"fill": _owner_color(o), "stroke": _owner_stroke(o)} for o in owners
+        }
+        payload["geometryIncluded"] = True
+    else:
+        payload["geometryIncluded"] = False
+        payload["geometryNote"] = (
+            "SVG polygon geometry and the per-owner colour map are omitted. Pass "
+            "include_geometry=true for the render payload; `deeds` above carries the "
+            "centroid, bounding box and area for each deed."
+        )
+    return payload
