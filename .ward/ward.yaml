@@ -106,11 +106,6 @@ agent:
   workflow: merge-remote-main
 
 catalog:
-  kind: Component
-  type: service
-  system: gaming
-  owner: kai
-  lifecycle: production
   description: "The Eco application monorepo: MCP/web service (eco_mcp_app), jobs tracker mounted at /jobs (eco_spec_tracker), replay viewer (eco_replay), and the in-game C# plugins under mods/. One fused image; deploy surface lives in coilyco-bridge/deploy."
   dependsOn:
     - github.com/StrangeLoopGames/Eco
