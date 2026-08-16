@@ -1943,6 +1943,20 @@ def _eco_icon() -> Icon:
     )
 
 
+# What this server is for, sent on the MCP handshake so a client can tell which
+# surface answers a question. Kept to what distinguishes this server from the
+# others on a roster, since it is carried in the prompt on every turn.
+SERVER_INSTRUCTIONS = (
+    "Live and historical data for the Sirens Eco game server, and reference "
+    "data for Eco itself. Reach for this to answer what is happening in the "
+    "world right now or what something costs: players and activity, stores "
+    "and market prices, trades, crafting recipes and their inputs, skills and "
+    "specialties, laws and elections, climate and pollution, species and "
+    "ecoregions. It reads the game; it never changes it. Prices and stock "
+    "move, so prefer a fresh call over an earlier answer in the same "
+    "conversation."
+)
+
 def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
     """Construct the MCP Server with all handlers registered.
 
@@ -1955,6 +1969,7 @@ def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
     dual_routes = route_registry if route_registry is not None else DualRouteRegistry()
     server: Server = Server(
         "eco-mcp-app",
+        instructions=SERVER_INSTRUCTIONS,
         website_url="https://eco-app.coilysiren.me",
         icons=[_eco_icon()],
     )
@@ -2852,6 +2867,7 @@ def build_initialization_options(server: Server) -> InitializationOptions:
             experimental_capabilities={},
         ),
         # Stdio parity with the Server-object values the HTTP transport reads.
+        instructions=SERVER_INSTRUCTIONS,
         website_url="https://eco-app.coilysiren.me",
         icons=[_eco_icon()],
     )
