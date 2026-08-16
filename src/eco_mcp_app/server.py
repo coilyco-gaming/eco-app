@@ -1957,6 +1957,7 @@ SERVER_INSTRUCTIONS = (
     "conversation."
 )
 
+
 def build_server(route_registry: DualRouteRegistry | None = None) -> Server:
     """Construct the MCP Server with all handlers registered.
 
