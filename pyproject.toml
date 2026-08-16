@@ -103,6 +103,7 @@ venv = ".venv"
 # Per-repo opt-outs for agentic-os pre-commit hooks (agentic_os/config.py).
 
 [tool.agentic-os.documentation-layout]
+band = "small"
 # investigation/ is a preserved chronological post-mortem (see AGENTS.md).
 # docs/ holds long-form per-component FEATURES docs migrated from the four
 # source repos, predating the size caps. mods/ subtrees carry their own
