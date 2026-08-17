@@ -1,52 +1,37 @@
-# Use-case hub + demand-side pages
+# The uses hub
 
-The practical-usefulness layer: a `/uses` hub plus task-framed links that turn
-the live economy and recipe graph into a decision. The five dedicated use-case
-pages came from follow-up **F** in the design from
-[#98](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/98), filed as
-[#99](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/99). The hub
-also routes recipe and profession-value decisions to the completed `/recipes`
-and `/jobs` surfaces.
-
-## The hub
-
-`/uses` (`frontend/src/pages/Uses.tsx`) is a single directory page. It is the
-**only** homepage card the whole use-case family gets (`dir-uses` on
-`Home.tsx`) - the five pages below are **URL-only**, reached from the hub,
-mirroring how `/item` is only reached from `/items`.
-
-The five demand-side pages show as live, linked cards. The hub also links the
-recipe graph at `/recipes` for "what is X made from / used in" and the
-profession-value board on `/jobs`. Those recipe-dependent capabilities shipped
-through [#100](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/100)
-to [#103](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/103), so
-the hub no longer presents them as future work. The priced use case ships as
-the live `/uses/price` page.
+Task-shaped entry points into the trade data, one page per question a player
+actually asks.
 
 ## The demand-side pages
 
-- **`/uses/demand` - "What's in demand right now"** (`UsesDemand.tsx`) - ranks the logistics **supply gaps** (`LogisticsBoard.supplyGaps`) by `demandQty`. Each row names the item, a `reason` severity tag (`no_supply` / `thin_supply` / `overpriced`) rendered glyph+label+colour (never colour alone), the quantity wanted and buyer count, and a **who-needs-it** line naming each buyer, how much they still want, and at what price.
-- **`/uses/buy-sell` - "Where to buy X cheapest / sell X highest"** (`UsesBuySell.tsx`) - picks an item via `?item=<id>` (deep-linkable) from a filter list of everything on the shelves. For the picked item it shows the **cheapest sell** offers (from the logistics `cheapest` board, sorted low-to-high) and the **best buy** offers (from the `resale` board, sorted high-to-low), each row naming the store, owner, price, quantity, and live/history source.
-- **`/uses/arbitrage` - "Buy low here, sell high there"** (`UsesArbitrage.tsx`) - renders the cross-store **arbitrage spreads** (`LogisticsBoard.arbitrage`) ranked by `opportunity`: buy-from store, sell-to store, spread and spread percent, movable volume, and the opportunity score.
-- **`/uses/price` - "How should I price X?"** (`UsesPrice.tsx`) - picks an item and currency via `?item=<id>&currency=<name>`. The current-cycle interpretation from `/preview/price-history.json` adds an observed unit-price histogram, percentiles, freshness and shape states, and a daily price/range/volume timeline overlaid with the first observed gains of every specialty required by known recipe variants. Older cycles are excluded and version-labeled rather than averaged across incompatible progression rules. The existing **fair-price band**, **current shelf comparison**, **recipe cost roll-up**, **suggested ask**, and five FRED-pegged commodity benchmarks remain independent panels. A Jobs opportunity deep link also carries observed demand, supply reason, confidence, and estimated margin when recipe inputs are priced. The page labels that context as a discovery signal for coordination, not a production command, and preserves it while the currency changes. Full contract: [docs/price-history.md](price-history.md), tracking [#178](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/178), [#198](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/198), and [#199](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/199).
-- **`/uses/shop-check` - "Is my shop priced right?"** (`UsesShopCheck.tsx`) - picks a store via `?store=<key>` and, for each item it lists, compares the store's own `avgUnitPrice` (from `/preview/stores.json`) against the **market median** (from `/preview/market.json`), flagging items priced past ±15% over or under market with a glyph+label+colour verdict. This is the one page that **joins two planes**, so it degrades to a clear note when either is unavailable.
+- **`/uses/demand`**, "what's in demand right now" (`UsesDemand.tsx`) - ranks
+  the logistics supply gaps from `LogisticsBoard`.
+- **`/uses/buy-sell`**, "where to buy X cheapest, sell X highest"
+  (`UsesBuySell.tsx`) - picks an item through `?item=<id>`.
+- **`/uses/arbitrage`**, "buy low here, sell high there"
+  (`UsesArbitrage.tsx`) - renders cross-store spreads.
+- **`/uses/price`**, "how should I price X?" (`UsesPrice.tsx`) - picks an item
+  and currency through `?item=<id>&currency=<name>`.
+- **`/uses/shop-check`**, "is my shop priced right?" (`UsesShopCheck.tsx`) -
+  picks a store through `?store=<key>` and compares each item it carries.
 
-## Conventions followed
+## Conventions
 
-- **Degrade independently.** Every panel reads its plane through `fetchJsonOrNull` (via the typed `lib/*Api.ts` clients), so a sibling that 404s on a reset-gated shelf resolves to null and its panel degrades in place rather than blanking the page. The price-history join reuses the trade, recipe, and progression sources through one dedicated contract. The other pages reuse the `/trade` logistics, stores, and market clients wholesale.
-- **One heading tier + one intro line per page**, matching the [#97](https://forgejo.coilysiren.me/coilyco-gaming/eco-app/issues/97) cleanup direction - no stacked intros. Sub-pages carry a back-to-hub link and a single job-stating hero title.
-- **Deep-linkable** via `?item=` / `?store=` so QA can share a link to an exact view. `formatCount` / `prettifyEcoName` from `lib/format.ts` do the number and item-name rendering.
-- **Tests** - one vitest component test per page (`*.test.tsx`), each covering the happy path (ranking / joining / deep-link) and the degraded-when-null branch, mirroring `pages/Trade.test.tsx` and `pages/Items.test.tsx`.
+- **Degrade independently.** Every panel reads its plane through
+  `fetchJsonOrNull` and the typed `lib/*Api.ts` clients, so one dead plane
+  leaves its siblings rendering.
+- **One heading tier and one intro line per page**, matching #97.
+- **Deep-linkable** through `?item=` and `?store=`, so a link names an exact
+  view. `formatCount` and `prettifyEcoName` come from `lib/`.
+- **Tests** - one vitest component test per page, each covering the happy path
+  and the degraded path.
 
 ## Product boundary
 
-The five dedicated `/uses/*` pages stay demand-side focused. The hub reuses the
-existing `/recipes` and `/jobs` surfaces for recipe exploration and
-profession-value decisions instead of duplicating those capabilities under new
-routes.
+These pages answer questions. They do not hold state, do not write, and do not
+introduce a data plane of their own: every number on them comes from a plane
+another surface already owns, which is what keeps the hub cheap to extend.
 
-## See also
-
-- [docs/FEATURES.md](FEATURES.md) - inventory entry for this hub.
-- [docs/trades.md](trades.md) - the trades ledger these boards fold from.
-- The `/trade` surface (`frontend/src/pages/Trade.tsx`) - the full market page the demand-side pages carve focused views out of.
+See also: [trades.md](trades.md), [price-history.md](price-history.md),
+[cost.md](cost.md).

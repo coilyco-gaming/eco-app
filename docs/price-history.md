@@ -1,66 +1,32 @@
-# Current-cycle item price history
+# Price history
 
-The item-pricing use case at `/uses/price?item=<id>&currency=<name>` joins three
-existing sources for one current Eco cycle:
-
-* the normalized trade ledger supplies observed unit prices, day buckets, and volume
-* the bundled recipe graph supplies every known recipe variant and its required specialty
-* the progression action export supplies the first server-wide observation of each required specialty gain
-
-The join is exposed at
-`/preview/price-history.json?item=<id>&currency=<name>`. Item and currency are
-both required. Prices from separate currencies are never blended.
+Per-item price movement over a cycle, and how it is evidenced.
 
 ## Distribution evidence
 
-The response names its window as `Current cycle` and includes sample count,
-freshness, median, range, p10/p25/p50/p75/p90, equal-width histogram buckets,
-daily median/min/max/volume rows, and the newest observed cycle day. The SPA
-draws the histogram directly. It never fits or implies a normal curve.
-
-Quality stays explicit:
-
-* `no_data` means no priced observations match the selected item and currency
-* `thin` means fewer than five observations
-* `stale` means the selected item's latest trade trails newer cycle evidence by at least three days
-* `multimodal` means two material occupied histogram groups are separated by an empty range
-
-An isolated outlier stays visible in the histogram and percentile evidence but
-does not become a second mode unless it carries a material share of samples.
+A price series is only meaningful with the spread behind it, so each point
+carries the distribution rather than a bare mean. A single trade and fifty
+trades at the same mean are different facts, and the surface says which.
 
 ## Specialty markers
 
-Every recipe returned by the recipe graph's product lookup is included. Variant
-links are followed before required specialties are deduplicated. Progression
-folding records each specialty's first gain from the uncapped event set, before
-per-citizen presentation limits apply. The SPA overlays observed unlock days on
-the daily price timeline and lists the recipe variants behind every marker.
-
-The degraded states do not overclaim:
-
-* `missing_recipes` means the graph has no producing recipe for the item
-* `missing_progression` means the `GainSpecialty` export was unavailable
-* `unobserved_unlocks` means the export was available but a required specialty had no observed gain
-
-An unobserved gain does not prove that a specialty was never available.
+Progression events are overlaid on the series, so a price move that follows a
+citizen gaining the relevant specialty is visible as such rather than being
+left for the reader to correlate by eye.
 
 ## Cycle boundary
 
-The contract sets `historicalCyclesIncluded` to `false` and labels its
-progression semantics `current-cycle-v1`. Older cycles can have different star
-or progression rules, so the service does not average them together. A future
-cross-cycle view must version each ruleset explicitly before comparison.
+Prices do not carry across a cycle boundary. A new cycle is a new world with a
+new economy, so the series restarts rather than continuing a line that would
+imply continuity that does not exist.
 
 ## Verification
 
-Backend tests cover a complete multi-variant join, representative, thin, empty,
-stale, multimodal, and outlier-heavy histories plus every recipe/progression
-degraded state. Frontend tests cover currency selection, distribution evidence,
-marker overlays, current-cycle labeling, and degraded presentations.
+The series is checked against the trades ledger for the same item and window.
+They are derived from the same detailed rows, so a divergence is a parser bug
+rather than a modelling choice.
 
 ## See also
 
-* [docs/uses.md](uses.md) - the item-pricing workflow
-* [docs/recipes.md](recipes.md) - recipe graph provenance and DTO
-* [docs/progression.md](progression.md) - progression action ingest
-* [docs/trades.md](trades.md) - normalized trade ledger
+- [trades.md](trades.md) - the ledger this derives from.
+- [cost.md](cost.md) - the cost model prices are compared against.
