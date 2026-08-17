@@ -14,9 +14,9 @@ The mod is the source of truth, the Python API is a thin re-server, and the SPA 
 The replay API rides the fused service, with no separate process:
 
 ```sh
-ward exec build-mod-replay
-ward exec http
-ward exec frontend-dev
+just build-mod-replay
+just http
+just frontend-dev
 ```
 
 Open `/replay` in the frontend. Set `ECO_REPLAY_FILE` to the recorder's JSONL path or set `ECO_REPLAY_UPSTREAM_URL` to the mod's `/api/v1/events` endpoint. With neither value set, the API returns canned mock events and the SPA shows a mock-data banner.
@@ -58,9 +58,9 @@ The Python API re-serves:
 
 ## Validation
 
-* `ward exec test` covers direct-file filtering, limits, counts, malformed rows, and partial final lines.
-* `ward exec build-mod-replay` verifies the mod compiles without SQLite packages or native assets.
-* `ward exec test-mod-replay` covers append, filters, limits, retention, restart id recovery, malformed rows, partial rows, and bounded-queue behavior.
+* `just test` covers direct-file filtering, limits, counts, malformed rows, and partial final lines.
+* `just build-mod-replay` verifies the mod compiles without SQLite packages or native assets.
+* `just test-mod-replay` covers append, filters, limits, retention, restart id recovery, malformed rows, partial rows, and bounded-queue behavior.
 
 ## See also
 

@@ -362,13 +362,13 @@ def create_app(route_registry: DualRouteRegistry | None = None) -> Starlette:
     # the root and every client route. A checkout without a frontend build
     # has no HTML surface at all (the dev `/preview` cards were removed) — it
     # serves the JSON/MCP APIs only and points the visitor at the build verb.
-    # Path is cwd-relative because the image WORKDIR and local `ward exec http`
+    # Path is cwd-relative because the image WORKDIR and local `just http`
     # both run from the repo root; FRONTEND_DIST overrides for anything else.
     frontend_dist = Path(os.getenv("FRONTEND_DIST", "frontend/dist"))
     frontend_index = frontend_dist / "index.html"
 
     no_build_msg = (
-        "Frontend not built. Run `ward exec frontend-build` (or `ward exec "
+        "Frontend not built. Run `just frontend-build` (or `just "
         "frontend-dev` for hot reload). JSON APIs are live at /preview.json, "
         "/preview/<tool>.json, /api/service, and /jobs/api/v1/*."
     )

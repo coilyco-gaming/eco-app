@@ -34,14 +34,14 @@ Three pieces: a C# Eco mod exposing a read-only HTTP endpoint of every player's 
 - **k3s + ExternalSecrets** - Pulls `UPSTREAM_API_KEY` from AWS SSM via ClusterSecretStore. OTLP exports over the private network to SigNoz.
 - **Image publish** - Builds + pushes to `ghcr.io/coilysiren/eco-spec-tracker/...`, git-SHA tagged.
 - **Tailscale + Traefik + cert-manager** - Inherited from `backend` template.
-- **Mod package path** - `ward exec package-mods` builds deterministic install-ready ZIPs with the `Mods/EcoJobsTracker/` prefix. `ward exec publish-mod-packages` publishes the immutable package.
+- **Mod package path** - `just package-mods` builds deterministic install-ready ZIPs with the `Mods/EcoJobsTracker/` prefix. `just publish-mod-packages` publishes the immutable package.
 
 ## Dev-loop tooling
 
-- **`ward exec sync` / `ward exec http`** - `uv sync --group dev`, then uvicorn with reload on `:4000`.
-- **`ward exec run-shell-jobs`** - C# shell harness on `:5100`.
-- **`ward exec build-mod-jobs`** - Production mod DLL.
-- **`ward exec build-docker`** - Local application image build. Deployment stays in `coilyco-bridge/deploy`.
+- **`just sync` / `just http`** - `uv sync --group dev`, then uvicorn with reload on `:4000`.
+- **`just run-shell-jobs`** - C# shell harness on `:5100`.
+- **`just build-mod-jobs`** - Production mod DLL.
+- **`just build-docker`** - Local application image build. Deployment stays in `coilyco-bridge/deploy`.
 - **Pre-commit** - ruff + mypy on Python, `dotnet format` on C#.
 - **Smoke suite** - `tests/test_smoke.py`: every page, every JSON, parser fixture.
 
@@ -53,6 +53,7 @@ Public name is `eco-jobs-tracker`. Internals still use `eco-spec-tracker` in pac
 
 - [README.md](../../README.md) - human-facing intro.
 - [AGENTS.md](../../AGENTS.md) - agent-facing operating rules.
-- [.ward/ward.yaml](../../.ward/ward.yaml) - allowlisted commands.
+- [justfile](../../justfile) - dev verbs.
+- [.ward/ward.yaml](../../.ward/ward.yaml) - catalog metadata only.
 
 Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilyco-flight-deck/agentic-os/issues/59).

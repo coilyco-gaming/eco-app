@@ -83,7 +83,7 @@ this mod is not affiliated with Strange Loop Games.
 Build:
 
 ```sh
-ward exec package-mods
+just package-mods
 ```
 
 Zip layout (mod.io extracts straight into the server root):

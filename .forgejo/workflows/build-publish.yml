@@ -24,7 +24,7 @@ jobs:
   test:
     runs-on: docker
     # CI parity: run the Python validation gate inside the :release aos dev-base
-    # image, through the same `ward exec` verbs a headless agent runs, so this
+    # image, through the same `just` verbs a headless agent runs, so this
     # gate IS the gate dispatched `warded` runs must pass. CI (`runs-on: docker`
     # + `astral-sh/setup-uv`) stayed green while three dispatched runs died on
     # the smoke gate in dev-base (eco-app#56); running here through ward would
@@ -33,14 +33,14 @@ jobs:
     #
     # The promoted :release alias matches the AOS launcher and avoids the
     # compatibility-only :latest alias. dev-base bakes ward + uv + managed
-    # Pythons, so no setup-uv / sync step is needed - `ward exec` (make -> uv
+    # Pythons, so no setup-uv / sync step is needed - `just` (make -> uv
     # run) syncs the dev group on demand.
     container: forgejo.coilysiren.me/coilyco-flight-deck/agentic-os:release
     steps:
       - uses: actions/checkout@v4
-      - run: ward exec test
-      - run: ward exec lint
-      - run: ward exec smoke
+      - run: just test
+      - run: just lint
+      - run: just smoke
 
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}

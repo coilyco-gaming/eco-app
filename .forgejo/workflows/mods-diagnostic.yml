@@ -27,9 +27,9 @@ jobs:
             exit 1
           fi
       - name: Compile every C# Eco mod
-        run: ward exec build-mods
+        run: just build-mods
       - name: Run replay mod unit tests
-        run: ward exec test-mod-replay
+        run: just test-mod-replay
       - name: Alert Telegram on main failure
         if: ${{ failure() && github.ref == 'refs/heads/main' }}
         continue-on-error: true

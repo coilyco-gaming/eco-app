@@ -22,7 +22,7 @@ Only four per-type detail pages were captured this cycle (industry, economy, cli
 
 Everything below was derived live on 2026-06-12; it is the complete recipe for drilling into any dataset without re-deriving the mechanics.
 
-* **Base URL** - resolve via [`scripts/resolve-eco-target.sh`](../../scripts/resolve-eco-target.sh): LAN mDNS `kai-server.local:3001` first (same-LAN tailnet is blackholed, infrastructure#294), then the SSM tailnet FQDN, then public `eco.coilysiren.me:3001`. `ward exec http` wires all of this plus the keys into the dev loop automatically.
+* **Base URL** - resolve via [`scripts/resolve-eco-target.sh`](../../scripts/resolve-eco-target.sh): LAN mDNS `kai-server.local:3001` first (same-LAN tailnet is blackholed, infrastructure#294), then the SSM tailnet FQDN, then public `eco.coilysiren.me:3001`. `just http` wires all of this plus the keys into the dev loop automatically.
 * **Auth** - admin endpoints take `X-API-Key`. The key is SSM `/eco-mcp-app/api-admin-token` (us-east-1), fetched via `aws ssm get-parameter --with-decryption`. Never echo or commit it.
 * **Catalog** - `GET /datasets/flatlist` lists all datasets with `IsAction`, `Unit`, `StatType`, `Tags` metadata. 205 entries this cycle.
 * **Series** - `GET /datasets/get?dataset=<Name>&dayStart=0&dayEnd=<day>` returns `{"Times": [...], "Values": [...], "Interval": 86400, "Unit": "..."}`. Times are **seconds since cycle start**, daily samples. Get the current day from `/info` `DaysRunning`.

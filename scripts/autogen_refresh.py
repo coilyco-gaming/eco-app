@@ -8,8 +8,8 @@ runs when Eco ships a new version.
 
 Two modes:
 
-    ward exec autogen-refresh                  # download the server, then parse
-    ward exec autogen-refresh -- --root PATH   # parse a server tree already on disk
+    just autogen-refresh                  # download the server, then parse
+    just autogen-refresh --root PATH   # parse a server tree already on disk
 
 The download is `steamcmd +login anonymous +app_update 739590`. No Steam account
 and no game ownership are involved — SLG publishes the dedicated server as an

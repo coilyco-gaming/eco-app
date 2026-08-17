@@ -30,7 +30,7 @@ docker() {
       ;;
     create)
       case " $* " in
-        *" ward exec publish-mod-packages "*)
+        *" just publish-mod-packages "*)
           if [ "${FORGEJO_PACKAGE_TOKEN:-}" != "${REGISTRY_TOKEN:-}" ]; then
             printf 'publisher did not reuse the trusted registry credential\n' >&2
             return 1

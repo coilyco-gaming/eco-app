@@ -15,7 +15,7 @@ The Eco application monorepo: one fused Python service (MCP + SPA + jobs API), a
 - `src/eco_mcp_app/` - the core service. `server.py` is the MCP server, `__main__.py` the stdio entry for Claude Desktop, `http_app.py` the Starlette ASGI app.
 - `src/eco_spec_tracker/` - jobs JSON API (FastAPI), mounted at `/jobs/api`. The jobs UI is the SPA's `/jobs` route.
 - `src/eco_replay/` - FastAPI browser for the replay mod's SQLite event log. Local-only.
-- `frontend/` - Vite + React + TypeScript SPA, served at `/` by the fused service. Built in the Dockerfile's node stage; local dev via `ward exec frontend-dev` against `ward exec http`.
+- `frontend/` - Vite + React + TypeScript SPA, served at `/` by the fused service. Built in the Dockerfile's node stage; local dev via `just frontend-dev` against `just http`.
 - `mods/jobs/`, `mods/replay/`, `mods/telemetry/` - C# Eco server plugins. jobs and replay share DTO contracts with their Python consumers, so they live here, not in eco-mods.
 - `data/ecoregions.json` - bundled WWF ecoregion definitions. Species/ecopedia lookups go to live web fetches.
 - `data/eco_gnome_data.json` - the vendored, en-US-trimmed vanilla Eco recipe graph. `data/eco_gnome_data.LICENSE.txt` carries its attribution.
@@ -29,14 +29,14 @@ This repo is the application layer (`infra -> eco-app -> deploy`). Its deploy su
 
 ## Commands
 
-Route every dev command through the ward gate as `ward exec <verb>`. The canonical allowlist is [`.ward/ward.yaml`](.ward/ward.yaml). Each verb invokes one tool directly or delegates shell behavior to the focused [`scripts/ward-command.sh`](scripts/ward-command.sh) dispatcher.
+Route every dev command through the gate as `just <verb>`. The canonical manifest is the [`justfile`](justfile). Each verb invokes one tool directly or delegates shell behavior to the focused [`scripts/ward-command.sh`](scripts/ward-command.sh) dispatcher.
 
 ## Validation
 
-- `ward exec test` - pytest across tests/mcp and tests/jobs.
-- `ward exec lint` - ruff check + format check + mypy.
-- `ward exec smoke` - stdio MCP round-trip.
-- `ward exec precommit` - the managed agentic-os hook suite. Opt-outs live under `[tool.agentic-os.*]` in `pyproject.toml`.
+- `just test` - pytest across tests/mcp and tests/jobs.
+- `just lint` - ruff check + format check + mypy.
+- `just smoke` - stdio MCP round-trip.
+- `just precommit` - the managed agentic-os hook suite. Opt-outs live under `[tool.agentic-os.*]` in `pyproject.toml`.
 
 ## Safety
 
@@ -77,6 +77,7 @@ switching tasks, or ending a session. The remote is the only durable artifact.
 - [README.md](README.md) - human-facing intro.
 - [docs/FEATURES.md](docs/FEATURES.md) - inventory of what ships today.
 - [docs/datasets/README.md](docs/datasets/README.md) - dataset survey + probe how-to.
-- [.ward/ward.yaml](.ward/ward.yaml) - allowlisted commands.
+- [justfile](justfile) - dev verbs.
+- [.ward/ward.yaml](.ward/ward.yaml) - catalog metadata only.
 
 Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilyco-flight-deck/agentic-os/issues/59).

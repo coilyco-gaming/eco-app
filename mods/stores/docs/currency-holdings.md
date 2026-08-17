@@ -107,5 +107,5 @@ on `:5101`, so the Python consumer can be built and tested with no live Eco
 server:
 
 ```sh
-ward exec run-shell-stores   # -> http://localhost:5101/api/v1/currency-holdings
+just run-shell-stores   # -> http://localhost:5101/api/v1/currency-holdings
 ```

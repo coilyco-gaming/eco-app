@@ -80,5 +80,5 @@ on `:5101`, so the Python consumers can be built and tested with no live Eco
 server:
 
 ```sh
-ward exec run-shell-stores   # -> http://localhost:5101/api/v1/stores
+just run-shell-stores   # -> http://localhost:5101/api/v1/stores
 ```

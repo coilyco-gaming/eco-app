@@ -3,7 +3,7 @@ import { defineConfig } from "vite"
 import react from "@vitejs/plugin-react"
 
 // Dev server proxies API-ish routes to the fused Python service so
-// `ward exec frontend-dev` against `ward exec http` behaves like production,
+// `just frontend-dev` against `just http` behaves like production,
 // where eco_mcp_app.http_app serves the built SPA itself.
 export default defineConfig({
   plugins: [react()],

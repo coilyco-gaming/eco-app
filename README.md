@@ -31,13 +31,14 @@ The in-game halves live under `mods/` as C# Eco server plugins: `mods/jobs` (ski
 
 ## Commands
 
-Dev commands are declared in [`.ward/ward.yaml`](.ward/ward.yaml). Run them as `ward exec <verb>`.
+Dev commands are declared in the [`justfile`](justfile). Run them as `just <verb>`, and run `just` alone to list every one.
 
 ## See also
 
 - [AGENTS.md](AGENTS.md) - agent-facing operating rules.
 - [docs/FEATURES.md](docs/FEATURES.md) - inventory of what ships today.
 - [docs/discord-bot.md](docs/discord-bot.md) - implementation specification for rich Discord slash-command embeds.
-- [.ward/ward.yaml](.ward/ward.yaml) - allowlisted commands. Agents route through ward, not bare `make` / `uv` / `python` / `dotnet`.
+- [justfile](justfile) - dev verbs.
+- [.ward/ward.yaml](.ward/ward.yaml) - catalog metadata only. Agents route through ward, not bare `make` / `uv` / `python` / `dotnet`.
 
 Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilyco-flight-deck/agentic-os/issues/59).

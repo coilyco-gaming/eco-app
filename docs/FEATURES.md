@@ -36,5 +36,5 @@ with the `build-mod-*` ward verbs. Packaging is
 ## See also
 
 - [README.md](../README.md), [AGENTS.md](../AGENTS.md), and
-  [.ward/ward.yaml](../.ward/ward.yaml). Cross-reference convention from
+  [justfile](../justfile), [.ward/ward.yaml](../.ward/ward.yaml). Cross-reference convention from
   coilysiren/agentic-os#59.

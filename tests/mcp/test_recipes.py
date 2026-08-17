@@ -275,7 +275,7 @@ def test_load_recipe_index_serves_the_autogen_graph() -> None:
 
     Counts are asserted exactly so an Eco version bump shows up as a failing test
     rather than as a silently changed answer — the vendored file is regenerated
-    by `ward exec autogen-refresh`, and this is what says the regeneration ran.
+    by `just autogen-refresh`, and this is what says the regeneration ran.
     """
     index = load_recipe_index()
     # Parsed from Steam build 24618181 (Eco 0.13.0).

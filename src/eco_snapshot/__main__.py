@@ -61,8 +61,8 @@ def main(argv: list[str] | None = None) -> int:
         snapshot_dir = Path(args.dir)
         if not (snapshot_dir / "manifest.json").exists():
             print(
-                f"no manifest at {snapshot_dir} - run `ward exec snapshot-pull` "
-                "or `ward exec snapshot-capture` first",
+                f"no manifest at {snapshot_dir} - run `just snapshot-pull` "
+                "or `just snapshot-capture` first",
                 file=sys.stderr,
             )
             return 1

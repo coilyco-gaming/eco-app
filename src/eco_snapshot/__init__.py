@@ -11,6 +11,6 @@ Three moving parts, composed by the Ward `snapshot-*` verbs:
    machine can iterate against a real capture without touching the live
    game server.
 3. `serve` (serve.py) - a fixture server that replays the manifest on
-   localhost. Point `ECO_INFO_URL` at it (`ward exec http-offline`) and the
+   localhost. Point `ECO_INFO_URL` at it (`just http-offline`) and the
    fused app runs fully offline.
 """

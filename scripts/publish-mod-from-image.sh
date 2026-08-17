@@ -70,7 +70,7 @@ publisher_container_id="$(docker create \
   --env MOD_PACKAGE_DIR \
   --env MOD_PACKAGE_NAME \
   "${dev_image}" \
-  ward exec publish-mod-packages)"
+  just publish-mod-packages)"
 
 # docker cp crosses the runner-to-daemon boundary through the Docker API.
 # Bind mounts cannot use the checkout and package paths from the Actions job

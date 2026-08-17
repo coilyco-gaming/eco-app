@@ -81,11 +81,11 @@ The React SPA (`frontend/`) is the product UI. The MCP service renders no HTML a
 
 ## Dev tooling
 
-- **ward verbs** in [.ward/ward.yaml](../../.ward/ward.yaml), each delegating to Make.
-  - `ward exec smoke` - Stdio initialization, discovery, and representative tool calls.
-  - `ward exec http` - Local HTTP on 4000 with hot reload.
-  - `ward exec harness` - Browser dev harness on `:8765`.
-  - `ward exec install-desktop` - Auto-register in Claude Desktop config.
+- **dev verbs** in the [justfile](../../justfile), each delegating to Make.
+  - `just smoke` - Stdio initialization, discovery, and representative tool calls.
+  - `just http` - Local HTTP on 4000 with hot reload.
+  - `just harness` - Browser dev harness on `:8765`.
+  - `just install-desktop` - Auto-register in Claude Desktop config.
 - **Pre-commit** - ruff + mypy.
 - **Tests** - pytest, pytest-asyncio, respx.
 
@@ -93,6 +93,7 @@ The React SPA (`frontend/`) is the product UI. The MCP service renders no HTML a
 
 - [README.md](../../README.md) - human-facing intro.
 - [AGENTS.md](../../AGENTS.md) - agent-facing operating rules.
-- [.ward/ward.yaml](../../.ward/ward.yaml) - allowlisted commands.
+- [justfile](../../justfile) - dev verbs.
+- [.ward/ward.yaml](../../.ward/ward.yaml) - catalog metadata only.
 
 Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilyco-flight-deck/agentic-os/issues/59).

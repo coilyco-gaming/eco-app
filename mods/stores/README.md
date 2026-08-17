@@ -25,7 +25,7 @@ Two projects share one solution (`eco-store-exporter.sln`):
 | Project | Purpose | Runs where |
 |---|---|---|
 | `src/EcoStoreExporter.csproj` | The real mod. Exposes `GET /api/v1/stores` and `GET /api/v1/currency-holdings` from inside the Eco server process by declaring `[ApiController]` classes that Eco's ASP.NET Core host picks up via `AddApplicationPart`. | Eco dedicated server, after `dotnet build -c Release` and dropping the resulting DLL into `Server/Mods/<Name>/`. |
-| `shell/EcoStoreExporter.Shell.csproj` | Standalone ASP.NET Core harness. Same routes, same DTOs, mock data. Lets the Python side iterate against a real C# HTTP server without booting Eco. | `localhost:5101`, launched by `ward exec run-shell-stores` from the repo root. |
+| `shell/EcoStoreExporter.Shell.csproj` | Standalone ASP.NET Core harness. Same routes, same DTOs, mock data. Lets the Python side iterate against a real C# HTTP server without booting Eco. | `localhost:5101`, launched by `just run-shell-stores` from the repo root. |
 
 DTOs (`src/Dtos.cs`) are shared — the shell project `<Compile Include>`s the
 file, so any change to the shape propagates to both. The contracts are
@@ -35,14 +35,14 @@ documented in [docs/dto.md](docs/dto.md) (stores) and
 ## Local harness
 
 ```sh
-ward exec run-shell-stores   # -> http://localhost:5101/api/v1/stores
+just run-shell-stores   # -> http://localhost:5101/api/v1/stores
 #                               http://localhost:5101/api/v1/currency-holdings
 ```
 
 ## Building the real mod
 
 ```sh
-ward exec build-mod-stores
+just build-mod-stores
 # -> mods/stores/src/bin/Release/net10.0/EcoStoreExporter.dll
 ```
 
