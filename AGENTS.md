@@ -65,12 +65,21 @@ Name the actor in action sentences. Route every command through the gate, never 
 
 ## Checkout residency
 
-This repo is not in Agent Compose's `repository-plan.yaml`, so it has no
-resident checkout under `~/projects/<owner>/`. That is intentional. Work it
-from a task-scoped temporary clone, and remove that clone once the work lands.
+This repo belongs on disk, whether or not Agent Compose's `repository-plan.yaml`
+lists it. On a native Windows host it is worked in the canonical checkout under
+the projects root, never in a session shadow, a linked worktree, or a temporary
+clone. The governing rule is `Serialized checkouts on native Windows` in
+agentic-os AGENTS.md, which covers eco-app, eco-mods, and eco-ops together.
 
-A temporary root can be purged at any time, so commit and push before pausing,
-switching tasks, or ending a session. The remote is the only durable artifact.
+These three take one writer at a time, because the Unity assets and the Eco
+server state they drive corrupt on a second checkout rather than isolating.
+Before the first mutation, confirm that no other agent and no open Unity Editor
+holds the checkout, and stop and report when one does rather than branching
+around it.
+
+Commit and push before pausing, switching tasks, or ending a session. That still
+holds, though now because the remote is the shared record and not because a
+temporary root could be purged.
 
 ## See also
 
