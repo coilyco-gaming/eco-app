@@ -31,7 +31,7 @@ repos:
 
   # BEGIN managed by agentic-os/scripts/apply-agentic-os-hooks.py
   - repo: https://forgejo.coilysiren.me/coilyco-flight-deck/agentic-os
-    rev: aos-precommit-v0.34.0
+    rev: aos-precommit-v0.35.0
     hooks:
       - id: catalog-doc-size
       - id: catalog-trifecta
@@ -60,6 +60,7 @@ repos:
       - id: check-illegal-windows-names
       - id: mixed-line-ending
       - id: check-json
+        exclude: (^|/)\.vscode/
       - id: check-toml
   - repo: https://github.com/rhysd/actionlint
     rev: v1.7.12
