@@ -163,10 +163,10 @@ def build_query(
         if threshold is None:
             raise WatcherError("price watcher needs a numeric threshold (e.g. 2.5)")
         try:
-            thr = float(threshold)
+            thresh = float(threshold)
         except (TypeError, ValueError) as e:
             raise WatcherError(f"price threshold '{threshold}' is not a number") from e
-        return WatchQuery(kind="price", value=v, op=norm_op, threshold=thr)
+        return WatchQuery(kind="price", value=v, op=norm_op, threshold=thresh)
     return WatchQuery(kind=k, value=v)
 
 

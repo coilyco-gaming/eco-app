@@ -17,7 +17,7 @@ Traces are stubbed.
 
 1. Download `EcoTelemetry-<version>.zip` from the [latest release](https://github.com/coilyco-flight-deck/eco-telemetry/releases).
 2. Extract into your Eco server's `Mods/` directory so the result looks like `Mods/EcoTelemetry/EcoTelemetry.dll`.
-3. Copy `Configs/EcoTelemetry.example.json` to `Configs/EcoTelemetry.json` and edit:
+3. Copy `Configs/EcoTelemetry.example.jsonc` to `Configs/EcoTelemetry.json` and edit:
    - `OtlpEndpoint`: your collector's OTLP HTTP or gRPC endpoint
    - `OtlpHeaders`: any auth headers required by the selected OTLP backend
    - `ServiceName`, `ResourceAttributes`: how this server identifies itself

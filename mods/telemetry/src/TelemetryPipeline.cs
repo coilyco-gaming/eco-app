@@ -13,7 +13,7 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
-/// <summary>Owns the OTel SDK objects per signal. See docs/internals.md.</summary>
+/// <summary>Owns the OTel SDK objects per signal. See ../docs/internals.md.</summary>
 internal sealed class TelemetryPipeline : IDisposable
 {
     public const string MeterName = "EcoTelemetry";
@@ -95,7 +95,7 @@ internal sealed class TelemetryPipeline : IDisposable
             .AddMeter("OpenTelemetry.Instrumentation.Runtime")
             .AddRuntimeInstrumentation();
 
-        // Diagnostic prints while #5 is open. See docs/internals.md.
+        // Diagnostic prints while #5 is open. See ../docs/internals.md.
         Console.Error.WriteLine($"[EcoTelemetry] StartMetrics: ResolvedMetricsEndpoint=[{this.config.ResolvedMetricsEndpoint}] OtlpMetricsEndpoint=[{this.config.OtlpMetricsEndpoint}] OtlpEndpoint=[{this.config.OtlpEndpoint}] EmitConsoleAlongsideOtlp={this.config.EmitConsoleAlongsideOtlp}");
 
         if (string.IsNullOrWhiteSpace(this.config.ResolvedMetricsEndpoint))

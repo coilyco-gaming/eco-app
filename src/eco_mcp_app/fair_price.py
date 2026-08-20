@@ -405,7 +405,7 @@ def latest_pct_changes(
 
     Returns `(changes, label)` where `label` is human-readable shorthand for
     the cadence ("daily" / "monthly" / "weekly" / other). The caller uses the
-    label in the narrative so we never mis-label a monthly figure as "7-day".
+    label in the narrative so we never mislabel a monthly figure as "7-day".
     """
     freq = (frequency or "").upper()
     if freq == "D":

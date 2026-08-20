@@ -13,12 +13,12 @@ using Eco.Gameplay.Systems;
 using Eco.Simulation.Time;
 using Microsoft.Extensions.Logging;
 
-/// <summary>Registers pull-based Eco metric instruments. See docs/internals.md.</summary>
+/// <summary>Registers pull-based Eco metric instruments. See ../docs/internals.md.</summary>
 internal sealed class MetricsWorker
 {
     // GlobalStats fields exported under eco.stats.*. Name -> accessor, evaluated on
     // the OTel export thread. Kept curated (population + economy) rather than every
-    // field so the metric cardinality stays legible. See docs/internals.md.
+    // field so the metric cardinality stays legible. See ../docs/internals.md.
     private static readonly (string Name, string Description, Func<Eco.Gameplay.Stats.GlobalStats, double> Read)[] StatGauges =
     {
         ("eco.stats.citizen_population", "Total citizens.", s => s.CitizenPopulation),
@@ -83,7 +83,7 @@ internal sealed class MetricsWorker
         }
         catch
         {
-            // UserManager may not be ready during early init. See docs/internals.md.
+            // UserManager may not be ready during early init. See ../docs/internals.md.
             return 0;
         }
     }
@@ -105,7 +105,7 @@ internal sealed class MetricsWorker
         catch
         {
             // WorldObjectManager may mutate on the game thread mid-iteration or be
-            // unready during early init. Emit whatever we gathered. See docs/internals.md.
+            // unready during early init. Emit whatever we gathered. See ../docs/internals.md.
         }
 
         var measurements = new List<Measurement<int>>(byType.Count);
@@ -140,7 +140,7 @@ internal sealed class MetricsWorker
         catch
         {
             // GlobalStats is populated by the stats plugin's periodic pass and is
-            // null until the first tick. See docs/internals.md.
+            // null until the first tick. See ../docs/internals.md.
             return 0d;
         }
     }

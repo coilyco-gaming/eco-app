@@ -109,6 +109,10 @@ band = "small"
 # source repos, predating the size caps. mods/ subtrees carry their own
 # README + mod.io listing copy as part of their distributed shape.
 excludes = ["investigation/", "docs/", "mods/"]
+# `excludes` is placement-only since agentic-os#1108. These trees are ours, so
+# `vendored` would be a false provenance claim; `size_excludes` is the honest
+# key for a monorepo whose components carry their own README + docs/.
+size_excludes = ["investigation/", "docs/", "mods/"]
 
 [tool.agentic-os.code-comments]
 # Generated build output (.NET obj/bin) is not hand-written source.

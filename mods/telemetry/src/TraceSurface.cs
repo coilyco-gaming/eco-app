@@ -6,7 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
-/// <summary>Owns the trace ActivitySource and the span helpers. See docs/internals.md.</summary>
+/// <summary>Owns the trace ActivitySource and the span helpers. See ../docs/internals.md.</summary>
 internal static class TraceSurface
 {
     public const string ActivitySourceName = "EcoTelemetry";

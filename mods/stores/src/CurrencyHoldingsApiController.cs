@@ -11,7 +11,7 @@ namespace EcoStoreExporter;
 // Returns, per currency, the top account balances live from CurrencyManager:
 // the DiscordLink `Currency <name>` top-holders piece that trade history cannot
 // reconstruct (eco-app#58). Consumed by eco_mcp_app/currency.py's per-currency
-// report. See docs/currency-holdings.md.
+// report. See ../docs/currency-holdings.md.
 [ApiController]
 [Route("api/v1/currency-holdings")]
 public class CurrencyHoldingsApiController : ControllerBase

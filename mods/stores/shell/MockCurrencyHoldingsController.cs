@@ -9,7 +9,7 @@ namespace EcoStoreExporter.Shell;
 // route use). The shelves below cover the shapes the real scanner emits: a
 // minted/backed currency held across several accounts (one government account
 // with no single owner -> null holder), and a personal/credit currency held by
-// its own player. See docs/currency-holdings.md.
+// its own player. See ../docs/currency-holdings.md.
 [ApiController]
 [Route("api/v1/currency-holdings")]
 public class MockCurrencyHoldingsController : ControllerBase

@@ -6,7 +6,7 @@ namespace EcoStoreExporter;
 // Dual JSON attributes so DTOs serialize camelCase under System.Text.Json
 // (shell harness) or Newtonsoft.Json (Eco's web pipeline). Same pattern as
 // mods/jobs. The shape is the contract the Python store-directory and
-// logistics siblings upgrade to - see docs/dto.md.
+// logistics siblings upgrade to - see ../docs/dto.md.
 
 // A single tradeable line on a store shelf. `Buying` is from the STORE's point
 // of view: true = the store buys this item (players sell to it), false = the
@@ -22,7 +22,7 @@ public record OfferDto(
 
 // World coordinates of the store object, rounded to whole blocks. Null when the
 // object's position could not be read (an orphaned store surviving a save
-// migration - see the dangling-reference note in docs/dto.md).
+// migration - see the dangling-reference note in ../docs/dto.md).
 public record LocationDto(
     [property: JsonPropertyName("x"), JsonProperty("x")] int X,
     [property: JsonPropertyName("y"), JsonProperty("y")] int Y,
@@ -44,7 +44,7 @@ public record StoreDto(
 // display name (already human-readable in Eco); `Holder` is the resolved owner
 // citizen name (via the same UserManager join mods/jobs uses for
 // /api/v1/citizens), or null when the account has no single resolvable owner (a
-// government/company account, or a user the join missed). See docs/currency-holdings.md.
+// government/company account, or a user the join missed). See ../docs/currency-holdings.md.
 public record HolderDto(
     [property: JsonPropertyName("account"), JsonProperty("account")] string Account,
     [property: JsonPropertyName("holder"), JsonProperty("holder")] string? Holder,

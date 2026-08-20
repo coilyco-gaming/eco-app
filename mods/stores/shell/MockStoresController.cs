@@ -7,7 +7,7 @@ namespace EcoStoreExporter.Shell;
 // store-directory and logistics siblings can develop and test against a live
 // C# HTTP server without booting Eco (the pattern mods/jobs uses). The shelves
 // below cover the shapes the real scanner emits: sell offers, buy offers, a
-// store with no owner, and a store with no currency set. See docs/dto.md.
+// store with no owner, and a store with no currency set. See ../docs/dto.md.
 [ApiController]
 [Route("api/v1/stores")]
 public class MockStoresController : ControllerBase

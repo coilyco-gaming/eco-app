@@ -48,7 +48,7 @@ INAT_USER_AGENT = "eco-mcp-app/0.1 (coilysiren@gmail.com)"
 
 # 7-day TTL for stable taxonomic facts.
 _EXTERNAL_CACHE_TTL_S = 7 * 24 * 3600
-# Overrideable for tests — see test_species.py.
+# Overridable for tests — see test_species.py.
 _CACHE_DIR_ENV = "ECO_MCP_APP_CACHE_DIR"
 _DEFAULT_CACHE_DIR = Path.home() / ".cache" / "eco-mcp-app"
 

@@ -1,0 +1,16 @@
+# data/eco_gnome_data.json is the vendored vanilla Eco recipe graph. Its item
+# names and localized strings are upstream's spelling (FrothFloatation,
+# Processsed, and every non-English locale), not ours to correct.
+[files]
+extend-exclude = ["data/eco_gnome_data.json"]
+
+[default.extend-identifiers]
+# ser8 is a host name, not a misspelled `set`.
+ser8 = "ser8"
+
+[default.extend-words]
+# `specialt` is a deliberate stem: the code appends `y` or `ies`, and the
+# series-discovery keyword list matches Eco's `Specialty*` series prefix.
+specialt = "specialt"
+# The -eable spelling is the one this codebase uses for "cannot be parsed".
+unparseable = "unparseable"

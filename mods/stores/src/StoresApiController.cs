@@ -11,7 +11,7 @@ namespace EcoStoreExporter;
 //
 // Returns the current shelf of every live store: the shelf-accurate snapshot
 // that upgrades the store-directory, logistics-engine, and watcher siblings
-// from history-derived to live `Trades <item>` parity. See docs/dto.md.
+// from history-derived to live `Trades <item>` parity. See ../docs/dto.md.
 [ApiController]
 [Route("api/v1/stores")]
 public class StoresApiController : ControllerBase

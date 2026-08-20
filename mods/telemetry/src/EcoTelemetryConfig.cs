@@ -8,7 +8,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-/// <summary>Runtime config. Fields documented in docs/internals.md.</summary>
+/// <summary>Runtime config. Fields documented in ../docs/internals.md.</summary>
 public sealed class EcoTelemetryConfig
 {
     public string ServiceName { get; set; } = "eco-server";
@@ -51,16 +51,16 @@ public sealed class EcoTelemetryConfig
 
     public int MetricsIntervalSeconds { get; set; } = 15;
 
-    /// <summary>Slow-handler span threshold in ms. See docs/internals.md.</summary>
+    /// <summary>Slow-handler span threshold in ms. See ../docs/internals.md.</summary>
     public int SlowHandlerThresholdMs { get; set; } = 100;
 
-    /// <summary>Diagnostic dual export. See docs/internals.md.</summary>
+    /// <summary>Diagnostic dual export. See ../docs/internals.md.</summary>
     public bool EmitConsoleAlongsideOtlp { get; set; } = false;
 
-    /// <summary>High-volume first-chance hook. See docs/internals.md.</summary>
+    /// <summary>High-volume first-chance hook. See ../docs/internals.md.</summary>
     public bool FirstChanceExceptionsEnabled { get; set; } = false;
 
-    /// <summary>Wrap Eco's ILogWriter. See docs/internals.md.</summary>
+    /// <summary>Wrap Eco's ILogWriter. See ../docs/internals.md.</summary>
     public bool InterceptLogWriter { get; set; } = true;
 
     public static EcoTelemetryConfig Load(string path)

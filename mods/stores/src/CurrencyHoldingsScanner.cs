@@ -28,7 +28,7 @@ namespace EcoStoreExporter;
 // The ONE typed touchpoint is `UserManager` (Eco.Gameplay.Players) for the
 // id->name join, exactly as mods/jobs' CitizensApiController uses it and as
 // StoreScanner uses the stable `WorldObjectManager`. A partial holdings table is
-// the correct answer; a 500 is not. Contract: docs/currency-holdings.md.
+// the correct answer; a 500 is not. Contract: ../docs/currency-holdings.md.
 public static class CurrencyHoldingsScanner
 {
     // Per-currency truncation. DiscordLink shows a handful; we export a deeper

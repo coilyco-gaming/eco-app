@@ -10,7 +10,7 @@ using Eco.Core.Plugins.Interfaces;
 using Eco.Core.Utils;
 using Microsoft.Extensions.Logging;
 
-/// <summary>Plugin entry point. Lifecycle in docs/internals.md.</summary>
+/// <summary>Plugin entry point. Lifecycle in ../docs/internals.md.</summary>
 public sealed class EcoTelemetryPlugin : IModKitPlugin, IInitializablePlugin, IShutdownablePlugin, IWorkerPlugin
 {
     private const string ConfigPath = "Configs/EcoTelemetry.json";

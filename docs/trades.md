@@ -20,7 +20,7 @@ computed values below are explicitly detailed-rows-only.
   `Seller`, from detailed rows only.
 - **Per-currency volume** - includes summed rollup amounts. Most-traded items
   use detailed rows only.
-- **Price over time** - unit price is `CurrencyAmount / NumberOfItems`, meaned
+- **Price over time** - unit price is `CurrencyAmount / NumberOfItems`, averaged
   per in-game day, for the busiest detailed items.
 
 ## Messy bits handled
