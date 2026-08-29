@@ -31,9 +31,8 @@ repos:
 
   # BEGIN managed by agentic-os/scripts/apply-agentic-os-hooks.py
   - repo: https://forgejo.coilysiren.me/coilyco-flight-deck/agentic-os
-    rev: aos-precommit-v0.35.0
+    rev: aos-precommit-v0.55.0
     hooks:
-      - id: catalog-doc-size
       - id: catalog-trifecta
       - id: documentation-layout
       - id: context-load-points
@@ -47,6 +46,7 @@ repos:
       - id: agent-compose-dedup
       - id: trufflehog
       - id: pr-guard
+      - id: git-workflow
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
