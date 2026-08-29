@@ -5,7 +5,7 @@ description = "The Eco application monorepo: MCP/web service, jobs tracker, repl
 readme = "README.md"
 requires-python = ">=3.13"
 license = { text = "MIT" }
-authors = [{ name = "Kai Siren" }]
+authors = [{ name = "Kai Ase Siren" }]
 # eco_mcp_app's dependency list was already a superset of eco_spec_tracker's
 # and eco_replay's, so the union is just this list.
 dependencies = [

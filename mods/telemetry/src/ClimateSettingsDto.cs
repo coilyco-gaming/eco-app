@@ -1,4 +1,4 @@
-// Copyright (c) Kai Siren. Licensed under the MIT License.
+// Copyright (c) Kai Ase Siren. Licensed under the MIT License.
 
 namespace EcoTelemetry;
 
