@@ -8,7 +8,7 @@ Workspace conventions load globally via `~/.claude/CLAUDE.md`. This file covers 
 
 ## Scope
 
-The Eco application monorepo: one fused Python service (MCP + SPA + jobs API), a local replay browser, and the in-game C# plugins that feed them. Consolidated per [coilysiren/inbox#101](https://forgejo.coilysiren.me/coilysiren/inbox/issues/101).
+The Eco application monorepo: one fused Python service (MCP + SPA + jobs API), a local replay browser, and the in-game C# plugins that feed them. Consolidated per [coilysiren/inbox#101](https://forgejo.coilysiren.me/coilyco-bridge/inbox/issues/101).
 
 ## Project shape
 
