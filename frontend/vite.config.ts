@@ -9,6 +9,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    // data/spa_routes.json sits above this root: it is shared with the Python
+    // service, which reads it for robots.txt, the sitemap, and the crawl rules.
+    fs: { allow: [".."] },
     proxy: {
       "/info": "http://localhost:4000",
       "/page-auth": "http://localhost:4000",

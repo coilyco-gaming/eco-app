@@ -16,17 +16,42 @@ from eco_mcp_app.http_app import create_app
 @pytest.mark.usefixtures("dist")
 def test_client_routes_serve_the_spa_shell() -> None:
     client = TestClient(create_app())
-    for path in ("/server", "/some/future/page"):
+    for path in ("/trade", "/jobs", "/uses/food"):
         r = client.get(path)
         assert r.status_code == 200
         assert "spa-shell" in r.text
 
 
 @pytest.mark.usefixtures("dist")
-def test_real_dist_files_serve_themselves() -> None:
+def test_the_shell_no_longer_answers_for_anything_typed() -> None:
+    """A path in `data/spa_routes.json` gets the shell; nothing else does.
+
+    `/server` and `/some/future/page` both used to. The first is a retired path
+    that now 301s to `/info`, and the second is a 404 — see tests/mcp/test_seo.py
+    for why the blanket 200 was the whole Search Console problem.
+    """
+    client = TestClient(create_app(), follow_redirects=False)
+    assert client.get("/server").status_code == 301
+    assert client.get("/some/future/page").status_code == 404
+
+
+def test_real_dist_files_serve_themselves(dist: Path) -> None:
+    (dist / "manifest.webmanifest").write_text('{"name":"eco-app"}')
+    client = TestClient(create_app())
+    assert client.get("/manifest.webmanifest").text == '{"name":"eco-app"}'
+
+
+@pytest.mark.usefixtures("dist")
+def test_the_app_owns_robots_even_when_dist_ships_one() -> None:
+    """The dist fixture writes a `robots.txt`; the app's route still wins.
+
+    Crawl rules are derived from the route table, so a stale file left in a
+    build must not be able to shadow them.
+    """
     client = TestClient(create_app())
     r = client.get("/robots.txt")
-    assert r.text == "crawl away"
+    assert r.text != "crawl away"
+    assert r.text.startswith("User-agent: *")
 
 
 @pytest.mark.usefixtures("dist")
@@ -100,9 +125,9 @@ def test_frame_ancestors_csp_is_site_wide() -> None:
 
 def test_no_build_returns_build_hint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # No frontend build → no HTML surface (the old /preview redirect is gone).
-    # Client routes return a 404 build hint instead.
+    # A real client route returns a 404 build hint instead.
     monkeypatch.setenv("FRONTEND_DIST", str(tmp_path / "missing"))
     client = TestClient(create_app(), follow_redirects=False)
-    r = client.get("/server")
+    r = client.get("/trade")
     assert r.status_code == 404
     assert "frontend-build" in r.text

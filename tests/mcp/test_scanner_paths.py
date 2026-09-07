@@ -69,7 +69,7 @@ def test_no_probe_path_leaks_file_contents(client: TestClient, path: str) -> Non
         assert secret_marker not in body
 
 
-@pytest.mark.parametrize("path", ["/trade", "/items", "/civics", "/map", "/some/deep/route"])
+@pytest.mark.parametrize("path", ["/trade", "/items", "/civics", "/map"])
 def test_real_spa_routes_still_serve_the_app(client: TestClient, path: str) -> None:
     """The 404 rule must not catch a client-side route."""
     response = client.get(path)
@@ -77,6 +77,28 @@ def test_real_spa_routes_still_serve_the_app(client: TestClient, path: str) -> N
     assert "<!doctype html>" in response.text.lower()
 
 
-def test_well_known_is_not_treated_as_a_dotfile_probe(client: TestClient) -> None:
-    # ACME challenges and security.txt are legitimate dotted paths.
+def test_a_path_outside_the_route_table_is_a_404_not_the_shell(client: TestClient) -> None:
+    """`/some/deep/route` used to serve the shell. It is a 404 now.
+
+    #215 stopped the shell going to obvious probe shapes. The remainder — any
+    plausible-looking path nobody routes — kept answering 200, and a crawler
+    reads that as a page. Membership in data/spa_routes.json is the test now,
+    so the probe-shape rule is a fast path rather than the whole defence.
+    """
+    response = client.get("/some/deep/route")
+    assert response.status_code == 404
+    assert "<!doctype html>" not in response.text.lower()
+
+
+def test_well_known_is_not_treated_as_a_dotfile_probe(client: TestClient, dist: Path) -> None:
+    """ACME challenges and security.txt are legitimate dotted paths.
+
+    A real file under `.well-known` serves; a missing one 404s like any other
+    unrouted path, rather than collecting the SPA shell.
+    """
+    well_known = dist / ".well-known"
+    well_known.mkdir()
+    (well_known / "security.txt").write_text("Contact: mailto:security@example.invalid")
+
     assert client.get("/.well-known/security.txt").status_code == 200
+    assert client.get("/.well-known/nothing-here").status_code == 404

@@ -36,12 +36,13 @@ from starlette.responses import (
     FileResponse,
     JSONResponse,
     PlainTextResponse,
+    RedirectResponse,
     Response,
 )
 from starlette.routing import BaseRoute, Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import page_auth
+from . import page_auth, seo
 from . import users as users_mod
 from .admin import build_admin_server
 from .cost import CostParams
@@ -373,33 +374,73 @@ def create_app(route_registry: DualRouteRegistry | None = None) -> Starlette:
         "/preview/<tool>.json, /api/service, and /jobs/api/v1/*."
     )
 
-    async def root(_: Request) -> Response:
+    def _shell(path: str, query: str) -> Response:
+        """The SPA shell, carrying this URL's crawl posture in its headers.
+
+        The shell is byte-identical for every route — a crawler reading the
+        body cannot tell `/trade` from `/item?name=Iron Ore`, which is exactly
+        how one page became an unbounded set of duplicates. The headers are
+        what distinguish them, and a header works where a `<meta>` tag would
+        need the crawler to run the bundle first.
+        """
+        response = FileResponse(frontend_index)
+        verdict = seo.classify(path, query)
+        if verdict.canonical:
+            response.headers["Link"] = f'<{verdict.canonical}>; rel="canonical"'
+        else:
+            response.headers["X-Robots-Tag"] = seo.NOINDEX_HEADER
+        return response
+
+    async def root(request: Request) -> Response:
         if frontend_index.is_file():
-            return FileResponse(frontend_index)
+            return _shell("/", request.url.query)
         return PlainTextResponse(no_build_msg, status_code=404)
+
+    async def robots_txt(_: Request) -> Response:
+        """`/robots.txt` — served by the app, not left to the catch-all.
+
+        This path used to answer 200 with the SPA shell, so the crawler asked
+        for rules and got HTML. No rules meant no limits.
+        """
+        return PlainTextResponse(seo.robots_txt(), media_type="text/plain")
+
+    async def sitemap_xml(_: Request) -> Response:
+        return Response(seo.sitemap_xml(), media_type="application/xml")
 
     async def spa_fallback(request: Request) -> Response:
         """Catch-all so the SPA's client-side routes survive a hard refresh.
 
         Registered last: every API route and mount above wins first. Real
-        files in dist (favicon, robots.txt) serve as themselves; anything
-        else gets index.html and the router takes it from there. Without a
-        frontend build there's no HTML surface, so return the build hint.
+        files in dist (favicon, the hashed assets) serve as themselves.
+        Everything else is decided against `data/spa_routes.json`:
 
-        Paths that can never be a client route 404 instead of collecting the
-        SPA shell — see :func:`_is_never_a_spa_route`.
+        * a retired path 301s to its replacement, so the crawler collapses the
+          duplicate rather than seeing two live pages with one body
+        * a path the router owns gets the shell, with its crawl posture
+        * a path nothing owns gets a **404**
+
+        That last one is the change that matters. The catch-all used to answer
+        200 for every string anyone typed, which is a soft 404 to a crawler and
+        an unbounded supply of them to an indexer.
         """
         path = request.path_params["path"]
         # A real file in dist always wins, so manifest.json and friends keep
-        # serving regardless of the probe rule below.
+        # serving regardless of the rules below.
         candidate = (frontend_dist / path).resolve()
         if candidate.is_file() and candidate.is_relative_to(frontend_dist.resolve()):
             return FileResponse(candidate)
         if _is_never_a_spa_route(path):
             return PlainTextResponse("Not found", status_code=404)
+        target = seo.redirect_target(path)
+        if target is not None:
+            query = request.url.query
+            return RedirectResponse(f"{target}?{query}" if query else target, status_code=301)
+        verdict = seo.classify(path, request.url.query)
+        if not verdict.known:
+            return PlainTextResponse("Not found", status_code=404)
         if not frontend_index.is_file():
             return PlainTextResponse(no_build_msg, status_code=404)
-        return FileResponse(frontend_index)
+        return _shell(path, request.url.query)
 
     async def service_info(_: Request) -> JSONResponse:
         # Service-discovery blob. Debug/discovery, not a user surface, so it
@@ -650,6 +691,10 @@ def create_app(route_registry: DualRouteRegistry | None = None) -> Starlette:
         # gate hardcodes `/page-auth`), not new user-facing surfaces, so moving
         # them would break those consumers for no SPA-collision gain.
         Route("/api/service", service_info, methods=["GET"]),
+        # Crawl surface. Explicit routes so neither can fall through to the
+        # catch-all and answer as the SPA shell (eco-app: search-console noise).
+        Route("/robots.txt", robots_txt, methods=["GET"]),
+        Route("/sitemap.xml", sitemap_xml, methods=["GET"]),
         Route("/healthz", healthz, methods=["GET"]),
         Route("/page-auth", page_auth_status, methods=["GET"]),
         Route("/page-auth", page_auth_verify, methods=["POST"]),

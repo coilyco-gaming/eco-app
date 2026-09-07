@@ -1,0 +1,87 @@
+{
+  "_comment": "The SPA route table and its crawl policy, owned here and read by both consumers: frontend/src/routes.tsx builds the react-router table from it, and src/eco_mcp_app/seo.py builds robots.txt, sitemap.xml, the 404 rule for unknown paths, and the per-response X-Robots-Tag. Two hand-maintained lists is how the crawl policy drifts back out of sync with the router, so there is one.",
+  "site": "https://eco-app.coilysiren.me",
+  "routes": [
+    { "path": "/", "component": "Home", "crawl": "index" },
+    { "path": "/info", "component": "Info", "crawl": "index" },
+    { "path": "/mods", "component": "Mods", "crawl": "index" },
+    { "path": "/wiki", "component": "Wiki", "crawl": "index" },
+    {
+      "path": "/jobs/*",
+      "component": "Jobs",
+      "crawl": "index",
+      "deepCrawl": "noindex",
+      "note": "The wildcard swallows the retired server-rendered sub-paths (/jobs/professions). Only /jobs itself is canonical, so anything deeper renders but stays out of the index."
+    },
+    { "path": "/trade", "component": "Trade", "crawl": "index" },
+    { "path": "/crafting", "component": "Crafting", "crawl": "index" },
+    { "path": "/items", "component": "Items", "crawl": "index" },
+    {
+      "path": "/item",
+      "component": "Item",
+      "crawl": "noindex",
+      "note": "Per-item detail keyed by ?name=. Thousands of URLs over one shell, reached only from /items."
+    },
+    { "path": "/recipes", "component": "Recipes", "crawl": "index" },
+    {
+      "path": "/recipe",
+      "component": "Recipe",
+      "crawl": "noindex",
+      "note": "Per-recipe detail keyed by ?id=. Same unbounded shape as /item."
+    },
+    { "path": "/civics", "component": "Civics", "crawl": "index" },
+    { "path": "/uses", "component": "Uses", "crawl": "index" },
+    { "path": "/uses/demand", "component": "UsesDemand", "crawl": "index" },
+    { "path": "/uses/food", "component": "UsesFood", "crawl": "index" },
+    { "path": "/uses/buy-sell", "component": "UsesBuySell", "crawl": "index" },
+    { "path": "/uses/arbitrage", "component": "UsesArbitrage", "crawl": "index" },
+    { "path": "/uses/price", "component": "UsesPrice", "crawl": "index" },
+    { "path": "/uses/resolve", "component": "UsesResolve", "crawl": "index" },
+    { "path": "/uses/shop-check", "component": "UsesShopCheck", "crawl": "index" },
+    {
+      "path": "/social",
+      "component": "Social",
+      "crawl": "noindex",
+      "gate": "password",
+      "note": "URL-only and behind the soft password gate (eco-app#73)."
+    },
+    { "path": "/map", "component": "Map", "crawl": "index" },
+    { "path": "/species", "component": "Species", "crawl": "index" },
+    {
+      "path": "/replay",
+      "component": "Replay",
+      "crawl": "noindex",
+      "gate": "password",
+      "note": "URL-only and behind the soft password gate (eco-app#73)."
+    },
+    {
+      "path": "/users/:hex",
+      "component": "User",
+      "crawl": "noindex",
+      "note": "One player's dossier, keyed by the base16 of their username. Unbounded, unlinked, and about a person."
+    }
+  ],
+  "redirects": [
+    { "from": "/server", "to": "/info" },
+    { "from": "/progression", "to": "/jobs" },
+    { "from": "/economy", "to": "/" },
+    { "from": "/calculator", "to": "/" },
+    { "from": "/trades", "to": "/trade" },
+    { "from": "/world", "to": "/map" },
+    { "from": "/ecoregion", "to": "/map" },
+    { "from": "/climate", "to": "/map" },
+    { "from": "/users", "to": "/" }
+  ],
+  "disallow": [
+    "/api/",
+    "/mcp/",
+    "/admin",
+    "/preview/",
+    "/preview.json",
+    "/preview-map.json",
+    "/jobs/api/",
+    "/replay/api/",
+    "/page-auth",
+    "/healthz"
+  ]
+}

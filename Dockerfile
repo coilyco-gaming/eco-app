@@ -10,6 +10,10 @@ COPY frontend/package.json frontend/pnpm-lock.yaml /frontend/
 RUN pnpm install --frozen-lockfile
 
 COPY frontend/ /frontend/
+# The SPA route table is shared with the Python service (robots.txt, sitemap,
+# crawl rules), so it lives in data/ rather than under frontend/. This lands it
+# where frontend/src/routes.tsx's `../../data/` import resolves.
+COPY data/spa_routes.json /data/spa_routes.json
 RUN pnpm build
 
 FROM ${AOS_IMAGE} AS mods
