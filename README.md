@@ -59,4 +59,3 @@ consumes that exact reference through a separate read-only credential.
 - [docs/FEATURES.md](docs/FEATURES.md) - inventory of what ships today.
 - [docs/admin-mcp.md](docs/admin-mcp.md) - the privileged surface and its disclosure contract.
 - [justfile](justfile) - dev verbs.
-- [.ward/ward.yaml](.ward/ward.yaml) - catalog metadata only.

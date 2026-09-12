@@ -46,7 +46,7 @@ Keep every artifact public-safe. Opaque ids, tokens, and sensitive hosts go in A
 
 - `coilyco-bridge/deploy` - owns this service's manifests and rollout. A change to ports, env vars, or secrets here needs a matching change there.
 - `coilyco-gaming/eco-mods` - gameplay mods and their Unity assets.
-- Catalog metadata lives in the `catalog:` block of `.ward/ward.yaml`. Update [docs/FEATURES.md](docs/FEATURES.md) whenever a feature is added or reshaped.
+- Update [docs/FEATURES.md](docs/FEATURES.md) whenever a feature is added or reshaped.
 
 ## Release
 
@@ -108,6 +108,5 @@ temporary root could be purged.
 - [docs/FEATURES.md](docs/FEATURES.md) - inventory of what ships today.
 - [docs/datasets/README.md](docs/datasets/README.md) - dataset survey + probe how-to.
 - [justfile](justfile) - dev verbs.
-- [.ward/ward.yaml](.ward/ward.yaml) - catalog metadata only.
 
 Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilyco-flight-deck/agentic-os/issues/59).

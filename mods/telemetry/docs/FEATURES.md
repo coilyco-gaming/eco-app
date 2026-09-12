@@ -45,6 +45,5 @@ Operational tooling, resilience, and packaging live in [operations.md](operation
 - [README.md](../README.md) - human-facing intro.
 - [AGENTS.md](../../../AGENTS.md) - agent-facing operating rules.
 - [justfile](../../../justfile) - dev verbs.
-- [.ward/ward.yaml](../../../.ward/ward.yaml) - catalog metadata only.
 
 Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilyco-flight-deck/agentic-os/issues/59).

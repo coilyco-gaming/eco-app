@@ -70,6 +70,5 @@ Dev commands are declared in the repo-root [`justfile`](../../justfile). Run the
 - [AGENTS.md](../../AGENTS.md) - agent-facing operating rules.
 - [docs/FEATURES.md](docs/FEATURES.md) - inventory of what ships today.
 - [justfile](../../justfile) - dev verbs.
-- [.ward/ward.yaml](../../.ward/ward.yaml) - catalog metadata only.
 
 Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilyco-flight-deck/agentic-os/issues/59).
