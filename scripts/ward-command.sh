@@ -62,16 +62,23 @@ case "$action" in
     exec uv run pytest "$@"
     ;;
   lint)
-    uv run ruff check src tests
-    uv run ruff format --check src tests
-    uv run mypy src tests
+    uv run ruff check src tests scripts
+    uv run ruff format --check src tests scripts
+    uv run mypy src tests scripts
     ;;
   fmt)
-    uv run ruff check --fix src tests
-    uv run ruff format src tests
+    uv run ruff check --fix src tests scripts
+    uv run ruff format src tests scripts
     ;;
   precommit)
     exec uv run pre-commit run --all-files "$@"
+    ;;
+  join-watch)
+    # Resolved the same way as run_http so a watch and a dev server never end up
+    # pointed at different servers. An explicit ECO_INFO_URL still wins.
+    base="$(scripts/resolve-eco-target.sh)"
+    ECO_INFO_URL="${ECO_INFO_URL:-${base}/info}" \
+      exec uv run python scripts/join_watch.py "$@"
     ;;
   smoke)
     (

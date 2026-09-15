@@ -38,6 +38,10 @@ precommit *ARGS:
 smoke *ARGS:
     @bash scripts/ward-command.sh smoke "$@"
 
+# Watch the resolved server's player list and report whether one join held. Native args - PLAYER [--server URL] [--timeout S] [--hold S] [--interval S] [--expect-version V] [--allow-already-online] [--json] [--quiet].
+join-watch *ARGS:
+    @bash scripts/ward-command.sh join-watch "$@"
+
 # Regenerate data/eco_autogen_data.json from Eco's dedicated-server AutoGen C#. Downloads the server via anonymous steamcmd unless given a tree. Native args - [--root PATH] [--download-dir PATH] [--output PATH].
 autogen-refresh *ARGS:
     @uv run python scripts/autogen_refresh.py "$@"

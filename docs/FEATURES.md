@@ -35,7 +35,8 @@ In-game C# plugins live in `mods/` (jobs, replay, telemetry, stores), built
 with the `build-mod-*` ward verbs. Packaging is
 [mod-packages.md](mod-packages.md), the offline dev loop is
 [snapshot-harness.md](snapshot-harness.md), and deploy lives in
-`coilyco-bridge/deploy/services/eco-app`.
+`coilyco-bridge/deploy/services/eco-app`. `just join-watch` proves a real client
+reached the world and stayed there, from the server side.
 
 ## See also
 
